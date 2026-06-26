@@ -284,10 +284,14 @@ app.on('ready', () => {
     startClipboardMonitoring();
   }
 
-  // Send initial settings to renderer once ready
+  // Send settings to renderer once ready (strip sensitive keys)
   mainWindow.webContents.on('did-finish-load', () => {
-    const settings = store.getAllSettings();
-    mainWindow.webContents.send(IPC_CHANNELS.SETTINGS_LOADED, settings);
+    const raw = store.getAllSettings();
+    const safe = { ...raw };
+    delete safe.anthropicApiKey;
+    delete safe.openaiApiKey;
+    delete safe.customEndpointApiKey;
+    mainWindow.webContents.send(IPC_CHANNELS.SETTINGS_LOADED, safe);
   });
 });
 
