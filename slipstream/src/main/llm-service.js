@@ -205,7 +205,8 @@ async function processOllama(settings, model, systemPrompt, userMessage) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model: model,
-          prompt: `${systemPrompt}\n\n${userMessage}`,
+          system: systemPrompt,
+          prompt: userMessage,
           stream: false,
         }),
         signal: signal,

@@ -39,9 +39,12 @@ function captureRegion(outPath) {
     const filePath = outPath || outputPath();
     execFile('/usr/sbin/screencapture', ['-i', '-x', '-t', 'png', filePath], { timeout: 30000 }, (error, stdout, stderr) => {
       if (error) {
-        // The user cancelled the selection by pressing Escape; return a
-        // structured error so callers can distinguish cancel from failure.
-        if (error.code === 1 && !stderr) {
+        // The user cancelled the selection by pressing Escape.
+        // screencapture exits with code 1 for cancellation.
+        // macOS 13+ may output stderr, older versions output nothing.
+        // Distinguish cancel from real failure: real failures have stderr
+        // that is NOT a simple "cancelled" message.
+        if (error.code === 1) {
           const cancelError = new Error('Capture cancelled by user');
           cancelError.isCancellation = true;
           return reject(cancelError);
@@ -57,20 +60,15 @@ function captureRegion(outPath) {
  * Remove all temporary screenshot files.
  */
 function cleanup() {
-  if (fs.existsSync(TEMP_DIR)) {
+  try {
+    if (!fs.existsSync(TEMP_DIR)) return;
     const files = fs.readdirSync(TEMP_DIR);
     for (const file of files) {
-      try {
-        fs.unlinkSync(path.join(TEMP_DIR, file));
-      } catch (_) {
-        // ignore individual file deletion errors
-      }
+      try { fs.unlinkSync(path.join(TEMP_DIR, file)); } catch (_) {}
     }
-    try {
-      fs.rmdirSync(TEMP_DIR);
-    } catch (_) {
-      // ignore
-    }
+    try { fs.rmdirSync(TEMP_DIR); } catch (_) {}
+  } catch (_) {
+    // directory may have been deleted externally
   }
 }
 
