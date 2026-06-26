@@ -19,13 +19,7 @@ const crypto = require('crypto');
  * @property {boolean} clipboardMonitoring
  */
 
-// electron-store v8 is ESM-only, so we use the CJS workaround
-let Store;
-try {
-  Store = require('electron-store').default;
-} catch (_) {
-  Store = require('electron-store');
-}
+let Store = require('electron-store');
 
 const ENCRYPTION_KEY = crypto
   .createHash('sha256')
