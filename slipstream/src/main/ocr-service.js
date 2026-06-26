@@ -13,6 +13,7 @@ function cleanOcrText(rawText) {
   if (!rawText) return '';
   return rawText
     .trim()
+    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // remove control chars
     .replace(/\n{3,}/g, '\n\n') // collapse 3+ newlines
     .replace(/\s{2,}/g, ' ') // collapse multiple spaces

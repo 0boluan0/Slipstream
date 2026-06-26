@@ -15,7 +15,7 @@ export default function LanguageToggle({ value, onChange }) {
           display: 'block',
           fontSize: 12,
           fontWeight: 600,
-          color: '#374151',
+          color: 'var(--text-primary)',
           marginBottom: 4,
         }}
       >
@@ -26,7 +26,7 @@ export default function LanguageToggle({ value, onChange }) {
           display: 'inline-flex',
           borderRadius: 8,
           overflow: 'hidden',
-          border: '1px solid #D1D5DB',
+          border: '1px solid var(--border-secondary)',
         }}
       >
         {OPTIONS.map((opt) => {
@@ -42,12 +42,18 @@ export default function LanguageToggle({ value, onChange }) {
                 fontWeight: isSelected ? 600 : 400,
                 border: 'none',
                 cursor: 'pointer',
-                backgroundColor: isSelected ? '#3B82F6' : '#F3F4F6',
-                color: isSelected ? '#FFF' : '#374151',
+                backgroundColor: isSelected ? 'var(--accent)' : 'var(--bg-tertiary)',
+                color: isSelected ? '#FFF' : 'var(--text-primary)',
                 transition: 'background-color 0.15s, color 0.15s',
                 outline: 'none',
                 minWidth: 52,
                 textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                if (!isSelected) e.target.style.backgroundColor = 'var(--accent-light)';
+              }}
+              onMouseLeave={(e) => {
+                if (!isSelected) e.target.style.backgroundColor = 'var(--bg-tertiary)';
               }}
             >
               {opt.label}

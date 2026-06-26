@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useIpc } from './useIpc';
 import { IPC_CHANNELS, DEFAULTS } from '../../shared/constants';
 
+// NOTE: These defaults must match the schema defaults in src/main/store.js
 const defaultSettings = {
   anthropicApiKey: '',
   openaiApiKey: '',

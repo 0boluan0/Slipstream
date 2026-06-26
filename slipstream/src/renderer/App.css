@@ -68,16 +68,16 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.15);
+  background: var(--border-secondary);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,0,0,0.25);
+  background: var(--text-tertiary);
 }
 
 /* Selection color */
 ::selection {
-  background: rgba(59, 130, 246, 0.2);
+  background: var(--accent-light);
 }
 
 @keyframes slipstream-pulse {
@@ -101,4 +101,90 @@ body {
 
 .slipstream-pulse {
   animation: slipstream-pulse 2s ease-in-out infinite;
+}
+
+/* Shared component styles */
+
+.slipstream-textarea {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 13px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  outline: none;
+  font-family: inherit;
+  line-height: 1.5;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  resize: none;
+}
+
+.slipstream-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.slipstream-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 13px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  outline: none;
+  font-family: inherit;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.slipstream-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.slipstream-kbd {
+  display: inline-block;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-family: inherit;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 3px;
+  margin-right: 1px;
+}
+
+.slipstream-btn {
+  padding: 7px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  cursor: pointer;
+  color: var(--text-primary);
+  font-family: inherit;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.slipstream-btn:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--text-tertiary);
+}
+
+.slipstream-btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-weight: 600;
+}
+
+.slipstream-btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.slipstream-btn-primary:disabled {
+  background: var(--text-tertiary);
+  cursor: not-allowed;
 }

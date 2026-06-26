@@ -1,4 +1,4 @@
-const { globalShortcut, BrowserWindow } = require('electron');
+const { globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { IPC_CHANNELS } = require('../shared/constants');
@@ -10,24 +10,8 @@ const ocrService = require('./ocr-service');
  * @param {BrowserWindow} mainWindow - The main BrowserWindow to control.
  */
 function registerShortcuts(mainWindow) {
-  // Toggle window visibility with F2
-  const toggleRegistered = globalShortcut.register('F2', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
-
-  if (!toggleRegistered) {
-    console.warn('[GlobalShortcut] Failed to register F2 shortcut (may be taken by another app).');
-  }
-
-  // Screenshot capture with CmdOrCtrl+Shift+S
-  const screenshotRegistered = globalShortcut.register('CmdOrCtrl+Shift+S', async () => {
+  // Screenshot capture with F2 — the user's primary workflow trigger
+  const screenshotRegistered = globalShortcut.register('F2', async () => {
     if (!mainWindow || mainWindow.isDestroyed()) return;
 
     mainWindow.show();
@@ -39,22 +23,25 @@ function registerShortcuts(mainWindow) {
       await screenshotService.captureRegion(outputPath);
       const ocrResult = await ocrService.performOCR(outputPath);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.OCR_RESULT, ocrResult.text || '');
         mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, ocrResult.text);
       }
     } catch (err) {
+      // User pressed Escape — not an error, just silently return
+      if (err.isCancellation) {
+        return;
+      }
       console.error('[GlobalShortcut] Screenshot error:', err.message);
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: err.message });
       }
     } finally {
       // Clean up temporary file
-      try { fs.unlinkSync(outputPath); } catch (_) {}
+      try { fs.unlinkSync(outputPath); } catch (_) { /* cleanup failure is non-fatal */ }
     }
   });
 
   if (!screenshotRegistered) {
-    console.warn('[GlobalShortcut] Failed to register CmdOrCtrl+Shift+S shortcut (may be taken by another app).');
+    console.warn('[GlobalShortcut] Failed to register F2 shortcut (may be taken by another app).');
   }
 }
 

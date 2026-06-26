@@ -2,6 +2,17 @@ import React, { useState, useCallback } from 'react';
 import LoadingOverlay from './LoadingOverlay';
 import { STATUS } from '../../shared/constants';
 
+/**
+ * Simple Markdown-to-React renderer.
+ * Supports: bold (**text**), unordered lists (- / *), ordered lists (1.),
+ * code blocks (```), and paragraphs.
+ * NOT a full Markdown parser -- inline code, links, images, tables, and
+ * nested formatting are not supported. HTML in source text is rendered
+ * as plain text (XSS-safe).
+ *
+ * @param {string} text - The Markdown source text.
+ * @returns {Array<React.ReactElement> | React.ReactElement | null}
+ */
 function renderMarkdown(text) {
   if (!text) return null;
   const lines = text.split('\n');
@@ -20,7 +31,7 @@ function renderMarkdown(text) {
           'ul',
           { key: `ul-${elements.length}`, style: { listStyle: 'disc', paddingLeft: 20, margin: '6px 0', lineHeight: 1.6 } },
           ...listItems.map((item, i) =>
-            React.createElement('li', { key: i, style: { fontSize: 13, color: '#374151' } }, item)
+            React.createElement('li', { key: i, style: { fontSize: 13, color: 'var(--text-primary)' } }, item)
           )
         )
       );
@@ -36,7 +47,7 @@ function renderMarkdown(text) {
           'ol',
           { key: `ol-${elements.length}`, style: { listStyle: 'decimal', paddingLeft: 20, margin: '6px 0', lineHeight: 1.6 } },
           ...numberedItems.map((item, i) =>
-            React.createElement('li', { key: i, style: { fontSize: 13, color: '#374151' } }, item)
+            React.createElement('li', { key: i, style: { fontSize: 13, color: 'var(--text-primary)' } }, item)
           )
         )
       );
@@ -56,7 +67,7 @@ function renderMarkdown(text) {
             {
               key: `code-${i}`,
               style: {
-                backgroundColor: '#F3F4F6',
+                backgroundColor: 'var(--bg-tertiary)',
                 borderRadius: 6,
                 padding: 10,
                 margin: '6px 0',
@@ -129,7 +140,7 @@ function renderMarkdown(text) {
             style: {
               fontSize: 14,
               fontWeight: 700,
-              color: '#1F2937',
+              color: 'var(--text-primary)',
               marginTop: 12,
               marginBottom: 4,
             },
@@ -148,12 +159,12 @@ function renderMarkdown(text) {
           {
             key: idx,
             style: {
-              backgroundColor: '#F3F4F6',
+              backgroundColor: 'var(--bg-tertiary)',
               padding: '1px 4px',
               borderRadius: 3,
               fontSize: 11,
               fontFamily: 'monospace',
-              color: '#BE185D',
+              color: 'var(--text-primary)',
             },
           },
           part.slice(1, -1)
@@ -184,7 +195,7 @@ function renderMarkdown(text) {
           key: i,
           style: {
             fontSize: 13,
-            color: '#374151',
+            color: 'var(--text-primary)',
             lineHeight: 1.7,
             margin: '3px 0',
           },
@@ -203,7 +214,7 @@ function renderMarkdown(text) {
         {
           key: 'code-last',
           style: {
-            backgroundColor: '#F3F4F6',
+            backgroundColor: 'var(--bg-tertiary)',
             borderRadius: 6,
             padding: 10,
             margin: '6px 0',
@@ -218,10 +229,10 @@ function renderMarkdown(text) {
     );
   }
 
-  return elements.length > 0 ? elements : React.createElement('p', { style: { fontSize: 13, color: '#374151' } }, text);
+  return elements.length > 0 ? elements : React.createElement('p', { style: { fontSize: 13, color: 'var(--text-primary)' } }, text);
 }
 
-export default function ResultDisplay({ result, error, status }) {
+function ResultDisplay({ result, error, status, onDismissError }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {
@@ -253,7 +264,7 @@ export default function ResultDisplay({ result, error, status }) {
             justifyContent: 'center',
             height: '100%',
             minHeight: 120,
-            color: '#D1D5DB',
+            color: 'var(--border-secondary)',
             fontSize: 13,
             textAlign: 'center',
           }}
@@ -268,7 +279,7 @@ export default function ResultDisplay({ result, error, status }) {
   if (status === STATUS.PROCESSING) {
     return (
       <div style={containerStyle}>
-        <LoadingOverlay visible />
+        <LoadingOverlay visible message="正在请求 LLM..." />
       </div>
     );
   }
@@ -283,15 +294,36 @@ export default function ResultDisplay({ result, error, status }) {
             alignItems: 'flex-start',
             gap: 8,
             padding: 12,
-            backgroundColor: '#FEF2F2',
-            border: '1px solid #FECACA',
+            backgroundColor: 'var(--error-bg)',
+            border: '1px solid var(--error)',
             borderRadius: 8,
+            position: 'relative',
           }}
         >
           <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{'⚠️'}</span>
-          <span style={{ fontSize: 13, color: '#DC2626', lineHeight: 1.5 }}>
+          <span style={{ fontSize: 13, color: 'var(--error)', lineHeight: 1.5, flex: 1 }}>
             {error}
           </span>
+          {onDismissError && (
+            <button
+              onClick={onDismissError}
+              style={{
+                position: 'absolute',
+                top: 6,
+                right: 6,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 14,
+                color: 'var(--error)',
+                padding: 2,
+                lineHeight: 1,
+              }}
+              aria-label="关闭错误提示"
+            >
+              {'✕'}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -301,7 +333,7 @@ export default function ResultDisplay({ result, error, status }) {
   return (
     <div style={containerStyle}>
       {status === STATUS.DONE && result && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8, position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--bg-primary)' }}>
           <button
             onClick={handleCopy}
             style={{
@@ -334,3 +366,4 @@ export default function ResultDisplay({ result, error, status }) {
     </div>
   );
 }
+export default React.memo(ResultDisplay);

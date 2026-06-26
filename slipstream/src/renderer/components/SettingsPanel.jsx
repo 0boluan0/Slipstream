@@ -81,7 +81,6 @@ export default function SettingsPanel({ onClose }) {
       setConfirmReset(false);
     } else {
       setConfirmReset(true);
-      setTimeout(() => setConfirmReset(false), 3000);
     }
   }, [confirmReset, resetSettings]);
 
@@ -89,11 +88,11 @@ export default function SettingsPanel({ onClose }) {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
-    backgroundColor: '#FFF',
+    backgroundColor: 'var(--bg-primary)',
     borderRadius: 12,
-    border: '1px solid #E5E7EB',
+    border: '1px solid var(--border-primary)',
     overflow: 'hidden',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
+    boxShadow: 'var(--shadow)',
   };
 
   const scrollStyle = {
@@ -105,7 +104,7 @@ export default function SettingsPanel({ onClose }) {
   const sectionTitleStyle = {
     fontSize: 11,
     fontWeight: 700,
-    color: '#9CA3AF',
+    color: 'var(--text-tertiary)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
@@ -133,11 +132,11 @@ export default function SettingsPanel({ onClose }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '10px 16px',
-          borderBottom: '1px solid #E5E7EB',
+          borderBottom: '1px solid var(--border-primary)',
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: 15, fontWeight: 700, color: '#1F2937' }}>设置</span>
+        <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>设置</span>
         <button
           type="button"
           onClick={onClose}
@@ -148,13 +147,13 @@ export default function SettingsPanel({ onClose }) {
             border: 'none',
             cursor: 'pointer',
             fontSize: 13,
-            color: '#3B82F6',
+            color: 'var(--accent)',
             fontWeight: 500,
             padding: '4px 8px',
             borderRadius: 6,
             transition: 'background-color 0.15s',
           }}
-          onMouseEnter={(e) => { e.target.style.backgroundColor = '#EFF6FF'; }}
+          onMouseEnter={(e) => { e.target.style.backgroundColor = 'var(--accent-light)'; }}
           onMouseLeave={(e) => { e.target.style.backgroundColor = 'transparent'; }}
         >
           {'←'} 返回
@@ -170,7 +169,7 @@ export default function SettingsPanel({ onClose }) {
             display: 'flex',
             borderRadius: 8,
             overflow: 'hidden',
-            border: '1px solid #D1D5DB',
+            border: '1px solid var(--border-secondary)',
             marginBottom: 16,
           }}
         >
@@ -184,8 +183,8 @@ export default function SettingsPanel({ onClose }) {
                 aria-label={`选择 ${opt.label}`}
                 style={{
                   ...segmentBtnBase,
-                  backgroundColor: isSelected ? '#3B82F6' : '#F3F4F6',
-                  color: isSelected ? '#FFF' : '#374151',
+                  backgroundColor: isSelected ? 'var(--accent)' : 'var(--bg-tertiary)',
+                  color: isSelected ? '#FFF' : 'var(--text-primary)',
                   fontWeight: isSelected ? 600 : 400,
                 }}
               >
@@ -253,16 +252,17 @@ export default function SettingsPanel({ onClose }) {
             padding: '8px 0',
           }}
         >
-          <label
+          <span
             style={{
               fontSize: 13,
-              color: '#374151',
+              color: 'var(--text-primary)',
               cursor: 'pointer',
               userSelect: 'none',
             }}
+            onClick={handleClipboardToggle}
           >
             自动检测剪贴板
-          </label>
+          </span>
           <label
             style={{
               position: 'relative',
@@ -289,7 +289,7 @@ export default function SettingsPanel({ onClose }) {
               style={{
                 position: 'absolute',
                 inset: 0,
-                backgroundColor: settings.clipboardMonitoring ? '#3B82F6' : '#D1D5DB',
+                backgroundColor: settings.clipboardMonitoring ? 'var(--accent)' : 'var(--border-secondary)',
                 borderRadius: 11,
                 transition: 'background-color 0.2s',
               }}
@@ -313,23 +313,63 @@ export default function SettingsPanel({ onClose }) {
 
         {/* Reset button */}
         <div style={{ marginTop: 24, textAlign: 'center' }}>
-          <button
-            type="button"
-            onClick={handleReset}
-            aria-label="恢复默认设置"
-            style={{
-              padding: '8px 20px',
-              fontSize: 12,
-              border: `1px solid ${confirmReset ? '#EF4444' : '#D1D5DB'}`,
-              borderRadius: 8,
-              backgroundColor: confirmReset ? '#FEF2F2' : '#FFF',
-              color: confirmReset ? '#DC2626' : '#6B7280',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            {confirmReset ? '确认恢复默认设置？' : '恢复默认设置'}
-          </button>
+          {!confirmReset ? (
+            <button
+              type="button"
+              onClick={() => setConfirmReset(true)}
+              aria-label="恢复默认设置"
+              style={{
+                padding: '8px 20px',
+                fontSize: 12,
+                border: '1px solid var(--border-secondary)',
+                borderRadius: 8,
+                backgroundColor: 'var(--bg-primary)',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                transition: 'all 0.15s',
+              }}
+            >
+              恢复默认设置
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+              <button
+                type="button"
+                onClick={handleReset}
+                aria-label="确认恢复默认设置"
+                style={{
+                  padding: '8px 20px',
+                  fontSize: 12,
+                  border: 'none',
+                  borderRadius: 8,
+                  backgroundColor: 'var(--error)',
+                  color: '#FFF',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                确认恢复
+              </button>
+              <button
+                type="button"
+                onClick={() => setConfirmReset(false)}
+                aria-label="取消恢复"
+                style={{
+                  padding: '8px 20px',
+                  fontSize: 12,
+                  border: '1px solid var(--border-secondary)',
+                  borderRadius: 8,
+                  backgroundColor: 'var(--bg-tertiary)',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                取消
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

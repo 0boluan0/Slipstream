@@ -42,26 +42,10 @@ function captureRegion(outPath) {
         // The user cancelled the selection by pressing Escape; return a
         // structured error so callers can distinguish cancel from failure.
         if (error.code === 1 && !stderr) {
-          return reject(new Error('Capture cancelled by user'));
+          const cancelError = new Error('Capture cancelled by user');
+          cancelError.isCancellation = true;
+          return reject(cancelError);
         }
-        return reject(new Error(`screencapture failed: ${error.message}`));
-      }
-      resolve(filePath);
-    });
-  });
-}
-
-/**
- * Capture the full screen.
- * Runs `screencapture -x -t png <path>`.
- * @param {string} [outPath] - Optional output path; generated if omitted.
- * @returns {Promise<string>} Resolves with the path to the captured screenshot.
- */
-function captureFullScreen(outPath) {
-  return new Promise((resolve, reject) => {
-    const filePath = outPath || outputPath();
-    execFile('/usr/sbin/screencapture', ['-x', '-t', 'png', filePath], { timeout: 10000 }, (error, stdout, stderr) => {
-      if (error) {
         return reject(new Error(`screencapture failed: ${error.message}`));
       }
       resolve(filePath);
@@ -92,8 +76,6 @@ function cleanup() {
 
 module.exports = {
   captureRegion,
-  captureFullScreen,
   cleanup,
-  TEMP_DIR,
   getTempDir,
 };

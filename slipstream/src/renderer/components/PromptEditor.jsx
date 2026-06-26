@@ -13,13 +13,15 @@ export default function PromptEditor({ value, onChange }) {
     minHeight: 120,
     padding: '8px 10px',
     fontSize: 12,
-    border: '1px solid #D1D5DB',
+    border: '1px solid var(--border-secondary)',
     borderRadius: 8,
     outline: 'none',
     resize: 'vertical',
     fontFamily: 'monospace',
     lineHeight: 1.5,
     boxSizing: 'border-box',
+    backgroundColor: 'var(--bg-primary)',
+    color: 'var(--text-primary)',
     transition: 'border-color 0.15s, box-shadow 0.15s',
   };
 
@@ -30,7 +32,7 @@ export default function PromptEditor({ value, onChange }) {
           display: 'block',
           fontSize: 12,
           fontWeight: 600,
-          color: '#374151',
+          color: 'var(--text-primary)',
           marginBottom: 4,
         }}
       >
@@ -43,11 +45,11 @@ export default function PromptEditor({ value, onChange }) {
           placeholder="(使用默认提示词)"
           style={textareaStyle}
           onFocus={(e) => {
-            e.target.style.borderColor = '#3B82F6';
-            e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)';
+            e.target.style.borderColor = 'var(--accent)';
+            e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent)';
           }}
           onBlur={(e) => {
-            e.target.style.borderColor = '#D1D5DB';
+            e.target.style.borderColor = 'var(--border-secondary)';
             e.target.style.boxShadow = 'none';
           }}
         />
@@ -57,7 +59,7 @@ export default function PromptEditor({ value, onChange }) {
             bottom: 6,
             right: 8,
             fontSize: 10,
-            color: '#9CA3AF',
+            color: 'var(--text-tertiary)',
             pointerEvents: 'none',
           }}
         >
@@ -67,7 +69,7 @@ export default function PromptEditor({ value, onChange }) {
       <p
         style={{
           fontSize: 10,
-          color: '#9CA3AF',
+          color: 'var(--text-tertiary)',
           margin: '3px 0 0 0',
           lineHeight: 1.4,
         }}
