@@ -1,10 +1,17 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { MODEL_IDS } from '../../shared/constants';
 
 export default function ModelSelector({ backend, value, onChange }) {
   const models = MODEL_IDS[backend] || MODEL_IDS['anthropic'];
 
   // When backend changes, auto-select first model if current selection isn't valid
+  useEffect(() => {
+    const models = MODEL_IDS[backend] || [];
+    if (models.length > 0 && !models.includes(value)) {
+      onChange(models[0]);
+    }
+  }, [backend]);
+
   const handleChange = useCallback(
     (e) => {
       onChange(e.target.value);
@@ -19,10 +26,10 @@ export default function ModelSelector({ backend, value, onChange }) {
     width: '100%',
     padding: '8px 10px',
     fontSize: 13,
-    border: '1px solid #D1D5DB',
+    border: '1px solid var(--border-secondary)',
     borderRadius: 8,
     outline: 'none',
-    backgroundColor: '#FFF',
+    backgroundColor: 'var(--bg-primary)',
     cursor: 'pointer',
     boxSizing: 'border-box',
     WebkitAppearance: 'none',
@@ -42,7 +49,7 @@ export default function ModelSelector({ backend, value, onChange }) {
           display: 'block',
           fontSize: 12,
           fontWeight: 600,
-          color: '#374151',
+          color: 'var(--text-primary)',
           marginBottom: 4,
         }}
       >
@@ -56,11 +63,11 @@ export default function ModelSelector({ backend, value, onChange }) {
         }}
         style={selectStyle}
         onFocus={(e) => {
-          e.target.style.borderColor = '#3B82F6';
-          e.target.style.boxShadow = '0 0 0 3px rgba(59,130,246,0.15)';
+          e.target.style.borderColor = 'var(--accent)';
+          e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent)';
         }}
         onBlur={(e) => {
-          e.target.style.borderColor = '#D1D5DB';
+          e.target.style.borderColor = 'var(--border-secondary)';
           e.target.style.boxShadow = 'none';
         }}
       >

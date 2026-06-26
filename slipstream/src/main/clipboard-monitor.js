@@ -1,7 +1,5 @@
 const { clipboard } = require('electron');
-
-const POLL_INTERVAL = 1000;
-const MAX_TEXT_LENGTH = 10000;
+const { DEFAULTS } = require('../shared/constants');
 
 class ClipboardMonitor {
   constructor() {
@@ -23,21 +21,25 @@ class ClipboardMonitor {
     this._lastText = clipboard.readText();
 
     this._intervalId = setInterval(() => {
-      const currentText = clipboard.readText();
+      try {
+        const currentText = clipboard.readText();
 
-      if (currentText && currentText !== this._lastText) {
-        this._lastText = currentText;
+        if (currentText && currentText !== this._lastText) {
+          this._lastText = currentText;
 
-        // Enforce max length
-        const trimmed = currentText.length > MAX_TEXT_LENGTH
-          ? currentText.slice(0, MAX_TEXT_LENGTH)
-          : currentText;
+          const maxLen = DEFAULTS.MAX_TEXT_LENGTH;
+          const trimmed = currentText.length > maxLen
+            ? currentText.slice(0, maxLen)
+            : currentText;
 
-        if (this._callback) {
-          this._callback(trimmed);
+          if (this._callback) {
+            this._callback(trimmed);
+          }
         }
+      } catch (err) {
+        console.error('[ClipboardMonitor] Error polling clipboard:', err);
       }
-    }, POLL_INTERVAL);
+    }, DEFAULTS.CLIPBOARD_POLL_INTERVAL);
   }
 
   /**

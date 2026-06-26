@@ -1,4 +1,5 @@
 const store = require('./store');
+const { PROMPT_TEMPLATES } = require('../shared/constants');
 
 /**
  * Retry a function with exponential backoff for transient errors.
@@ -23,7 +24,7 @@ async function withRetry(fn, retries = 3) {
 
       if (!isRetryable || i === retries - 1) break;
 
-      const delay = [1000, 3000, 5000][i]; // 1s, 3s, 5s
+      const delay = Math.min(1000 * Math.pow(2, i), 8000); // exponential backoff: 1s, 2s, 4s...
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
@@ -31,31 +32,35 @@ async function withRetry(fn, retries = 3) {
 }
 
 /**
- * Apply a timeout to a promise.
- * @param {Promise<any>} promise
- * @param {number} ms
+ * Apply a timeout to an async operation and abort the underlying request.
+ * Creates an AbortController that aborts after `ms` milliseconds.
+ * @param {object} options
+ * @param {(signal: AbortSignal) => Promise<any>} options.fn - Function that receives the abort signal
+ * @param {number} options.ms - Timeout in milliseconds
+ * @param {AbortSignal} [options.parentSignal] - Optional external signal to link
  * @returns {Promise<any>}
  */
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('LLM 请求超时，请稍后重试')), ms)
-    ),
-  ]);
+function withTimeout({ fn, ms, parentSignal }) {
+  const controller = new AbortController();
+  const signal = controller.signal;
+
+  // Link parent signal if provided
+  if (parentSignal) {
+    const onParentAbort = () => controller.abort();
+    parentSignal.addEventListener('abort', onParentAbort, { once: true });
+    // Clean up listener if our controller aborts first
+    signal.addEventListener('abort', () => parentSignal.removeEventListener('abort', onParentAbort), { once: true });
+  }
+
+  const timer = setTimeout(() => {
+    controller.abort(new Error('LLM 请求超时，请稍后重试'));
+  }, ms);
+
+  return fn(signal).finally(() => {
+    clearTimeout(timer);
+  });
 }
 
-const DEFAULT_SYSTEM_PROMPT = 'You are a bilingual English-Chinese language assistant. Your job is to help a Chinese speaker understand English text in context. You must respond in Chinese.';
-const DEFAULT_USER_TEMPLATE = `Please help me understand the following English text. Provide:
-
-1. **中文翻译**：将原文翻译成自然流畅的中文
-2. **专有名词解释**：列出文中的专有名词（人名、地名、机构名、专业术语、缩写），逐一用中文解释
-3. **语境说明**：解释文中涉及的文化背景、习惯用法、特殊表达方式，以及在英语语境下才会出现的概念
-
-原文：
-{{text}}
-
-请用清晰的结构化格式回复。`;
 
 /**
  * Process text through the configured LLM backend.
@@ -75,15 +80,25 @@ async function processText({ text, backend, model, promptTemplate, languageHint 
   const resolvedBackend = backend || settings.activeBackend || 'anthropic';
   const resolvedModel = model || settings.activeModel || 'claude-sonnet-4-20250514';
   const resolvedLanguageHint = languageHint || settings.languageHint || 'en';
-  const resolvedPromptTemplate = promptTemplate || settings.customPrompt || DEFAULT_USER_TEMPLATE;
 
-  // Always use the generic bilingual assistant role as system prompt
-  const systemPrompt = DEFAULT_SYSTEM_PROMPT;
+  // Select the appropriate prompt templates based on language direction
+  const langTemplates = PROMPT_TEMPLATES[resolvedLanguageHint] || PROMPT_TEMPLATES.en;
 
-  // Build the user message by replacing template placeholders
-  let userMessage = resolvedPromptTemplate
-    .replace(/\{\{text\}\}/g, text)
-    .replace(/\{\{languageHint\}\}/g, resolvedLanguageHint);
+  // Always use the language-appropriate system prompt
+  const systemPrompt = langTemplates.system;
+
+  // Build the user message — use custom prompt if provided, otherwise the template
+  const resolvedPromptTemplate = promptTemplate || settings.customPrompt;
+
+  let userMessage;
+  if (resolvedPromptTemplate) {
+    // Custom prompts still get {{text}} and {{languageHint}} substitutions for backward compatibility
+    userMessage = resolvedPromptTemplate
+      .replace(/\{\{text\}\}/g, text)
+      .replace(/\{\{languageHint\}\}/g, resolvedLanguageHint);
+  } else {
+    userMessage = langTemplates.user.replace(/\{\{text\}\}/g, text);
+  }
 
   let result;
 
@@ -120,23 +135,26 @@ async function processAnthropic(settings, model, systemPrompt, userMessage) {
     throw new Error('Anthropic API key is not configured.');
   }
 
-  return withTimeout(withRetry(async () => {
-    const anthropic = new Anthropic({ apiKey });
+  return withTimeout({
+    fn: async (signal) => withRetry(async () => {
+      const anthropic = new Anthropic({ apiKey });
 
-    const response = await anthropic.messages.create({
-      model: model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-    });
+      const response = await anthropic.messages.create({
+        model: model,
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }, { signal });
 
-    const result = response.content[0].text;
+      const result = response.content[0].text;
 
-    if (response.stop_reason === 'max_tokens') {
-      return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
-    }
-    return result;
-  }), 60000);
+      if (response.stop_reason === 'max_tokens') {
+        return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
+      }
+      return result;
+    }),
+    ms: 60000,
+  });
 }
 
 /**
@@ -150,25 +168,28 @@ async function processOpenAI(settings, model, systemPrompt, userMessage) {
     throw new Error('OpenAI API key is not configured.');
   }
 
-  return withTimeout(withRetry(async () => {
-    const openai = new OpenAI({ apiKey });
+  return withTimeout({
+    fn: async (signal) => withRetry(async () => {
+      const openai = new OpenAI({ apiKey });
 
-    const response = await openai.chat.completions.create({
-      model: model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      max_tokens: 4096,
-    });
+      const response = await openai.chat.completions.create({
+        model: model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: 4096,
+      }, { signal });
 
-    const result = response.choices[0].message.content;
+      const result = response.choices[0].message.content;
 
-    if (response.choices[0].finish_reason === 'length') {
-      return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
-    }
-    return result;
-  }), 60000);
+      if (response.choices[0].finish_reason === 'length') {
+        return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
+      }
+      return result;
+    }),
+    ms: 60000,
+  });
 }
 
 /**
@@ -177,29 +198,33 @@ async function processOpenAI(settings, model, systemPrompt, userMessage) {
 async function processOllama(settings, model, systemPrompt, userMessage) {
   const baseUrl = settings.ollamaBaseUrl || 'http://localhost:11434';
 
-  return withTimeout(withRetry(async () => {
-    const response = await fetch(`${baseUrl}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: model,
-        prompt: `${systemPrompt}\n\n${userMessage}`,
-        stream: false,
-      }),
-    });
+  return withTimeout({
+    fn: async (signal) => withRetry(async () => {
+      const response = await fetch(`${baseUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: model,
+          prompt: `${systemPrompt}\n\n${userMessage}`,
+          stream: false,
+        }),
+        signal: signal,
+      });
 
-    if (!response.ok) {
-      throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
-    }
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.status} ${response.statusText}`);
+      }
 
-    const data = await response.json();
-    const result = data.response || '';
+      const data = await response.json();
+      const result = data.response || '';
 
-    if (data.done && data.done_reason === 'length') {
-      return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
-    }
-    return result;
-  }), 60000);
+      if (data.done && data.done_reason === 'length') {
+        return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
+      }
+      return result;
+    }),
+    ms: 60000,
+  });
 }
 
 /**
@@ -214,28 +239,31 @@ async function processCustom(settings, model, systemPrompt, userMessage) {
     throw new Error('Custom endpoint URL is not configured.');
   }
 
-  return withTimeout(withRetry(async () => {
-    const openai = new OpenAI({
-      apiKey: apiKey || 'sk-no-key-required',
-      baseURL: baseURL,
-    });
+  return withTimeout({
+    fn: async (signal) => withRetry(async () => {
+      const openai = new OpenAI({
+        apiKey: apiKey || 'sk-no-key-required',
+        baseURL: baseURL,
+      });
 
-    const response = await openai.chat.completions.create({
-      model: model || 'custom',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage },
-      ],
-      max_tokens: 4096,
-    });
+      const response = await openai.chat.completions.create({
+        model: model || 'custom',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: 4096,
+      }, { signal });
 
-    const result = response.choices[0].message.content;
+      const result = response.choices[0].message.content;
 
-    if (response.choices[0].finish_reason === 'length') {
-      return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
-    }
-    return result;
-  }), 60000);
+      if (response.choices[0].finish_reason === 'length') {
+        return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
+      }
+      return result;
+    }),
+    ms: 60000,
+  });
 }
 
 module.exports = {

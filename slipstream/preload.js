@@ -2,16 +2,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // Whitelist of allowed IPC channels
 const ALLOWED_INVOKE_CHANNELS = [
-  'settings:get', 'settings:set',
+  'settings:set',
   'llm:process',
   'screenshot:capture',
-  'window:hide', 'window:show',
 ];
 
 const ALLOWED_ON_CHANNELS = [
   'clipboard:text-changed',
-  'ocr:result', 'ocr:error',
-  'llm:result', 'llm:error',
+  'ocr:error',
   'settings:loaded',
 ];
 
