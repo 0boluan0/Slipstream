@@ -6,11 +6,10 @@ export default function ModelSelector({ backend, value, onChange }) {
 
   // When backend changes, auto-select first model if current selection isn't valid
   useEffect(() => {
-    const models = MODEL_IDS[backend] || [];
     if (models.length > 0 && !models.includes(value)) {
       onChange(models[0]);
     }
-  }, [backend]);
+  }, [backend, value, models, onChange]);
 
   const handleChange = useCallback(
     (e) => {

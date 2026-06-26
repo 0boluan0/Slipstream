@@ -120,19 +120,20 @@ export default function FloatingPanel({ onOpenSettings }) {
   const handleScreenshot = useCallback(async () => {
     try {
       setError(null);
-      setStatus(STATUS.PROCESSING);
       const result = await invoke(IPC_CHANNELS.SCREENSHOT_CAPTURE);
-      // User cancelled the screenshot — go back to idle silently
       if (result && result.cancelled) {
-        setStatus(STATUS.IDLE);
+        return;
       }
-      // Otherwise status will be set by the OCR result handler or triggerProcessing
+      if (result && result.success && result.text) {
+        setInputText(result.text);
+        triggerProcessing(result.text);
+      }
     } catch (err) {
       const msg = typeof err === 'string' ? err : (err?.message || '截图失败');
       setError(msg);
       setStatus(STATUS.ERROR);
     }
-  }, [invoke]);
+  }, [invoke, triggerProcessing]);
 
   const handlePaste = useCallback(async () => {
     try {
