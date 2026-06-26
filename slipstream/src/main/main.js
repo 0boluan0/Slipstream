@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -19,7 +19,7 @@ const {
 let mainWindow = null;
 let tray = null;
 let clipboardMonitor = null;
-const isDev = process.env.NODE_ENV === 'development' || process.argv.includes('--dev');
+const isDev = !app.isPackaged;
 
 // --------------- Window ---------------
 
@@ -56,7 +56,7 @@ function createMainWindow() {
   if (settings.windowX !== null && settings.windowY !== null) {
     mainWindow.setPosition(settings.windowX, settings.windowY);
   } else {
-    const displays = require('electron').screen.getPrimaryDisplay();
+    const displays = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = displays.workAreaSize;
     const winBounds = mainWindow.getBounds();
     mainWindow.setPosition(
@@ -196,17 +196,21 @@ function stopClipboardMonitoring() {
 // --------------- IPC Handlers ---------------
 
 function registerIpcHandlers() {
-  // Settings: get
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, (_event, key) => {
-    if (key !== undefined) {
-      return store.getSettings(key);
-    }
-    return store.getAllSettings();
-  });
-
   // Settings: set
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, key, value) => {
     store.setSetting(key, value);
+
+    // If clipboard monitoring setting changed, start or stop the monitor
+    if (key === 'clipboardMonitoring') {
+      if (value) {
+        if (!clipboardMonitor) {
+          startClipboardMonitoring();
+        }
+      } else {
+        stopClipboardMonitoring();
+      }
+    }
+
     return true;
   });
 
@@ -224,7 +228,16 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.SCREENSHOT_CAPTURE, async () => {
     try {
       // 1. Capture region
-      const imagePath = await ScreenshotService.captureRegion();
+      const imagePath = await ScreenshotService.captureRegion().catch(err => {
+        // User cancelled — return a special result so the renderer can distinguish
+        if (err.isCancellation) {
+          return { cancelled: true };
+        }
+        throw err;
+      });
+      if (imagePath.cancelled) {
+        return { success: false, cancelled: true };
+      }
       if (!imagePath) {
         return { success: false, error: 'Capture cancelled' };
       }
@@ -234,35 +247,13 @@ function registerIpcHandlers() {
 
       if (!ocrResult.text || ocrResult.text.trim().length === 0) {
         // Clean up the screenshot
-        try { fs.unlinkSync(imagePath); } catch (_) {}
+        try { fs.unlinkSync(imagePath); } catch (_) { /* cleanup failure is non-fatal */ }
         return { success: false, error: 'No text found in the selected region' };
       }
 
-      // 3. Send text to renderer
+      // 3. Send OCR text to renderer — renderer handles auto-processing via triggerProcessing()
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, ocrResult.text);
-
-        // 4. Auto-process through LLM
-        try {
-          const settings = store.getAllSettings();
-          const llmResult = await LLMService.processText({
-            text: ocrResult.text,
-            backend: settings.activeBackend,
-            model: settings.activeModel,
-            promptTemplate: settings.customPrompt,
-            languageHint: settings.languageHint,
-          });
-
-          mainWindow.webContents.send(IPC_CHANNELS.LLM_RESULT, {
-            text: llmResult.result,
-            processingTimeMs: llmResult.processingTimeMs,
-          });
-        } catch (llmError) {
-          mainWindow.webContents.send(IPC_CHANNELS.LLM_ERROR, {
-            text: ocrResult.text,
-            error: llmError.message,
-          });
-        }
       }
 
       // Clean up the screenshot
@@ -275,21 +266,6 @@ function registerIpcHandlers() {
         mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: error.message });
       }
       return { success: false, error: error.message };
-    }
-  });
-
-  // Window: hide
-  ipcMain.on(IPC_CHANNELS.WINDOW_HIDE, () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.hide();
-    }
-  });
-
-  // Window: show
-  ipcMain.on(IPC_CHANNELS.WINDOW_SHOW, () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
     }
   });
 }
@@ -338,18 +314,4 @@ app.on('before-quit', () => {
   OCRService.cleanup();
 });
 
-app.on('will-quit', () => {
-  unregisterAll();
-});
 
-// --------------- Exports ---------------
-
-/**
- * Get the main BrowserWindow instance.
- * @returns {BrowserWindow|null}
- */
-function getMainWindow() {
-  return mainWindow;
-}
-
-module.exports = { getMainWindow };
