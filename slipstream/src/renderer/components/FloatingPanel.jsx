@@ -62,6 +62,14 @@ export default function FloatingPanel({ onOpenSettings }) {
         ? `文本过长，只使用前 ${DEFAULTS.MAX_TEXT_LENGTH} 个字符。`
         : '');
 
+      // Show low confidence warning for OCR results
+      if (clipboardEvent.source === 'ocr' && typeof clipboardEvent.confidence === 'number' && clipboardEvent.confidence < 0.5) {
+        setWarning((prev) => {
+          const ocrWarning = `OCR 识别置信度较低 (${Math.round(clipboardEvent.confidence * 100)}%)，结果可能不准。`;
+          return prev ? prev + ' ' + ocrWarning : ocrWarning;
+        });
+      }
+
       // Passive monitoring follows the setting; explicit shortcuts/OCR always process.
       if ((settings.clipboardMonitoring || clipboardEvent.source !== 'monitor') && !processingRef.current) {
         if (debounceRef.current) clearTimeout(debounceRef.current);

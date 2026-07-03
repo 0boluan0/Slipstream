@@ -1,5 +1,8 @@
 #!/usr/bin/env swift
 
+// OCR_VERSION: increment this when the Swift source changes to force recompilation
+let OCR_VERSION = 2
+
 import Vision
 import AppKit
 import Foundation

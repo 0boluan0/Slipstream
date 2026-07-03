@@ -8,5 +8,6 @@ export function normalizeClipboardPayload(payload) {
     error: payload?.error || null,
     truncated: Boolean(payload?.truncated),
     originalLength: payload?.originalLength || payload?.text?.length || 0,
+    confidence: payload?.confidence ?? null,
   };
 }

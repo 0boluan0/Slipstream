@@ -98,8 +98,8 @@ async function processText({ text, backend, model, promptTemplate, languageHint 
   const startTime = Date.now();
   const settings = store.getAllSettings();
 
-  const resolvedBackend = backend || settings.activeBackend || 'anthropic';
-  const resolvedModel = model || settings.activeModel || 'claude-sonnet-4-20250514';
+  const resolvedBackend = backend || settings.activeBackend || 'free_translate';
+  const resolvedModel = model || settings.activeModel || 'google-translate';
   const resolvedLanguageHint = languageHint || settings.languageHint || 'en';
 
   // Select the appropriate prompt templates based on language direction
@@ -121,9 +121,30 @@ async function processText({ text, backend, model, promptTemplate, languageHint 
     userMessage = langTemplates.user.replace(/\{\{text\}\}/g, text);
   }
 
+  // Wikipedia enrichment for LLM backends (skip for free_translate)
+  if (resolvedBackend !== 'free_translate' && !resolvedPromptTemplate) {
+    const candidates = extractTermCandidates(text);
+    if (candidates.length > 0) {
+      const wikiLang = resolvedLanguageHint === 'zh' ? 'zh' : 'en';
+      const lookups = await Promise.all(
+        candidates.map(async (term) => {
+          const extract = await wikipediaLookup(term, wikiLang);
+          return extract ? `**${term}**: ${extract}` : null;
+        })
+      );
+      const wikiContext = lookups.filter(Boolean);
+      if (wikiContext.length > 0) {
+        userMessage = userMessage + '\n\n[Wikipedia context for reference — use if helpful, ignore if irrelevant]:\n' + wikiContext.join('\n');
+      }
+    }
+  }
+
   let result;
 
   switch (resolvedBackend) {
+    case 'free_translate':
+      result = await processFreeTranslate(text, resolvedLanguageHint);
+      break;
     case 'anthropic':
       result = await processAnthropic(settings, resolvedModel, systemPrompt, userMessage);
       break;
@@ -329,6 +350,146 @@ async function processCustom(settings, model, systemPrompt, userMessage) {
   });
 }
 
+/**
+ * Look up a term on Wikipedia and return a short extract.
+ * Uses the Wikipedia REST API (free, no key required).
+ * @param {string} term - The term to search for
+ * @param {string} lang - Wikipedia language code ('en' or 'zh')
+ * @returns {Promise<string|null>} - Short extract or null if not found
+ */
+async function wikipediaLookup(term, lang = 'en') {
+  try {
+    const url = `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(term)}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3000);
+
+    const response = await fetch(url, {
+      headers: { 'User-Agent': 'Slipstream/2.0 (https://github.com/slipstream)' },
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (data.type === 'disambiguation') return null;
+
+    const extract = data.extract || '';
+    if (!extract.trim()) return null;
+
+    // Return first 2-3 sentences (up to ~300 chars) for context
+    const sentences = extract.split(/[.。]/).filter(s => s.trim().length > 10);
+    const short = sentences.slice(0, 3).join('. ') + (sentences.length > 3 ? '.' : '');
+    return short.length > 350 ? short.slice(0, 350) + '...' : short;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extract potential proper nouns / terms from text for Wikipedia lookup.
+ * Very simple: multi-word capitalized phrases, all-caps abbreviations, and 2+ char words.
+ * @param {string} text - Source text
+ * @returns {string[]} - Candidate terms (max 5)
+ */
+function extractTermCandidates(text) {
+  const candidates = [];
+
+  // All-caps abbreviations (2+ chars): ASAP, HTML, CEO, etc.
+  const abbrevMatches = text.match(/\b[A-Z]{2,8}\b/g);
+  if (abbrevMatches) candidates.push(...abbrevMatches);
+
+  // Capitalized multi-word phrases: "San Francisco", "Machine Learning", etc.
+  const phraseMatches = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g);
+  if (phraseMatches) candidates.push(...phraseMatches);
+
+  // Single capitalized words (not at sentence start): "Python", "Google", "Einstein"
+  const singleMatches = text.match(/(?<!\.\s)\b[A-Z][a-z]{3,}\b/g);
+  if (singleMatches) candidates.push(...singleMatches);
+
+  // Deduplicate, limit to 5, skip very short
+  const seen = new Set();
+  return candidates
+    .map(t => t.trim())
+    .filter(t => t.length >= 2 && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()))
+    .slice(0, 5);
+}
+
+/**
+ * Process text through free Google Translate API (no API key required).
+ * Uses the googleapis.com translate endpoint with a simple REST call.
+ * Falls back to MyMemory if Google fails.
+ * @param {string} text - Text to translate
+ * @param {string} languageHint - 'en' (to Chinese), 'zh' (to English), 'auto' (detect)
+ * @returns {Promise<string>} - Translated text
+ */
+async function processFreeTranslate(text, languageHint) {
+  // Determine target language
+  let targetLang = 'zh-CN';
+  let sourceLang = 'en';
+
+  if (languageHint === 'zh') {
+    targetLang = 'en';
+    sourceLang = 'zh-CN';
+  } else if (languageHint === 'auto') {
+    // Heuristic: if >30% CJK characters, it's Chinese text → translate to English
+    const cjkCount = (text.match(/[一-鿿㐀-䶿豈-﫿]/g) || []).length;
+    if (cjkCount / text.length > 0.3) {
+      targetLang = 'en';
+      sourceLang = 'zh-CN';
+    } else {
+      targetLang = 'zh-CN';
+      sourceLang = 'en';
+    }
+  }
+
+  return withTimeout({
+    fn: async (signal) => withRetry(async () => {
+      let result;
+
+      // Try Google Translate first (free, unauthenticated endpoint)
+      try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+        const response = await fetch(url, { signal });
+        if (response.ok) {
+          const data = await response.json();
+          // Google's response is [[["translated text", ...], null, ...], ...]
+          if (data && data[0] && Array.isArray(data[0])) {
+            const translatedParts = data[0].map(part => part[0]).join('');
+            result = translatedParts.trim();
+          }
+        }
+      } catch {
+        // Google failed, try fallback
+      }
+
+      // Fallback: MyMemory API
+      if (!result) {
+        const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${sourceLang}|${targetLang}`;
+        const mmResponse = await fetch(mmUrl, { signal });
+        if (!mmResponse.ok) {
+          throw new Error(`MyMemory API error: ${mmResponse.status}`);
+        }
+        const mmData = await mmResponse.json();
+        if (mmData.responseStatus !== 200 && mmData.responseStatus !== '200') {
+          throw new Error(mmData.responseDetails || 'MyMemory translation failed');
+        }
+        result = mmData.responseData.translatedText.trim();
+      }
+
+      if (!result) {
+        throw new Error('Translation failed: all backends returned empty result');
+      }
+
+      // Free translation only does translation — add a note about upgrading for explanations
+      return result + '\n\n---\n💡 这是免费翻译结果。配置 LLM API Key 可获得专有名词解释和术语解析能力。';
+    }),
+    ms: 15000,
+  });
+}
+
 module.exports = {
   processText,
+  wikipediaLookup,
+  extractTermCandidates,
 };
