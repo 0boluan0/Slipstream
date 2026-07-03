@@ -1,5 +1,7 @@
 import React from 'react';
-import { DEFAULT_PROMPTS } from '../../shared/constants';
+import constants from '../../shared/constants';
+
+const { DEFAULT_PROMPTS } = constants;
 
 const defaultPromptPreview = DEFAULT_PROMPTS.explain?.userPromptTemplate
   ? DEFAULT_PROMPTS.explain.userPromptTemplate.substring(0, 60) + '...'

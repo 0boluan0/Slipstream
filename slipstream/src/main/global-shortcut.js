@@ -1,21 +1,60 @@
-const { globalShortcut } = require('electron');
+const { clipboard, globalShortcut } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { IPC_CHANNELS } = require('../shared/constants');
+const { IPC_CHANNELS } = require('../shared/constants.cjs');
 const screenshotService = require('./screenshot-service');
 const ocrService = require('./ocr-service');
+
+const OCR_FAILURE_MESSAGE = '没有识别到清晰文字';
 
 /**
  * Register the application's global keyboard shortcuts.
  * @param {BrowserWindow} mainWindow - The main BrowserWindow to control.
+ * @param {object} settings - User settings containing shortcut accelerators.
  */
-function registerShortcuts(mainWindow) {
-  // Screenshot capture with F2 — the user's primary workflow trigger
-  const screenshotRegistered = globalShortcut.register('F2', async () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
+function registerShortcuts(mainWindow, settings = {}) {
+  const clipboardShortcut = (settings.clipboardShortcut || 'Alt+C').trim();
+  const screenshotShortcut = (settings.screenshotShortcut || 'F2').trim();
 
+  const sendShortcutError = (shortcut) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, {
+      error: `快捷键冲突：${shortcut}，请在设置里修改`,
+    });
+  };
+
+  const sendText = (text, source) => {
     mainWindow.show();
     mainWindow.focus();
+    mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, { text, source });
+  };
+
+  const clipboardRegistered = globalShortcut.register(clipboardShortcut, () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+
+    const text = clipboard.readText().trim();
+    if (!text) {
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, {
+        text: '',
+        source: 'shortcut',
+        error: '剪贴板里没有可解释的文本',
+      });
+      return;
+    }
+
+    sendText(text, 'shortcut');
+  });
+
+  if (!clipboardRegistered) {
+    console.warn(`[GlobalShortcut] Failed to register ${clipboardShortcut} shortcut (may be taken by another app).`);
+    sendShortcutError(clipboardShortcut);
+  }
+
+  // Screenshot capture — the user's primary OCR workflow trigger
+  const screenshotRegistered = globalShortcut.register(screenshotShortcut, async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
 
     const outputPath = path.join(screenshotService.getTempDir(), `screenshot-${Date.now()}.png`);
 
@@ -23,7 +62,11 @@ function registerShortcuts(mainWindow) {
       await screenshotService.captureRegion(outputPath);
       const ocrResult = await ocrService.performOCR(outputPath);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, ocrResult.text);
+        if (!ocrResult.text || !ocrResult.text.trim()) {
+          mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: OCR_FAILURE_MESSAGE });
+          return;
+        }
+        sendText(ocrResult.text, 'ocr');
       }
     } catch (err) {
       // User pressed Escape — not an error, just silently return
@@ -32,7 +75,7 @@ function registerShortcuts(mainWindow) {
       }
       console.error('[GlobalShortcut] Screenshot error:', err.message);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: err.message });
+        mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: OCR_FAILURE_MESSAGE });
       }
     } finally {
       // Clean up temporary file
@@ -41,7 +84,8 @@ function registerShortcuts(mainWindow) {
   });
 
   if (!screenshotRegistered) {
-    console.warn('[GlobalShortcut] Failed to register F2 shortcut (may be taken by another app).');
+    console.warn(`[GlobalShortcut] Failed to register ${screenshotShortcut} shortcut (may be taken by another app).`);
+    sendShortcutError(screenshotShortcut);
   }
 }
 

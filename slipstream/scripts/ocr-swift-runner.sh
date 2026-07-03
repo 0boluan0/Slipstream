@@ -23,9 +23,4 @@ fi
 
 IMAGE_PATH="$1"
 
-# 3. Run with 10-second timeout
-timeout 10 "$BINARY" "$IMAGE_PATH"
-EXIT_CODE=$?
-
-# 4. Exit with binary's exit code
-exit $EXIT_CODE
+"$BINARY" "$IMAGE_PATH"

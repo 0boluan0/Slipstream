@@ -1,5 +1,5 @@
 const { clipboard } = require('electron');
-const { DEFAULTS } = require('../shared/constants');
+const { DEFAULTS } = require('../shared/constants.cjs');
 
 class ClipboardMonitor {
   constructor() {
@@ -33,7 +33,11 @@ class ClipboardMonitor {
             : currentText;
 
           if (this._callback) {
-            this._callback(trimmed);
+            this._callback({
+              text: trimmed,
+              truncated: currentText.length > maxLen,
+              originalLength: currentText.length,
+            });
           }
         }
       } catch (err) {

@@ -31,6 +31,25 @@ npm run dev
 
 > **提示**：`npm run dev` 是推荐的开发方式，它同时启动 Vite 开发服务器和 Electron 窗口。如果你需要使用 `npm start`，请先运行 `npm run build` 编译前端资源。
 
+## Release
+
+```bash
+npm run release:unsigned
+```
+
+This creates unsigned macOS DMG/ZIP artifacts under `slipstream/release/`, writes `slipstream/release/SHA256SUMS.txt`, and runs the local release gate.
+
+Public distribution still requires a valid Apple Developer ID signing identity and notarization:
+
+```bash
+# Use .env.example as the template for shell or CI secrets:
+# APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
+npm run check:signing
+npm run check:notarization-env
+npm run release:signed
+npm run check:distribution
+```
+
 ## Usage
 
 1. **F2** -- Capture a screen region; OCR extracts text, then the LLM explains it

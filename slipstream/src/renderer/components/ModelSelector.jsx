@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
-import { MODEL_IDS } from '../../shared/constants';
+import constants from '../../shared/constants';
+
+const { MODEL_IDS } = constants;
 
 export default function ModelSelector({ backend, value, onChange }) {
   const models = MODEL_IDS[backend] || MODEL_IDS['anthropic'];

@@ -1,5 +1,7 @@
 import React from 'react';
-import { LANGUAGES } from '../../shared/constants';
+import constants from '../../shared/constants';
+
+const { LANGUAGES } = constants;
 
 const OPTIONS = [
   { label: '英文', value: LANGUAGES.EN },

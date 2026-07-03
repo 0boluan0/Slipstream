@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from 'react';
 import LoadingOverlay from './LoadingOverlay';
-import { STATUS } from '../../shared/constants';
+import constants from '../../shared/constants';
+
+const { STATUS } = constants;
 
 /**
  * Simple Markdown-to-React renderer.
@@ -42,12 +44,13 @@ function renderMarkdown(text) {
 
   function flushNumberedList() {
     if (numberedItems.length > 0) {
+      const start = numberedItems[0].number;
       elements.push(
         React.createElement(
           'ol',
-          { key: `ol-${elements.length}`, style: { listStyle: 'decimal', paddingLeft: 20, margin: '6px 0', lineHeight: 1.6 } },
+          { key: `ol-${elements.length}`, start, style: { listStyle: 'decimal', paddingLeft: 20, margin: '6px 0', lineHeight: 1.6 } },
           ...numberedItems.map((item, i) =>
-            React.createElement('li', { key: i, style: { fontSize: 13, color: 'var(--text-primary)' } }, item)
+            React.createElement('li', { key: i, style: { fontSize: 13, color: 'var(--text-primary)' } }, item.content)
           )
         )
       );
@@ -110,7 +113,7 @@ function renderMarkdown(text) {
         flushList();
         inNumberedList = true;
       }
-      numberedItems.push(numberedMatch[2]);
+      numberedItems.push({ number: Number(numberedMatch[1]), content: numberedMatch[2] });
       continue;
     } else if (inNumberedList) {
       flushNumberedList();
@@ -232,8 +235,20 @@ function renderMarkdown(text) {
   return elements.length > 0 ? elements : React.createElement('p', { style: { fontSize: 13, color: 'var(--text-primary)' } }, text);
 }
 
-function ResultDisplay({ result, error, status, onDismissError }) {
+function ResultDisplay({ result, error, status, onDismissError, onRetry, canRetry, onSaveTerm, savedTerms }) {
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleRetryMouseDown = useCallback((event) => {
+    event.preventDefault();
+    if (canRetry && onRetry) onRetry();
+  }, [canRetry, onRetry]);
+
+  const handleRetryKeyDown = useCallback((event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    if (canRetry && onRetry) onRetry();
+  }, [canRetry, onRetry]);
 
   const handleCopy = useCallback(async () => {
     try {
@@ -244,6 +259,15 @@ function ResultDisplay({ result, error, status, onDismissError }) {
       // Clipboard API may fail in Electron without proper permissions
     }
   }, [result]);
+
+  const handleSaveTerm = useCallback(async () => {
+    if (!onSaveTerm) return;
+    const term = window.prompt('输入要保存的术语');
+    if (!term || !term.trim()) return;
+    await onSaveTerm(term.trim());
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }, [onSaveTerm]);
 
   const containerStyle = {
     position: 'relative',
@@ -325,6 +349,24 @@ function ResultDisplay({ result, error, status, onDismissError }) {
             </button>
           )}
         </div>
+        {canRetry && (
+          <button
+            onMouseDown={handleRetryMouseDown}
+            onKeyDown={handleRetryKeyDown}
+            style={{
+              marginTop: 8,
+              padding: '5px 12px',
+              fontSize: 12,
+              border: '1px solid var(--border-secondary)',
+              borderRadius: 6,
+              backgroundColor: 'var(--bg-primary)',
+              cursor: 'pointer',
+              color: 'var(--text-primary)',
+            }}
+          >
+            重试
+          </button>
+        )}
       </div>
     );
   }
@@ -333,7 +375,42 @@ function ResultDisplay({ result, error, status, onDismissError }) {
   return (
     <div style={containerStyle}>
       {status === STATUS.DONE && result && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8, position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--bg-primary)' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginBottom: 8, position: 'sticky', top: 0, zIndex: 1, backgroundColor: 'var(--bg-primary)' }}>
+          {canRetry && (
+            <button
+              onMouseDown={handleRetryMouseDown}
+              onKeyDown={handleRetryKeyDown}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                padding: '3px 10px',
+                fontSize: 11,
+                border: '1px solid var(--border-secondary)',
+                borderRadius: 6,
+                backgroundColor: 'transparent',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              重试
+            </button>
+          )}
+          <button
+            onClick={handleSaveTerm}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '3px 10px',
+              fontSize: 11,
+              border: '1px solid var(--border-secondary)',
+              borderRadius: 6,
+              backgroundColor: 'transparent',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {saved ? '已保存' : '保存术语'}
+          </button>
           <button
             onClick={handleCopy}
             style={{
@@ -363,6 +440,16 @@ function ResultDisplay({ result, error, status, onDismissError }) {
         </div>
       )}
       {renderMarkdown(result)}
+      {savedTerms?.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 8, borderTop: '1px solid var(--border-primary)' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6 }}>已保存术语</div>
+          {savedTerms.slice(0, 3).map((item) => (
+            <div key={item.id} style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              {item.term}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

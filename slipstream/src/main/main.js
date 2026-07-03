@@ -8,11 +8,14 @@ const ScreenshotService = require('./screenshot-service');
 const OCRService = require('./ocr-service');
 const ClipboardMonitor = require('./clipboard-monitor');
 const LLMService = require('./llm-service');
+const { redactSettingsForRenderer } = require('./safe-settings');
 const {
   IPC_CHANNELS,
   DEFAULTS,
   APP_NAME,
-} = require('../shared/constants');
+} = require('../shared/constants.cjs');
+
+const OCR_FAILURE_MESSAGE = '没有识别到清晰文字';
 
 // --------------- State ---------------
 
@@ -20,6 +23,10 @@ let mainWindow = null;
 let tray = null;
 let clipboardMonitor = null;
 const isDev = !app.isPackaged;
+
+function getSafeSettings() {
+  return redactSettingsForRenderer(store.getAllSettings());
+}
 
 // --------------- Window ---------------
 
@@ -112,17 +119,8 @@ function createMainWindow() {
 // --------------- Tray ---------------
 
 function createTray() {
-  // Create a tray icon using a system template image on macOS so it
-  // adapts to light/dark menu bars. Fall back to an empty icon otherwise.
-  let icon;
-
-  if (process.platform === 'darwin') {
-    // 'NSStatusItem' or 'NSPreferencesGeneral' are system template images
-    icon = nativeImage.createFromNamedImage('NSStatusItem');
-    if (!icon || icon.isEmpty()) {
-      icon = nativeImage.createFromNamedImage('NSPreferencesGeneral');
-    }
-  }
+  const trayIconPath = path.join(__dirname, '..', '..', 'assets', 'menubar-template.png');
+  let icon = nativeImage.createFromPath(trayIconPath);
 
   if (!icon || icon.isEmpty()) {
     icon = nativeImage.createEmpty();
@@ -159,9 +157,6 @@ function createTray() {
     },
   ]);
 
-  tray.setContextMenu(contextMenu);
-
-  // Left-click (or click on non-macOS) toggles window
   tray.on('click', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       if (mainWindow.isVisible()) {
@@ -172,6 +167,10 @@ function createTray() {
       }
     }
   });
+
+  tray.on('right-click', () => {
+    tray.popUpContextMenu(contextMenu);
+  });
 }
 
 // --------------- Clipboard Monitor ---------------
@@ -179,9 +178,9 @@ function createTray() {
 function startClipboardMonitoring() {
   clipboardMonitor = new ClipboardMonitor();
 
-  clipboardMonitor.startMonitoring((text) => {
-    if (mainWindow && !mainWindow.isDestroyed() && text) {
-      mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, text);
+  clipboardMonitor.startMonitoring((payload) => {
+    if (mainWindow && !mainWindow.isDestroyed() && payload?.text) {
+      mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, { ...payload, source: 'monitor' });
     }
   });
 }
@@ -196,6 +195,12 @@ function stopClipboardMonitoring() {
 // --------------- IPC Handlers ---------------
 
 function registerIpcHandlers() {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => getSafeSettings());
+
+  ipcMain.handle(IPC_CHANNELS.TERMS_GET, () => store.getSavedTerms());
+
+  ipcMain.handle(IPC_CHANNELS.TERMS_SAVE, (_event, term) => store.addSavedTerm(term));
+
   // Settings: set
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, key, value) => {
     store.setSetting(key, value);
@@ -211,6 +216,11 @@ function registerIpcHandlers() {
       }
     }
 
+    if (key === 'clipboardShortcut' || key === 'screenshotShortcut') {
+      unregisterAll();
+      registerShortcuts(mainWindow, store.getAllSettings());
+    }
+
     return true;
   });
 
@@ -218,6 +228,13 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC_CHANNELS.LLM_PROCESS, async (_event, options) => {
     try {
       const llmResponse = await LLMService.processText(options);
+      store.addExplanationHistory({
+        sourceText: options?.text,
+        explanation: llmResponse.result,
+        backend: options?.backend,
+        model: options?.model,
+        source: options?.source,
+      });
       return { success: true, text: llmResponse.result, processingTimeMs: llmResponse.processingTimeMs };
     } catch (error) {
       return { success: false, error: error.message };
@@ -239,7 +256,7 @@ function registerIpcHandlers() {
         return { success: false, cancelled: true };
       }
       if (!imagePath) {
-        return { success: false, error: 'Capture cancelled' };
+        return { success: false, error: OCR_FAILURE_MESSAGE };
       }
 
       // 2. OCR
@@ -248,24 +265,24 @@ function registerIpcHandlers() {
       if (!ocrResult.text || ocrResult.text.trim().length === 0) {
         // Clean up the screenshot
         try { fs.unlinkSync(imagePath); } catch (_) { /* cleanup failure is non-fatal */ }
-        return { success: false, error: 'No text found in the selected region' };
+        return { success: false, error: OCR_FAILURE_MESSAGE };
       }
 
       // 3. Send OCR text to renderer — renderer handles auto-processing via triggerProcessing()
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, ocrResult.text);
+        mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, { text: ocrResult.text, source: 'ocr' });
       }
 
       // Clean up the screenshot
-      try { fs.unlinkSync(imagePath); } catch (_) {}
+      try { fs.unlinkSync(imagePath); } catch (_) { /* cleanup failure is non-fatal */ }
 
       return { success: true, text: ocrResult.text };
     } catch (error) {
       console.error('[ScreenshotCapture] Error:', error.message);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: error.message });
+        mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: OCR_FAILURE_MESSAGE });
       }
-      return { success: false, error: error.message };
+      return { success: false, error: OCR_FAILURE_MESSAGE };
     }
   });
 }
@@ -277,7 +294,7 @@ app.isQuitting = false;
 app.on('ready', () => {
   createMainWindow();
   createTray();
-  registerShortcuts(mainWindow);
+  registerShortcuts(mainWindow, store.getAllSettings());
   registerIpcHandlers();
 
   if (store.getSettings('clipboardMonitoring') !== false) {
@@ -286,12 +303,10 @@ app.on('ready', () => {
 
   // Send settings to renderer once ready (strip sensitive keys)
   mainWindow.webContents.on('did-finish-load', () => {
-    const raw = store.getAllSettings();
-    const safe = { ...raw };
-    delete safe.anthropicApiKey;
-    delete safe.openaiApiKey;
-    delete safe.customEndpointApiKey;
-    mainWindow.webContents.send(IPC_CHANNELS.SETTINGS_LOADED, safe);
+    if (store.getSettings('startMinimized') !== true && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
+    }
+    mainWindow.webContents.send(IPC_CHANNELS.SETTINGS_LOADED, getSafeSettings());
   });
 });
 
@@ -317,5 +332,3 @@ app.on('before-quit', () => {
   ScreenshotService.cleanup();
   OCRService.cleanup();
 });
-
-

@@ -2,12 +2,27 @@
   "name": "slipstream",
   "version": "1.0.0",
   "description": "macOS floating translation and explanation assistant",
+  "author": "Slipstream",
   "main": "src/main/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"electron . --dev\"",
     "build": "vite build && electron-builder",
+    "build:signed": "vite build && electron-builder -c.mac.notarize.teamId=$APPLE_TEAM_ID",
+    "release:unsigned": "npm run build && npm run release:checksums && npm run check:release",
+    "release:signed": "npm run check:signing && npm run check:notarization-env && npm run build:signed && npm run release:checksums && npm run check:release && npm run check:distribution",
     "start": "electron .",
     "lint": "eslint src/",
+    "check:redaction": "node scripts/check-settings-redaction.js",
+    "check:truncation": "node scripts/check-truncation-warning.js",
+    "check:history": "tmpdir=$(mktemp -d) && electron scripts/check-history.js write \"$tmpdir\" && electron scripts/check-history.js read \"$tmpdir\"",
+    "check:package-config": "node scripts/check-package-config.js",
+    "check:release-info": "node scripts/check-release-info.js",
+    "check:release-artifacts": "node scripts/check-release-artifacts.js",
+    "check:release": "npm run check:package-config && npm run lint && npm run check:redaction && npm run check:truncation && npm run check:history && npm run check:release-info && npm run check:release-artifacts",
+    "check:signing": "node scripts/check-signing-readiness.js",
+    "check:notarization-env": "node scripts/check-notarization-env.js",
+    "check:distribution": "node scripts/check-distribution-trust.js",
+    "release:checksums": "node scripts/write-release-checksums.js",
     "format": "prettier --write 'src/**/*.{js,jsx,css,html}'"
   },
   "dependencies": {
@@ -23,17 +38,30 @@
     "directories": {
       "output": "release"
     },
+    "afterPack": "scripts/after-pack.js",
     "files": [
       "dist/**/*",
       "src/main/**/*",
       "src/shared/**/*",
+      "assets/menubar-template.png",
+      "assets/menubar-template@2x.png",
       "preload.js",
-      "scripts/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "scripts",
+        "to": "scripts",
+        "filter": ["VisionOCR.swift", "ocr-swift-runner.sh"]
+      }
     ],
     "mac": {
       "target": ["dmg", "zip"],
       "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   },

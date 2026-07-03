@@ -1,8 +1,11 @@
 const { execFile } = require('child_process');
+const { app } = require('electron');
 const path = require('path');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
-const OCR_SCRIPT = path.join(APP_ROOT, 'scripts', 'ocr-swift-runner.sh');
+const OCR_SCRIPT = app.isPackaged
+  ? path.join(process.resourcesPath, 'scripts', 'ocr-swift-runner.sh')
+  : path.join(APP_ROOT, 'scripts', 'ocr-swift-runner.sh');
 
 /**
  * Clean raw OCR text by normalizing whitespace and removing garbage.
@@ -27,11 +30,11 @@ function cleanOcrText(rawText) {
  */
 function performOCR(imagePath) {
   return new Promise((resolve, reject) => {
-    execFile(OCR_SCRIPT, [imagePath], { timeout: 15000 }, (error, stdout, stderr) => {
+    execFile('/bin/bash', [OCR_SCRIPT, imagePath], { timeout: 15000 }, (error, stdout, stderr) => {
       if (error) {
-        // Try to parse stderr for a JSON error message
+        // Swift prints structured errors to stdout; shell/compiler errors usually use stderr.
         try {
-          const errData = JSON.parse(stderr.trim());
+          const errData = JSON.parse((stdout || stderr).trim());
           if (errData && errData.error) {
             return reject(new Error(errData.error));
           }
