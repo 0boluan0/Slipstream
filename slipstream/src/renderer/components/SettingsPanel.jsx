@@ -4,11 +4,14 @@ import ModelSelector from './ModelSelector';
 import PromptEditor from './PromptEditor';
 import LanguageToggle from './LanguageToggle';
 import { useSettings } from '../hooks/useSettings';
-import { LLM_BACKENDS, LANGUAGES } from '../../shared/constants';
+import constants from '../../shared/constants';
+
+const { LLM_BACKENDS, LANGUAGES } = constants;
 
 const BACKEND_OPTIONS = [
   { label: 'Anthropic', value: LLM_BACKENDS.ANTHROPIC },
   { label: 'OpenAI', value: LLM_BACKENDS.OPENAI },
+  { label: 'DeepSeek', value: LLM_BACKENDS.DEEPSEEK },
   { label: 'Ollama', value: LLM_BACKENDS.OLLAMA },
   { label: '自定义', value: LLM_BACKENDS.CUSTOM },
 ];
@@ -50,12 +53,14 @@ export default function SettingsPanel({ onClose }) {
       const keyMap = {
         [LLM_BACKENDS.ANTHROPIC]: 'anthropicApiKey',
         [LLM_BACKENDS.OPENAI]: 'openaiApiKey',
+        [LLM_BACKENDS.DEEPSEEK]: 'deepseekApiKey',
         [LLM_BACKENDS.OLLAMA]: 'ollamaBaseUrl',
         [LLM_BACKENDS.CUSTOM]: 'customEndpointUrl',
       };
       const settingKey = keyMap[settings.activeBackend];
       if (settingKey) {
-        updateSettings(settingKey, value);
+        if ((settingKey === 'anthropicApiKey' || settingKey === 'openaiApiKey' || settingKey === 'deepseekApiKey') && !value.trim()) return;
+        return updateSettings(settingKey, value);
       }
     },
     [settings.activeBackend, updateSettings]
@@ -63,7 +68,8 @@ export default function SettingsPanel({ onClose }) {
 
   const handleCustomApiKeyChange = useCallback(
     (value) => {
-      updateSettings('customEndpointApiKey', value);
+      if (!value.trim()) return;
+      return updateSettings('customEndpointApiKey', value);
     },
     [updateSettings]
   );
@@ -71,6 +77,13 @@ export default function SettingsPanel({ onClose }) {
   const handleClipboardToggle = useCallback(
     (e) => {
       updateSettings('clipboardMonitoring', e.target.checked);
+    },
+    [updateSettings]
+  );
+
+  const handleShortcutChange = useCallback(
+    (key, value) => {
+      updateSettings(key, value.trim());
     },
     [updateSettings]
   );
@@ -203,6 +216,8 @@ export default function SettingsPanel({ onClose }) {
               ? settings.anthropicApiKey
               : settings.activeBackend === LLM_BACKENDS.OPENAI
               ? settings.openaiApiKey
+              : settings.activeBackend === LLM_BACKENDS.DEEPSEEK
+              ? settings.deepseekApiKey
               : settings.activeBackend === LLM_BACKENDS.OLLAMA
               ? settings.ollamaBaseUrl
               : settings.activeBackend === LLM_BACKENDS.CUSTOM
@@ -210,6 +225,15 @@ export default function SettingsPanel({ onClose }) {
               : ''
           }
           onChange={handleApiKeyChange}
+          isSaved={
+            settings.activeBackend === LLM_BACKENDS.ANTHROPIC
+              ? settings.hasAnthropicApiKey
+              : settings.activeBackend === LLM_BACKENDS.OPENAI
+              ? settings.hasOpenaiApiKey
+              : settings.activeBackend === LLM_BACKENDS.DEEPSEEK
+              ? settings.hasDeepseekApiKey
+              : false
+          }
         />
 
         {/* Show API key field for custom backend */}
@@ -218,6 +242,7 @@ export default function SettingsPanel({ onClose }) {
             backend="custom_api_key"
             value={settings.customEndpointApiKey}
             onChange={handleCustomApiKeyChange}
+            isSaved={settings.hasCustomEndpointApiKey}
           />
         )}
 
@@ -310,6 +335,30 @@ export default function SettingsPanel({ onClose }) {
             </span>
           </label>
         </div>
+
+        <div style={sectionTitleStyle}>快捷键</div>
+        <label style={{ display: 'block', marginBottom: 10 }}>
+          <span style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>
+            剪贴板解释
+          </span>
+          <input
+            className="slipstream-input"
+            value={settings.clipboardShortcut || 'Alt+C'}
+            onChange={(e) => handleShortcutChange('clipboardShortcut', e.target.value)}
+            placeholder="Alt+C"
+          />
+        </label>
+        <label style={{ display: 'block' }}>
+          <span style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>
+            截图 OCR
+          </span>
+          <input
+            className="slipstream-input"
+            value={settings.screenshotShortcut || 'F2'}
+            onChange={(e) => handleShortcutChange('screenshotShortcut', e.target.value)}
+            placeholder="F2"
+          />
+        </label>
 
         {/* Reset button */}
         <div style={{ marginTop: 24, textAlign: 'center' }}>

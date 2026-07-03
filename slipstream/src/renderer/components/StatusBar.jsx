@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { STATUS } from '../../shared/constants';
+import constants from '../../shared/constants';
+
+const { STATUS } = constants;
 
 const colorMap = {
   [STATUS.IDLE]: { bg: 'var(--text-tertiary)', label: 'idle' },
@@ -8,7 +10,7 @@ const colorMap = {
   [STATUS.ERROR]: { bg: 'var(--error)', label: 'error' },
 };
 
-export default function StatusBar({ status, error, processingTimeMs, clipboardMonitoring }) {
+export default function StatusBar({ status, error, warning, processingTimeMs, clipboardMonitoring }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
@@ -25,6 +27,9 @@ export default function StatusBar({ status, error, processingTimeMs, clipboardMo
   const colors = colorMap[status] || colorMap[STATUS.IDLE];
   const isProcessing = status === STATUS.PROCESSING;
   const isError = status === STATUS.ERROR;
+  const message = isError && error
+    ? error
+    : warning || (colors.label === 'idle' ? '就绪' : (status === STATUS.DONE && processingTimeMs != null ? `完成 · ${(processingTimeMs / 1000).toFixed(1)}s` : colors.label));
 
   const dotStyle = {
     width: 8,
@@ -58,7 +63,7 @@ export default function StatusBar({ status, error, processingTimeMs, clipboardMo
       )}
       <div style={dotStyle} className={dotClassName} />
       <span style={{ flex: 1 }}>
-        {isError && error ? error : (colors.label === 'idle' ? '就绪' : (status === STATUS.DONE && processingTimeMs != null ? `完成 · ${(processingTimeMs / 1000).toFixed(1)}s` : colors.label))}
+        {message}
       </span>
       {!isOnline && (
         <span style={{ color: 'var(--error)', fontSize: 11, marginRight: 8 }}>⚠ 离线</span>

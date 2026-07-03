@@ -37,7 +37,7 @@ function outputPath() {
 function captureRegion(outPath) {
   return new Promise((resolve, reject) => {
     const filePath = outPath || outputPath();
-    execFile('/usr/sbin/screencapture', ['-i', '-x', '-t', 'png', filePath], { timeout: 30000 }, (error, stdout, stderr) => {
+    execFile('/usr/sbin/screencapture', ['-i', '-x', '-t', 'png', filePath], { timeout: 30000 }, (error) => {
       if (error) {
         // The user cancelled the selection by pressing Escape.
         // screencapture exits with code 1 for cancellation.
@@ -64,9 +64,9 @@ function cleanup() {
     if (!fs.existsSync(TEMP_DIR)) return;
     const files = fs.readdirSync(TEMP_DIR);
     for (const file of files) {
-      try { fs.unlinkSync(path.join(TEMP_DIR, file)); } catch (_) {}
+      try { fs.unlinkSync(path.join(TEMP_DIR, file)); } catch (_) { /* cleanup failure is non-fatal */ }
     }
-    try { fs.rmdirSync(TEMP_DIR); } catch (_) {}
+    try { fs.rmdirSync(TEMP_DIR); } catch (_) { /* cleanup failure is non-fatal */ }
   } catch (_) {
     // directory may have been deleted externally
   }

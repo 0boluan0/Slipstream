@@ -107,7 +107,7 @@ const LANGUAGES = {
   AUTO: 'auto',
 };
 
-const constants = {
+module.exports = {
   IPC_CHANNELS,
   LLM_BACKENDS,
   MODEL_IDS,
@@ -120,19 +120,3 @@ const constants = {
   DEFAULT_PROMPTS,
   LANGUAGES,
 };
-
-export {
-  IPC_CHANNELS,
-  LLM_BACKENDS,
-  MODEL_IDS,
-  DEFAULTS,
-  APP_NAME,
-  STATUS,
-  PROMPT_TEMPLATES,
-  DEFAULT_SYSTEM_PROMPT,
-  DEFAULT_USER_PROMPT,
-  DEFAULT_PROMPTS,
-  LANGUAGES,
-};
-
-export default constants;

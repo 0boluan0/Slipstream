@@ -1,5 +1,7 @@
 const store = require('./store');
-const { PROMPT_TEMPLATES } = require('../shared/constants');
+const { PROMPT_TEMPLATES } = require('../shared/constants.cjs');
+
+const MODEL_TIMEOUT_MESSAGE = '模型响应超时';
 
 /**
  * Retry a function with exponential backoff for transient errors.
@@ -31,6 +33,10 @@ async function withRetry(fn, retries = 3) {
   throw lastError;
 }
 
+function stripReasoning(text) {
+  return (text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+}
+
 /**
  * Apply a timeout to an async operation and abort the underlying request.
  * Creates an AbortController that aborts after `ms` milliseconds.
@@ -53,12 +59,27 @@ function withTimeout({ fn, ms, parentSignal }) {
   }
 
   const timer = setTimeout(() => {
-    controller.abort(new Error('LLM 请求超时，请稍后重试'));
+    controller.abort(new Error(MODEL_TIMEOUT_MESSAGE));
   }, ms);
 
-  return fn(signal).finally(() => {
-    clearTimeout(timer);
-  });
+  return fn(signal)
+    .catch((error) => {
+      const message = error?.message || '';
+      if (
+        signal.aborted ||
+        error?.name === 'AbortError' ||
+        message.includes('timeout') ||
+        message.includes('Timeout') ||
+        message.includes('aborted') ||
+        message.includes('abort')
+      ) {
+        throw new Error(MODEL_TIMEOUT_MESSAGE);
+      }
+      throw error;
+    })
+    .finally(() => {
+      clearTimeout(timer);
+    });
 }
 
 
@@ -109,6 +130,9 @@ async function processText({ text, backend, model, promptTemplate, languageHint 
     case 'openai':
       result = await processOpenAI(settings, resolvedModel, systemPrompt, userMessage);
       break;
+    case 'deepseek':
+      result = await processDeepSeek(settings, resolvedModel, systemPrompt, userMessage);
+      break;
     case 'ollama':
       result = await processOllama(settings, resolvedModel, systemPrompt, userMessage);
       break;
@@ -132,7 +156,7 @@ async function processAnthropic(settings, model, systemPrompt, userMessage) {
   const apiKey = settings.anthropicApiKey;
 
   if (!apiKey) {
-    throw new Error('Anthropic API key is not configured.');
+    throw new Error('需要先添加 API key');
   }
 
   return withTimeout({
@@ -165,7 +189,7 @@ async function processOpenAI(settings, model, systemPrompt, userMessage) {
   const apiKey = settings.openaiApiKey;
 
   if (!apiKey) {
-    throw new Error('OpenAI API key is not configured.');
+    throw new Error('需要先添加 API key');
   }
 
   return withTimeout({
@@ -174,6 +198,44 @@ async function processOpenAI(settings, model, systemPrompt, userMessage) {
 
       const response = await openai.chat.completions.create({
         model: model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage },
+        ],
+        max_tokens: 4096,
+      }, { signal });
+
+      const result = response.choices[0].message.content;
+
+      if (response.choices[0].finish_reason === 'length') {
+        return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';
+      }
+      return result;
+    }),
+    ms: 60000,
+  });
+}
+
+/**
+ * Process via DeepSeek's OpenAI-compatible API.
+ */
+async function processDeepSeek(settings, model, systemPrompt, userMessage) {
+  const OpenAI = require('openai');
+  const apiKey = settings.deepseekApiKey;
+
+  if (!apiKey) {
+    throw new Error('需要先添加 API key');
+  }
+
+  return withTimeout({
+    fn: async (signal) => withRetry(async () => {
+      const openai = new OpenAI({
+        apiKey,
+        baseURL: 'https://api.deepseek.com',
+      });
+
+      const response = await openai.chat.completions.create({
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
@@ -217,7 +279,7 @@ async function processOllama(settings, model, systemPrompt, userMessage) {
       }
 
       const data = await response.json();
-      const result = data.response || '';
+      const result = stripReasoning(data.response || '');
 
       if (data.done && data.done_reason === 'length') {
         return result + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。';

@@ -1,14 +1,22 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useIpc } from './useIpc';
-import { IPC_CHANNELS, DEFAULTS } from '../../shared/constants';
+import { applyRendererSettingUpdate } from './settingsRedaction.mjs';
+import constants from '../../shared/constants';
+
+const { IPC_CHANNELS, DEFAULTS } = constants;
 
 // NOTE: These defaults must match the schema defaults in src/main/store.js
 const defaultSettings = {
   anthropicApiKey: '',
   openaiApiKey: '',
+  deepseekApiKey: '',
   ollamaBaseUrl: 'http://localhost:11434',
   customEndpointUrl: '',
   customEndpointApiKey: '',
+  hasAnthropicApiKey: false,
+  hasOpenaiApiKey: false,
+  hasDeepseekApiKey: false,
+  hasCustomEndpointApiKey: false,
   activeBackend: DEFAULTS.BACKEND,
   activeModel: DEFAULTS.MODEL,
   customPrompt: '',
@@ -19,6 +27,8 @@ const defaultSettings = {
   windowY: null,
   startMinimized: false,
   clipboardMonitoring: true,
+  clipboardShortcut: 'Alt+C',
+  screenshotShortcut: 'F2',
 };
 
 export function useSettings() {
@@ -31,10 +41,18 @@ export function useSettings() {
 
     // Listen for settings loaded from main (push event, guaranteed to fire once after window loads)
     const unsub = on(IPC_CHANNELS.SETTINGS_LOADED, (loaded) => {
-      if (loaded) setSettings(loaded);
+      if (loaded) setSettings(prev => ({ ...prev, ...loaded }));
       setLoading(false);
       if (timeout) clearTimeout(timeout);
     });
+
+    invoke(IPC_CHANNELS.SETTINGS_GET)
+      .then((loaded) => {
+        if (loaded) setSettings(prev => ({ ...prev, ...loaded }));
+        setLoading(false);
+        if (timeout) clearTimeout(timeout);
+      })
+      .catch(() => {});
 
     // Fallback: if SETTINGS_LOADED doesn't fire within 2s, stop loading anyway
     timeout = setTimeout(() => setLoading(false), 2000);
@@ -43,12 +61,12 @@ export function useSettings() {
       unsub();
       if (timeout) clearTimeout(timeout);
     };
-  }, [on]);
+  }, [invoke, on]);
 
   const updateSettings = useCallback(async (key, value) => {
     try {
       await invoke(IPC_CHANNELS.SETTINGS_SET, key, value);
-      setSettings(prev => ({ ...prev, [key]: value }));
+      setSettings(prev => applyRendererSettingUpdate(prev, key, value));
     } catch (err) {
       console.error('Failed to save setting:', err);
     }
@@ -67,7 +85,16 @@ export function useSettings() {
   }, [invoke]);
 
   const resetSettings = useCallback(() => {
-    updateMultipleSettings(defaultSettings);
+    const safeDefaults = { ...defaultSettings };
+    delete safeDefaults.anthropicApiKey;
+    delete safeDefaults.openaiApiKey;
+    delete safeDefaults.deepseekApiKey;
+    delete safeDefaults.customEndpointApiKey;
+    delete safeDefaults.hasAnthropicApiKey;
+    delete safeDefaults.hasOpenaiApiKey;
+    delete safeDefaults.hasDeepseekApiKey;
+    delete safeDefaults.hasCustomEndpointApiKey;
+    updateMultipleSettings(safeDefaults);
   }, [updateMultipleSettings]);
 
   return { settings, updateSettings, updateMultipleSettings, resetSettings, loading };

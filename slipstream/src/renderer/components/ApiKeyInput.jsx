@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const LABEL_MAP = {
   anthropic: 'Anthropic API Key',
   openai: 'OpenAI API Key',
+  deepseek: 'DeepSeek API Key',
   ollama: 'Ollama 服务地址',
   custom: '自定义 API 地址',
   custom_api_key: '自定义 API Key',
@@ -11,17 +12,31 @@ const LABEL_MAP = {
 const PLACEHOLDER_MAP = {
   anthropic: 'sk-ant-...',
   openai: 'sk-...',
+  deepseek: 'sk-...',
   ollama: 'http://localhost:11434',
   custom: 'https://api.example.com/v1',
   custom_api_key: 'sk-...',
 };
 
-export default function ApiKeyInput({ backend, value, onChange }) {
+export default function ApiKeyInput({ backend, value, onChange, isSaved = false }) {
   const [showKey, setShowKey] = useState(false);
+  const [draft, setDraft] = useState('');
   const isUrlType = backend === 'ollama' || backend === 'custom';
+  const inputValue = isUrlType ? value : draft;
 
   const label = LABEL_MAP[backend] || 'API Key';
   const placeholder = PLACEHOLDER_MAP[backend] || (isUrlType ? '输入 URL...' : '输入 API Key...');
+  const visiblePlaceholder = !isUrlType && isSaved ? '已保存，输入新值可替换' : placeholder;
+
+  useEffect(() => {
+    if (!isUrlType) setDraft('');
+  }, [backend, isSaved, isUrlType]);
+
+  const commitSecret = async () => {
+    if (isUrlType || !draft.trim()) return;
+    await onChange(draft.trim());
+    setDraft('');
+  };
 
   const inputStyle = {
     width: '100%',
@@ -53,9 +68,21 @@ export default function ApiKeyInput({ backend, value, onChange }) {
       <div style={{ position: 'relative' }}>
         <input
           type={showKey && !isUrlType ? 'text' : isUrlType ? 'text' : 'password'}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
+          value={inputValue}
+          onChange={(e) => {
+            if (isUrlType) {
+              onChange(e.target.value);
+            } else {
+              setDraft(e.target.value);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (!isUrlType && e.key === 'Enter') {
+              e.preventDefault();
+              commitSecret();
+            }
+          }}
+          placeholder={visiblePlaceholder}
           style={inputStyle}
           onFocus={(e) => {
             e.target.style.borderColor = 'var(--accent)';
@@ -64,6 +91,7 @@ export default function ApiKeyInput({ backend, value, onChange }) {
           onBlur={(e) => {
             e.target.style.borderColor = 'var(--border-secondary)';
             e.target.style.boxShadow = 'none';
+            commitSecret();
           }}
         />
         {!isUrlType && (
@@ -89,6 +117,11 @@ export default function ApiKeyInput({ backend, value, onChange }) {
           </button>
         )}
       </div>
+      {!isUrlType && isSaved && !draft && (
+        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
+          已保存
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 # Slipstream — Progress
 
-Phase: 3-continuous-refinement
+Phase: 4-release-polish
 Sprint: — / —
 Attempt: — / —
-Last action: initial audit — codebase already has full main process, renderer, OCR, LLM service, and settings
-Failed items: none
+Last action: wired `APPLE_TEAM_ID` into `build:signed` notarization config, added package-config coverage, confirmed `check:release` passes, and confirmed `release:signed` still stops early without a Developer ID identity
+Failed items: `npm run release:signed` stops at `check:signing` because this machine has no Developer ID Application identity; notarization env vars are also still missing

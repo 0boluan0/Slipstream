@@ -1,21 +1,24 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useIpc } from './useIpc';
-import { IPC_CHANNELS } from '../../shared/constants';
+import constants from '../../shared/constants';
+import { normalizeClipboardPayload } from './clipboardPayload.mjs';
+
+const { IPC_CHANNELS } = constants;
 
 export function useClipboard() {
-  const [clipboardText, setClipboardText] = useState('');
+  const [clipboardEvent, setClipboardEvent] = useState(normalizeClipboardPayload(''));
   const { on } = useIpc();
 
   useEffect(() => {
-    const unsubscribe = on(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, (text) => {
-      setClipboardText(text);
+    const unsubscribe = on(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, (payload) => {
+      setClipboardEvent(normalizeClipboardPayload(payload));
     });
     return unsubscribe;
   }, [on]);
 
   const clearClipboard = useCallback(() => {
-    setClipboardText('');
+    setClipboardEvent(normalizeClipboardPayload(''));
   }, []);
 
-  return { clipboardText, clearClipboard };
+  return { clipboardEvent, clearClipboard };
 }

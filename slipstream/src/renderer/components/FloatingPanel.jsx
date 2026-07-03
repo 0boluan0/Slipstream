@@ -4,7 +4,9 @@ import StatusBar from './StatusBar';
 import { useIpc } from '../hooks/useIpc';
 import { useClipboard } from '../hooks/useClipboard';
 import { useSettings } from '../hooks/useSettings';
-import { STATUS, IPC_CHANNELS, DEFAULTS } from '../../shared/constants';
+import constants from '../../shared/constants';
+
+const { STATUS, IPC_CHANNELS, DEFAULTS } = constants;
 
 export default function FloatingPanel({ onOpenSettings }) {
   const [inputText, setInputText] = useState('');
@@ -12,13 +14,21 @@ export default function FloatingPanel({ onOpenSettings }) {
   const [error, setError] = useState(null);
   const [status, setStatus] = useState(STATUS.IDLE);
   const [processingTimeMs, setProcessingTimeMs] = useState(null);
+  const [savedTerms, setSavedTerms] = useState([]);
+  const [warning, setWarning] = useState('');
   const debounceRef = useRef(null);
   const processingRef = useRef(false);
   const textareaRef = useRef(null);
 
   const { invoke, on } = useIpc();
-  const { clipboardText, clearClipboard } = useClipboard();
+  const { clipboardEvent, clearClipboard } = useClipboard();
   const { settings, updateSettings } = useSettings();
+
+  useEffect(() => {
+    invoke(IPC_CHANNELS.TERMS_GET)
+      .then((terms) => setSavedTerms(Array.isArray(terms) ? terms : []))
+      .catch(() => {});
+  }, [invoke]);
 
   // Auto-grow the textarea height when inputText changes
   useEffect(() => {
@@ -33,21 +43,33 @@ export default function FloatingPanel({ onOpenSettings }) {
 
   // Ref to hold latest triggerProcessing to avoid stale closures in effects
   const triggerProcessingRef = useRef(null);
-  useEffect(() => {
-    triggerProcessingRef.current = triggerProcessing;
-  }, [triggerProcessing]);
 
   // Handle clipboard auto-fill with debounce
   useEffect(() => {
+    if (clipboardEvent.error) {
+      setResult('');
+      setError(clipboardEvent.error);
+      setWarning('');
+      setStatus(STATUS.ERROR);
+      return;
+    }
+
+    const clipboardText = clipboardEvent.text;
     if (clipboardText && clipboardText.trim()) {
       setInputText(clipboardText);
       setError(null);
+      setWarning(clipboardEvent.truncated
+        ? `文本过长，只使用前 ${DEFAULTS.MAX_TEXT_LENGTH} 个字符。`
+        : '');
 
-      // Auto-trigger processing after debounce if clipboard monitoring is on
-      if (settings.clipboardMonitoring && !processingRef.current) {
+      // Passive monitoring follows the setting; explicit shortcuts/OCR always process.
+      if ((settings.clipboardMonitoring || clipboardEvent.source !== 'monitor') && !processingRef.current) {
         if (debounceRef.current) clearTimeout(debounceRef.current);
         debounceRef.current = setTimeout(() => {
-          if (triggerProcessingRef.current) triggerProcessingRef.current(clipboardText);
+          if (triggerProcessingRef.current) triggerProcessingRef.current(clipboardText, {
+            truncated: clipboardEvent.truncated,
+            source: clipboardEvent.source,
+          });
         }, 500);
       }
     }
@@ -55,7 +77,7 @@ export default function FloatingPanel({ onOpenSettings }) {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [clipboardText, settings.clipboardMonitoring]);
+  }, [clipboardEvent, settings.clipboardMonitoring]);
 
   // Listen for OCR errors (OCR results come via clipboard:text-changed → auto-processing)
   useEffect(() => {
@@ -72,14 +94,17 @@ export default function FloatingPanel({ onOpenSettings }) {
   }, []);
 
   const triggerProcessing = useCallback(
-    async (text) => {
+    async (text, options = {}) => {
       let textToProcess = text || inputText;
       if (!textToProcess || !textToProcess.trim()) return;
 
-      if (textToProcess.length > DEFAULTS.MAX_TEXT_LENGTH) {
+      if (options.truncated) {
+        setWarning(`文本过长，只使用前 ${DEFAULTS.MAX_TEXT_LENGTH} 个字符。`);
+      } else if (textToProcess.length > DEFAULTS.MAX_TEXT_LENGTH) {
         textToProcess = textToProcess.slice(0, DEFAULTS.MAX_TEXT_LENGTH);
-        // Don't overwrite an existing error, and don't block — just note the truncation
-        // The warning will appear briefly; on next clear or success it's gone
+        setWarning(`文本过长，只使用前 ${DEFAULTS.MAX_TEXT_LENGTH} 个字符。`);
+      } else {
+        setWarning('');
       }
 
       if (processingRef.current) return;
@@ -96,6 +121,7 @@ export default function FloatingPanel({ onOpenSettings }) {
           model: settings.activeModel,
           promptTemplate: settings.customPrompt,
           languageHint: settings.languageHint,
+          source: options.source || 'manual',
         });
         // Set result from invoke return
         if (_result && _result.success) {
@@ -117,9 +143,14 @@ export default function FloatingPanel({ onOpenSettings }) {
     [inputText, settings.activeBackend, settings.activeModel, settings.customPrompt, settings.languageHint, invoke]
   );
 
+  useEffect(() => {
+    triggerProcessingRef.current = triggerProcessing;
+  }, [triggerProcessing]);
+
   const handleScreenshot = useCallback(async () => {
     try {
       setError(null);
+      setWarning('');
       const result = await invoke(IPC_CHANNELS.SCREENSHOT_CAPTURE);
       if (result && result.cancelled) {
         return;
@@ -131,6 +162,7 @@ export default function FloatingPanel({ onOpenSettings }) {
     } catch (err) {
       const msg = typeof err === 'string' ? err : (err?.message || '截图失败');
       setError(msg);
+      setWarning('');
       setStatus(STATUS.ERROR);
     }
   }, [invoke, triggerProcessing]);
@@ -143,6 +175,7 @@ export default function FloatingPanel({ onOpenSettings }) {
       }
     } catch (err) {
       setError('无法读取剪贴板，请手动粘贴或使用截图功能');
+      setWarning('');
       setStatus(STATUS.ERROR);
     }
   }, []);
@@ -151,10 +184,20 @@ export default function FloatingPanel({ onOpenSettings }) {
     setInputText('');
     setResult('');
     setError(null);
+    setWarning('');
     setStatus(STATUS.IDLE);
     setProcessingTimeMs(null);
     clearClipboard();
   }, [clearClipboard]);
+
+  const handleSaveTerm = useCallback(async (term) => {
+    const savedTerm = await invoke(IPC_CHANNELS.TERMS_SAVE, {
+      term,
+      sourceText: inputText,
+      explanation: result,
+    });
+    setSavedTerms((terms) => [savedTerm, ...terms]);
+  }, [inputText, result, invoke]);
 
   return (
     <div
@@ -376,7 +419,7 @@ export default function FloatingPanel({ onOpenSettings }) {
               userSelect: 'none',
             }}
           >
-            <span><kbd className="slipstream-kbd">F2</kbd> 截图 OCR</span>
+            <span><kbd className="slipstream-kbd">{settings.screenshotShortcut || 'F2'}</kbd> 截图 OCR</span>
             <span><kbd className="slipstream-kbd">⌘↵</kbd> 处理</span>
           </div>
       </div>
@@ -392,11 +435,20 @@ export default function FloatingPanel({ onOpenSettings }) {
           borderTop: '1px solid var(--border-primary)',
         }}
       >
-        <ResultDisplay result={result} error={error} status={status} onDismissError={() => { setError(null); setStatus(STATUS.IDLE); }} />
+        <ResultDisplay
+          result={result}
+          error={error}
+          status={status}
+          onDismissError={() => { setError(null); setStatus(STATUS.IDLE); }}
+          onRetry={() => triggerProcessing(inputText)}
+          canRetry={Boolean(inputText?.trim()) && status !== STATUS.PROCESSING}
+          onSaveTerm={status === STATUS.DONE && result ? handleSaveTerm : null}
+          savedTerms={savedTerms}
+        />
       </div>
 
       {/* Status bar */}
-      <StatusBar status={status} error={error} processingTimeMs={processingTimeMs} clipboardMonitoring={settings.clipboardMonitoring} />
+      <StatusBar status={status} error={error} warning={warning} processingTimeMs={processingTimeMs} clipboardMonitoring={settings.clipboardMonitoring} />
     </div>
   );
 }
