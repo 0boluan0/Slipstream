@@ -270,7 +270,11 @@ function registerIpcHandlers() {
 
       // 3. Send OCR text to renderer — renderer handles auto-processing via triggerProcessing()
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, { text: ocrResult.text, source: 'ocr' });
+        mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, {
+          text: ocrResult.text,
+          source: 'ocr',
+          confidence: ocrResult.confidence,
+        });
       }
 
       // Clean up the screenshot

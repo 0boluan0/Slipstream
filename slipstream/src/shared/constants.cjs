@@ -12,10 +12,11 @@ const IPC_CHANNELS = {
 };
 
 // LLM backend identifiers
-const LLM_BACKENDS = { ANTHROPIC: 'anthropic', OPENAI: 'openai', DEEPSEEK: 'deepseek', OLLAMA: 'ollama', CUSTOM: 'custom' };
+const LLM_BACKENDS = { FREE_TRANSLATE: 'free_translate', ANTHROPIC: 'anthropic', OPENAI: 'openai', DEEPSEEK: 'deepseek', OLLAMA: 'ollama', CUSTOM: 'custom' };
 
 // Model IDs per backend
 const MODEL_IDS = {
+  free_translate: ['google-translate'],
   anthropic: ['claude-sonnet-4-20250514', 'claude-haiku-3-5-20250514'],
   openai: ['gpt-4o', 'gpt-4o-mini'],
   deepseek: ['deepseek-chat', 'deepseek-reasoner'],
@@ -25,8 +26,8 @@ const MODEL_IDS = {
 
 // Default configuration
 const DEFAULTS = {
-  BACKEND: 'anthropic',
-  MODEL: 'claude-sonnet-4-20250514',
+  BACKEND: 'free_translate',
+  MODEL: 'google-translate',
   LANGUAGE: 'en',
   WINDOW_WIDTH: 480,
   WINDOW_HEIGHT: 600,
@@ -60,11 +61,10 @@ const PROMPT_TEMPLATES = {
   },
   zh: {
     system: 'You are a bilingual Chinese-English language assistant. Your job is to help an English speaker understand Chinese text in context. You must respond in English.',
-    user: `Please help me understand the following Chinese text. Provide:
+    user: `Please help me understand the following Chinese text. Provide exactly two sections:
 
-1. **English Translation**: Translate the original text into natural, fluent English
-2. **Proper Noun Explanations**: List proper nouns (names, places, organizations, technical terms, abbreviations) and explain each one in English
-3. **Context Explanations**: Explain the cultural background, idiomatic usage, special expressions, and concepts that are specific to the Chinese language context
+1. **English Translation**: Translate the original text into natural, fluent English.
+2. **Proper Noun / Term Explanations**: List proper nouns, technical terms, abbreviations, organizations, names, or culturally specific expressions that appear in the original text, and explain each one in English. If there are none, write "None".
 
 Original text:
 {{text}}
@@ -73,11 +73,10 @@ Please reply in a clear, structured format.`,
   },
   auto: {
     system: 'You are a bilingual language assistant. Detect the input language and explain it in the opposite language. Do not reveal reasoning. Keep explanations anchored to text, terms, institutions, deadlines, documents, or required actions.',
-    user: `Please analyze the following text. First detect whether it is primarily English or Chinese, then explain it in the opposite language. Provide:
+    user: `Please analyze the following text. First detect whether it is primarily English or Chinese, then explain it in the opposite language. Provide exactly two sections:
 
-1. **Translation**: Translate the original text into the target language naturally
-2. **Proper Noun Explanations**: List proper nouns and explain each one
-3. **Context Explanations**: Explain cultural background, idiomatic usage, and language-specific concepts
+1. **Translation**: Translate the original text into the target language naturally.
+2. **Proper Noun / Term Explanations**: List proper nouns, technical terms, abbreviations, organizations, names, or culturally specific expressions that appear in the original text, and explain each one. If there are none, write "None".
 
 Original text:
 {{text}}

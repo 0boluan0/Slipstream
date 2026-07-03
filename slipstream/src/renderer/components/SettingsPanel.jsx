@@ -9,6 +9,7 @@ import constants from '../../shared/constants';
 const { LLM_BACKENDS, LANGUAGES } = constants;
 
 const BACKEND_OPTIONS = [
+  { label: '免费翻译', value: LLM_BACKENDS.FREE_TRANSLATE },
   { label: 'Anthropic', value: LLM_BACKENDS.ANTHROPIC },
   { label: 'OpenAI', value: LLM_BACKENDS.OPENAI },
   { label: 'DeepSeek', value: LLM_BACKENDS.DEEPSEEK },
@@ -207,52 +208,71 @@ export default function SettingsPanel({ onClose }) {
           })}
         </div>
 
-        {/* API Key section */}
-        <div style={sectionTitleStyle}>凭据</div>
-        <ApiKeyInput
-          backend={settings.activeBackend}
-          value={
-            settings.activeBackend === LLM_BACKENDS.ANTHROPIC
-              ? settings.anthropicApiKey
-              : settings.activeBackend === LLM_BACKENDS.OPENAI
-              ? settings.openaiApiKey
-              : settings.activeBackend === LLM_BACKENDS.DEEPSEEK
-              ? settings.deepseekApiKey
-              : settings.activeBackend === LLM_BACKENDS.OLLAMA
-              ? settings.ollamaBaseUrl
-              : settings.activeBackend === LLM_BACKENDS.CUSTOM
-              ? settings.customEndpointUrl
-              : ''
-          }
-          onChange={handleApiKeyChange}
-          isSaved={
-            settings.activeBackend === LLM_BACKENDS.ANTHROPIC
-              ? settings.hasAnthropicApiKey
-              : settings.activeBackend === LLM_BACKENDS.OPENAI
-              ? settings.hasOpenaiApiKey
-              : settings.activeBackend === LLM_BACKENDS.DEEPSEEK
-              ? settings.hasDeepseekApiKey
-              : false
-          }
-        />
+        {/* API Key section — hidden for free_translate */}
+        {settings.activeBackend !== LLM_BACKENDS.FREE_TRANSLATE && (
+          <>
+            <div style={sectionTitleStyle}>凭据</div>
+            <ApiKeyInput
+              backend={settings.activeBackend}
+              value={
+                settings.activeBackend === LLM_BACKENDS.ANTHROPIC
+                  ? settings.anthropicApiKey
+                  : settings.activeBackend === LLM_BACKENDS.OPENAI
+                  ? settings.openaiApiKey
+                  : settings.activeBackend === LLM_BACKENDS.DEEPSEEK
+                  ? settings.deepseekApiKey
+                  : settings.activeBackend === LLM_BACKENDS.OLLAMA
+                  ? settings.ollamaBaseUrl
+                  : settings.activeBackend === LLM_BACKENDS.CUSTOM
+                  ? settings.customEndpointUrl
+                  : ''
+              }
+              onChange={handleApiKeyChange}
+              isSaved={
+                settings.activeBackend === LLM_BACKENDS.ANTHROPIC
+                  ? settings.hasAnthropicApiKey
+                  : settings.activeBackend === LLM_BACKENDS.OPENAI
+                  ? settings.hasOpenaiApiKey
+                  : settings.activeBackend === LLM_BACKENDS.DEEPSEEK
+                  ? settings.hasDeepseekApiKey
+                  : false
+              }
+            />
 
-        {/* Show API key field for custom backend */}
-        {settings.activeBackend === LLM_BACKENDS.CUSTOM && (
-          <ApiKeyInput
-            backend="custom_api_key"
-            value={settings.customEndpointApiKey}
-            onChange={handleCustomApiKeyChange}
-            isSaved={settings.hasCustomEndpointApiKey}
-          />
+            {/* Show API key field for custom backend */}
+            {settings.activeBackend === LLM_BACKENDS.CUSTOM && (
+              <ApiKeyInput
+                backend="custom_api_key"
+                value={settings.customEndpointApiKey}
+                onChange={handleCustomApiKeyChange}
+                isSaved={settings.hasCustomEndpointApiKey}
+              />
+            )}
+
+            {/* Model selector */}
+            <div style={{ ...sectionTitleStyle, marginTop: 4 }}>模型</div>
+            <ModelSelector
+              backend={settings.activeBackend}
+              value={settings.activeModel}
+              onChange={handleModelChange}
+            />
+          </>
         )}
 
-        {/* Model selector */}
-        <div style={{ ...sectionTitleStyle, marginTop: 4 }}>模型</div>
-        <ModelSelector
-          backend={settings.activeBackend}
-          value={settings.activeModel}
-          onChange={handleModelChange}
-        />
+        {settings.activeBackend === LLM_BACKENDS.FREE_TRANSLATE && (
+          <div style={{
+            padding: '10px 12px',
+            marginTop: 8,
+            marginBottom: 4,
+            fontSize: 12,
+            color: 'var(--text-secondary)',
+            backgroundColor: 'var(--bg-tertiary)',
+            borderRadius: 8,
+            lineHeight: 1.5,
+          }}>
+            免费翻译无需配置，使用 Google / MyMemory 翻译接口。如需专有名词解释和术语解析，请切换到 LLM 后端并配置 API Key。
+          </div>
+        )}
 
         {/* Language hint */}
         <LanguageToggle
