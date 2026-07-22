@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, clipboard, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -8,7 +8,10 @@ const ScreenshotService = require('./screenshot-service');
 const OCRService = require('./ocr-service');
 const ClipboardMonitor = require('./clipboard-monitor');
 const LLMService = require('./llm-service');
+const { createActionBrief } = require('./action-brief-service');
+const { createCaptureEnvelope } = require('./capture-envelope');
 const { redactSettingsForRenderer } = require('./safe-settings');
+const { isTrustedRendererUrl, validateExternalUrl, validateProcessOptions, validateSetting } = require('./validation');
 const {
   IPC_CHANNELS,
   DEFAULTS,
@@ -22,20 +25,33 @@ const OCR_FAILURE_MESSAGE = '没有识别到清晰文字';
 let mainWindow = null;
 let tray = null;
 let clipboardMonitor = null;
-const isDev = !app.isPackaged;
+let llmRequestInFlight = false;
+let llmAbortController = null;
+let currentWindowMode = 'capture';
+let captureWindowBounds = null;
+const isDev = process.argv.includes('--dev');
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+
+if (!hasSingleInstanceLock) app.quit();
 
 function getSafeSettings() {
   return redactSettingsForRenderer(store.getAllSettings());
+}
+
+function assertTrustedIpc(event) {
+  const url = event.senderFrame?.url || event.sender?.getURL?.() || '';
+  if (!isTrustedRendererUrl(url, isDev)) throw new Error('拒绝了不受信任的应用请求');
 }
 
 // --------------- Window ---------------
 
 function createMainWindow() {
   const settings = store.getAllSettings();
+  const primaryWorkArea = screen.getPrimaryDisplay().workAreaSize;
 
   const windowOptions = {
-    width: settings.windowWidth || DEFAULTS.WINDOW_WIDTH,
-    height: settings.windowHeight || DEFAULTS.WINDOW_HEIGHT,
+    width: Math.min(Math.max(settings.windowWidth || DEFAULTS.WINDOW_WIDTH, 400), primaryWorkArea.width),
+    height: Math.min(Math.max(settings.windowHeight || DEFAULTS.WINDOW_HEIGHT, 400), primaryWorkArea.height),
     frame: false,
     alwaysOnTop: true,
     transparent: true,
@@ -48,7 +64,7 @@ function createMainWindow() {
       preload: path.join(__dirname, '..', '..', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   };
 
@@ -58,10 +74,20 @@ function createMainWindow() {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+  captureWindowBounds = mainWindow.getBounds();
+
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
 
   // Restore saved position; place at bottom-right of primary display by default
   if (settings.windowX !== null && settings.windowY !== null) {
-    mainWindow.setPosition(settings.windowX, settings.windowY);
+    const display = screen.getDisplayNearestPoint({ x: settings.windowX, y: settings.windowY });
+    const workArea = display.workArea;
+    const winBounds = mainWindow.getBounds();
+    const x = Math.min(Math.max(settings.windowX, workArea.x), workArea.x + workArea.width - winBounds.width);
+    const y = Math.min(Math.max(settings.windowY, workArea.y), workArea.y + workArea.height - winBounds.height);
+    mainWindow.setPosition(x, y);
   } else {
     const displays = screen.getPrimaryDisplay();
     const { width: screenWidth, height: screenHeight } = displays.workAreaSize;
@@ -74,7 +100,17 @@ function createMainWindow() {
 
   // Load the renderer
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
+    const devRendererUrl = process.env.SLIPSTREAM_DEMO_RESULT === '1'
+      ? 'http://localhost:5173/?demo=result'
+      : 'http://localhost:5173';
+    const loadDevRenderer = (attempt = 0) => {
+      mainWindow.loadURL(devRendererUrl).catch(() => {
+        if (attempt < 20 && mainWindow && !mainWindow.isDestroyed()) {
+          setTimeout(() => loadDevRenderer(attempt + 1), 250);
+        }
+      });
+    };
+    loadDevRenderer();
   } else {
     const indexPath = path.join(__dirname, '..', '..', 'dist', 'renderer', 'index.html');
     mainWindow.loadFile(indexPath);
@@ -92,28 +128,83 @@ function createMainWindow() {
     mainWindow = null;
   });
 
-  // Save window position on move
+  let boundsSaveTimer = null;
+  const saveBounds = () => {
+    clearTimeout(boundsSaveTimer);
+    boundsSaveTimer = setTimeout(() => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      const bounds = mainWindow.getBounds();
+      store.setSetting('windowX', bounds.x);
+      store.setSetting('windowY', bounds.y);
+      if (currentWindowMode === 'capture') {
+        captureWindowBounds = bounds;
+        store.setSetting('windowWidth', bounds.width);
+        store.setSetting('windowHeight', bounds.height);
+      }
+    }, 250);
+  };
+
   mainWindow.on('moved', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const [x, y] = mainWindow.getPosition();
-      store.setSetting('windowX', x);
-      store.setSetting('windowY', y);
-    }
+    saveBounds();
   });
 
   // Save window size on resize
   mainWindow.on('resized', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      const [width, height] = mainWindow.getSize();
-      store.setSetting('windowWidth', width);
-      store.setSetting('windowHeight', height);
-    }
+    saveBounds();
   });
 
   // Open DevTools in dev mode
   if (isDev) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+}
+
+function clampBoundsToWorkArea(bounds, workArea) {
+  const width = Math.min(bounds.width, workArea.width);
+  const height = Math.min(bounds.height, workArea.height);
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(bounds.x, workArea.x), workArea.x + workArea.width - width),
+    y: Math.min(Math.max(bounds.y, workArea.y), workArea.y + workArea.height - height),
+  };
+}
+
+function setWindowMode(mode) {
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (!['capture', 'result'].includes(mode)) throw new Error('窗口模式无效');
+  if (mode === currentWindowMode) return true;
+
+  const previous = mainWindow.getBounds();
+  if (currentWindowMode === 'capture') captureWindowBounds = previous;
+  const display = screen.getDisplayMatching(previous);
+  const workArea = display.workArea;
+  let nextBounds;
+
+  if (mode === 'result') {
+    const width = Math.min(DEFAULTS.RESULT_WINDOW_WIDTH, workArea.width - 24);
+    const height = Math.min(DEFAULTS.RESULT_WINDOW_HEIGHT, workArea.height - 24);
+    const centerX = previous.x + previous.width / 2;
+    const centerY = previous.y + previous.height / 2;
+    nextBounds = clampBoundsToWorkArea({
+      x: Math.round(centerX - width / 2),
+      y: Math.round(centerY - height / 2),
+      width,
+      height,
+    }, workArea);
+  } else {
+    const fallback = {
+      width: DEFAULTS.WINDOW_WIDTH,
+      height: DEFAULTS.WINDOW_HEIGHT,
+      x: previous.x + previous.width - DEFAULTS.WINDOW_WIDTH,
+      y: previous.y,
+    };
+    nextBounds = clampBoundsToWorkArea(captureWindowBounds || fallback, workArea);
+  }
+
+  currentWindowMode = mode;
+  mainWindow.setBounds(nextBounds, true);
+  return true;
 }
 
 // --------------- Tray ---------------
@@ -135,7 +226,7 @@ function createTray() {
 
   const contextMenu = Menu.buildFromTemplate([
     {
-      label: 'Show/Hide',
+      label: '显示/隐藏',
       click: () => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           if (mainWindow.isVisible()) {
@@ -149,7 +240,7 @@ function createTray() {
     },
     { type: 'separator' },
     {
-      label: 'Quit',
+      label: '退出',
       click: () => {
         app.isQuitting = true;
         app.quit();
@@ -195,15 +286,93 @@ function stopClipboardMonitoring() {
 // --------------- IPC Handlers ---------------
 
 function registerIpcHandlers() {
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => getSafeSettings());
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, (event) => {
+    assertTrustedIpc(event);
+    return getSafeSettings();
+  });
 
-  ipcMain.handle(IPC_CHANNELS.TERMS_GET, () => store.getSavedTerms());
+  ipcMain.handle(IPC_CHANNELS.TERMS_GET, (event) => {
+    assertTrustedIpc(event);
+    return store.getSavedTerms();
+  });
 
-  ipcMain.handle(IPC_CHANNELS.TERMS_SAVE, (_event, term) => store.addSavedTerm(term));
+  ipcMain.handle(IPC_CHANNELS.TERMS_SAVE, (event, term) => {
+    assertTrustedIpc(event);
+    return store.addSavedTerm(term);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TERMS_DELETE, (event, id) => {
+    assertTrustedIpc(event);
+    if (!Number.isSafeInteger(id)) throw new Error('术语 ID 无效');
+    store.deleteSavedTerm(id);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.USER_DATA_CLEAR, (event) => {
+    assertTrustedIpc(event);
+    store.clearUserData();
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_WRITE, (event, text) => {
+    assertTrustedIpc(event);
+    if (typeof text !== 'string' || text.length > 100000) {
+      throw new Error('无法复制无效或过长的内容');
+    }
+    if (clipboardMonitor) clipboardMonitor.suppressNextText(text);
+    clipboard.writeText(text);
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_READ, (event) => {
+    assertTrustedIpc(event);
+    return clipboard.readText().slice(0, DEFAULTS.MAX_TEXT_LENGTH);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WINDOW_HIDE, (event) => {
+    assertTrustedIpc(event);
+    mainWindow?.hide();
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WINDOW_SET_MODE, (event, mode) => {
+    assertTrustedIpc(event);
+    return setWindowMode(mode);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXTERNAL_OPEN, async (event, url) => {
+    assertTrustedIpc(event);
+    const safeUrl = validateExternalUrl(url);
+    await shell.openExternal(safeUrl, { activate: true });
+    return true;
+  });
 
   // Settings: set
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, key, value) => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (event, key, value) => {
+    assertTrustedIpc(event);
+    [key, value] = validateSetting(key, value);
+
+    const previousSettings = store.getAllSettings();
+
+    if (key === 'clipboardShortcut' || key === 'screenshotShortcut') {
+      unregisterAll();
+      const candidateSettings = { ...previousSettings, [key]: value };
+      if (!registerShortcuts(mainWindow, candidateSettings)) {
+        unregisterAll();
+        registerShortcuts(mainWindow, previousSettings);
+        throw new Error(`快捷键 ${value} 无法注册，原快捷键已恢复`);
+      }
+    }
+
     store.setSetting(key, value);
+
+    if (key === 'customEndpointUrl') {
+      const previousUrl = previousSettings.customEndpointUrl;
+      let previousOrigin = '';
+      try { previousOrigin = previousUrl ? new URL(previousUrl).origin : ''; } catch (_) { /* legacy invalid URL */ }
+      const nextOrigin = value ? new URL(value).origin : '';
+      if (previousOrigin !== nextOrigin) store.setSetting('customEndpointApiKey', '');
+    }
 
     // If clipboard monitoring setting changed, start or stop the monitor
     if (key === 'clipboardMonitoring') {
@@ -216,36 +385,77 @@ function registerIpcHandlers() {
       }
     }
 
-    if (key === 'clipboardShortcut' || key === 'screenshotShortcut') {
-      unregisterAll();
-      registerShortcuts(mainWindow, store.getAllSettings());
-    }
-
     return true;
   });
 
   // LLM processing
-  ipcMain.handle(IPC_CHANNELS.LLM_PROCESS, async (_event, options) => {
+  ipcMain.handle(IPC_CHANNELS.LLM_CANCEL, (event) => {
+    assertTrustedIpc(event);
+    llmAbortController?.abort();
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.LLM_PROCESS, async (event, options) => {
+    assertTrustedIpc(event);
+    if (llmRequestInFlight) return { success: false, error: '已有任务正在处理，请稍候' };
+    const requestStartedAt = Date.now();
+    const request = validateProcessOptions(options);
+    const settings = store.getAllSettings();
+    const captureEnvelope = createCaptureEnvelope({
+      text: request.text,
+      sourceKind: request.source,
+      capture: request.capture,
+    });
+    llmRequestInFlight = true;
+    llmAbortController = new AbortController();
     try {
-      const llmResponse = await LLMService.processText(options);
-      store.addExplanationHistory({
-        sourceText: options?.text,
-        explanation: llmResponse.result,
-        backend: options?.backend,
-        model: options?.model,
-        source: options?.source,
+      const llmResponse = await LLMService.processText({
+        ...request,
+        captureEnvelope,
+        backend: settings.activeBackend,
+        model: settings.activeModel,
+        promptTemplate: settings.customPrompt,
+        languageHint: settings.languageHint,
+        signal: llmAbortController.signal,
       });
-      return { success: true, text: llmResponse.result, processingTimeMs: llmResponse.processingTimeMs };
+      const actionBriefResponse = await createActionBrief({
+        sourceText: request.text,
+        rawOutput: llmResponse.result,
+        backend: settings.activeBackend,
+        model: settings.activeModel,
+        processingTimeMs: llmResponse.processingTimeMs,
+        captureEnvelope,
+        verificationPolicy: settings.verificationPolicy,
+        verificationApproved: request.verificationApproved,
+      });
+      return {
+        success: true,
+        brief: actionBriefResponse.brief,
+        text: llmResponse.result,
+        source: {
+          text: captureEnvelope.rawText,
+          kind: captureEnvelope.sourceKind,
+          capturedAt: captureEnvelope.capturedAt,
+          ocr: captureEnvelope.ocr,
+        },
+        verificationSummary: actionBriefResponse.verificationSummary,
+        processingTimeMs: Date.now() - requestStartedAt,
+      };
     } catch (error) {
       return { success: false, error: error.message };
+    } finally {
+      llmRequestInFlight = false;
+      llmAbortController = null;
     }
   });
 
   // Screenshot capture flow: capture region -> OCR -> LLM
-  ipcMain.handle(IPC_CHANNELS.SCREENSHOT_CAPTURE, async () => {
+  ipcMain.handle(IPC_CHANNELS.SCREENSHOT_CAPTURE, async (event) => {
+    assertTrustedIpc(event);
+    let imagePath = null;
     try {
       // 1. Capture region
-      const imagePath = await ScreenshotService.captureRegion().catch(err => {
+      imagePath = await ScreenshotService.captureSelectedRegion().catch(err => {
         // User cancelled — return a special result so the renderer can distinguish
         if (err.isCancellation) {
           return { cancelled: true };
@@ -263,30 +473,22 @@ function registerIpcHandlers() {
       const ocrResult = await OCRService.performOCR(imagePath);
 
       if (!ocrResult.text || ocrResult.text.trim().length === 0) {
-        // Clean up the screenshot
-        try { fs.unlinkSync(imagePath); } catch (_) { /* cleanup failure is non-fatal */ }
         return { success: false, error: OCR_FAILURE_MESSAGE };
       }
 
-      // 3. Send OCR text to renderer — renderer handles auto-processing via triggerProcessing()
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, {
-          text: ocrResult.text,
-          source: 'ocr',
-          confidence: ocrResult.confidence,
-        });
-      }
-
-      // Clean up the screenshot
-      try { fs.unlinkSync(imagePath); } catch (_) { /* cleanup failure is non-fatal */ }
-
-      return { success: true, text: ocrResult.text };
+      return {
+        success: true,
+        text: ocrResult.text,
+        confidence: ocrResult.confidence,
+        blocks: ocrResult.blocks,
+      };
     } catch (error) {
       console.error('[ScreenshotCapture] Error:', error.message);
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: OCR_FAILURE_MESSAGE });
+      return { success: false, error: '截图或文字识别失败，请检查屏幕录制权限后重试' };
+    } finally {
+      if (typeof imagePath === 'string') {
+        try { fs.unlinkSync(imagePath); } catch (_) { /* cleanup failure is non-fatal */ }
       }
-      return { success: false, error: OCR_FAILURE_MESSAGE };
     }
   });
 }
@@ -295,13 +497,25 @@ function registerIpcHandlers() {
 
 app.isQuitting = false;
 
+app.on('second-instance', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+});
+
 app.on('ready', () => {
+  if (!hasSingleInstanceLock) return;
+  if ((store.getSettings('privacyVersion') || 0) < 1) {
+    store.setSetting('clipboardMonitoring', false);
+    store.setSetting('privacyVersion', 1);
+  }
   createMainWindow();
   createTray();
   registerShortcuts(mainWindow, store.getAllSettings());
   registerIpcHandlers();
 
-  if (store.getSettings('clipboardMonitoring') !== false) {
+  if (store.getSettings('clipboardMonitoring') === true) {
     startClipboardMonitoring();
   }
 

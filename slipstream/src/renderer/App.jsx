@@ -1,9 +1,19 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import FloatingPanel from './components/FloatingPanel';
 import SettingsPanel from './components/SettingsPanel';
+import { useSettings } from './hooks/useSettings';
 
 export default function App() {
   const [view, setView] = useState('panel');
+  const settingsController = useSettings();
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' && view === 'settings') setView('panel');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [view]);
 
   const style = {
     width: '100vw',
@@ -13,17 +23,14 @@ export default function App() {
     background: 'transparent',
   };
 
-  if (view === 'settings') {
-    return (
-      <div style={style}>
-        <SettingsPanel onClose={() => setView('panel')} />
-      </div>
-    );
-  }
-
   return (
     <div style={style}>
-      <FloatingPanel onOpenSettings={() => setView('settings')} />
+      <div style={{ display: view === 'settings' ? 'flex' : 'none', flex: 1, minHeight: 0 }}>
+        <SettingsPanel onClose={() => setView('panel')} settingsController={settingsController} />
+      </div>
+      <div style={{ display: view === 'panel' ? 'flex' : 'none', flex: 1, minHeight: 0 }}>
+        <FloatingPanel onOpenSettings={() => setView('settings')} settingsController={settingsController} />
+      </div>
     </div>
   );
 }

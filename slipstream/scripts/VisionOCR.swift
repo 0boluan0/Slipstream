@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 2
+let OCR_VERSION = 3
 
 import Vision
 import AppKit
@@ -118,7 +118,22 @@ func main() {
     }
 
     request.recognitionLevel = .accurate
-    request.recognitionLanguages = ["en-US", "zh-Hans"]
+    request.usesLanguageCorrection = true
+    let preferredLanguages = [
+        "en-US", "zh-Hans", "zh-Hant",
+        "ja-JP", "ko-KR",
+        "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR",
+        "ru-RU", "ar-SA", "th-TH", "vi-VN"
+    ]
+    if let supportedLanguages = try? request.supportedRecognitionLanguages() {
+        let supported = Set(supportedLanguages)
+        let enabledLanguages = preferredLanguages.filter { supported.contains($0) }
+        if !enabledLanguages.isEmpty {
+            request.recognitionLanguages = enabledLanguages
+        }
+    } else {
+        request.recognitionLanguages = ["en-US", "zh-Hans", "zh-Hant", "ja-JP", "ko-KR"]
+    }
 
     let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
 

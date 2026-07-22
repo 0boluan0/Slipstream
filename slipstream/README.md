@@ -1,96 +1,52 @@
 # Slipstream
 
-macOS floating translation and explanation assistant -- reduces friction from English in learning and administrative communication.
+**看懂英文，办对事情。**
 
-## 系统要求
+Slipstream is a privacy-first macOS action assistant for Chinese users handling consequential English. It turns clipboard text or local screenshot OCR into a structured Chinese brief with source-backed actions, deadlines, materials, term explanations, and clearly separated process context.
 
-- macOS 10.15 (Catalina) 或更高版本
-- Node.js 18 或更高版本
-- Xcode Command Line Tools (用于 OCR 功能)
+## Requirements
 
-## Features
+- macOS 12 or later
+- Node.js 22.12 or later
+- Xcode Command Line Tools for the local Apple Vision OCR helper
 
-- **Clipboard monitoring**: Automatically detects and translates copied English text
-- **Screenshot OCR**: Press F2 to capture a screen region; Vision framework OCR extracts text
-- **Smart explanation**: Not just translation -- explains proper nouns, cultural context, and English idioms
-- **Multi-LLM backends**: Supports Anthropic Claude, OpenAI GPT, Ollama local models, and custom API endpoints
-
-## Installation & Startup
+## Development
 
 ```bash
-# 1. Install dependencies
-cd slipstream
-npm install
-
-# 2. Make OCR script executable
-chmod +x scripts/ocr-swift-runner.sh
-
-# 3. Start development mode
+npm ci
 npm run dev
 ```
 
-> **提示**：`npm run dev` 是推荐的开发方式，它同时启动 Vite 开发服务器和 Electron 窗口。如果你需要使用 `npm start`，请先运行 `npm run build` 编译前端资源。
+Primary triggers:
+
+- `F2`: select a screen region, run local OCR, and analyze it.
+- `Option+C`: analyze the current clipboard text.
+- Manual input: paste text and choose Analyze.
+
+Clipboard monitoring is optional and off by default.
+
+## Model configuration
+
+The full action brief requires Ollama or a configured Anthropic, OpenAI, DeepSeek, or compatible endpoint. Cloud backends receive text the user submits. Ollama keeps model analysis local. API keys use macOS secure storage.
+
+The free translation backend uses third-party online translation endpoints and returns a clearly labeled translation-only result; it cannot provide trusted actions or official verification.
+
+## Verification
+
+Official-source verification defaults to Ask first. Local-only performs no lookup. Official-auto retrieves only eligible HTTPS candidate sources using a minimized request. Retrieval, support, and official-host checks must pass before a result is labeled verified.
+
+## Checks
+
+```bash
+npm audit --audit-level=high
+npm test
+npm run lint
+npm run build:renderer
+npm run check:package-config
+```
 
 ## Release
 
-```bash
-npm run release:unsigned
-```
+`npm run release:unsigned` produces ad-hoc artifacts for local smoke testing only. Public distribution requires a Developer ID Application identity and Apple notarization credentials, then `npm run release:signed`. The signed gate verifies both arm64 and x64 ZIP/DMG artifacts, hardened runtime, stapling, and Gatekeeper acceptance.
 
-This creates unsigned macOS DMG/ZIP artifacts under `slipstream/release/`, writes `slipstream/release/SHA256SUMS.txt`, and runs the local release gate.
-
-Public distribution still requires a valid Apple Developer ID signing identity and notarization:
-
-```bash
-# Use .env.example as the template for shell or CI secrets:
-# APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
-npm run check:signing
-npm run check:notarization-env
-npm run release:signed
-npm run check:distribution
-```
-
-## Usage
-
-1. **F2** -- Capture a screen region; OCR extracts text, then the LLM explains it
-2. **Copy text** -- Automatically detects clipboard and translates
-3. **Manual paste** -- Paste text into the input box, click "Process" (or press Cmd+Enter)
-4. **Tray icon** -- Click the macOS menu bar icon to show or hide the Slipstream window
-
-## Settings
-
-Click the gear icon to open settings:
-- Select LLM backend and enter the corresponding API key
-- Customize prompt templates
-- Toggle source language
-
-## 常见问题
-
-### OCR 识别失败 (OCR extraction failed)
-1. 确保已安装 Xcode Command Line Tools：`xcode-select --install`
-2. 确认 macOS 版本 >= 10.15 (Catalina)
-3. 手动测试 OCR：`swift scripts/VisionOCR.swift test.png`
-
-### API Key 不保存 (API Key not saving)
-1. 检查 `~/Library/Preferences/slipstream-settings.json` 是否存在
-2. 如果文件损坏，删除后重启应用：`rm ~/Library/Preferences/slipstream-settings.json`
-
-### F2 截图不生效 (F2 screenshot shortcut not working)
-1. 检查是否有其他应用占用了 F2 键
-2. macOS 可能需要授予辅助功能权限：系统设置 → 隐私与安全性 → 辅助功能
-3. 确认应用有屏幕录制权限：系统设置 → 隐私与安全性 → 屏幕录制
-
-### 编译 Swift OCR 脚本失败 (Swift compilation failed)
-1. 确认 Swift 可用：`swift --version`
-2. 手动编译：`swiftc -o /tmp/slipstream-ocr scripts/VisionOCR.swift`
-3. 如果 `import Vision` 失败，确认 macOS >= 10.15
-
-## Tech Stack
-
-- Electron + React (JSX)
-- macOS Vision framework (local OCR)
-- Multi-backend LLM support
-
-## Built with Agent Loop
-
-This application was developed using the Plan -> Build -> Judge multi-agent loop workflow.
+Slipstream collects no telemetry. See the repository's `docs/PRIVACY.md`, `SECURITY.md`, and MIT `LICENSE` for details.

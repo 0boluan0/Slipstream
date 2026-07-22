@@ -4,8 +4,21 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE="$SCRIPT_DIR/VisionOCR.swift"
-BINARY="/tmp/slipstream-ocr"
-VERSION_FILE="/tmp/slipstream-ocr.version"
+BUNDLED_BINARY="$SCRIPT_DIR/slipstream-ocr"
+
+if [ -x "$BUNDLED_BINARY" ]; then
+    if [ $# -lt 1 ]; then
+        echo '{"error":"No image path provided"}' >&2
+        exit 1
+    fi
+    exec "$BUNDLED_BINARY" "$1"
+fi
+
+CACHE_DIR="${SLIPSTREAM_OCR_CACHE:?Missing SLIPSTREAM_OCR_CACHE}"
+mkdir -p "$CACHE_DIR"
+chmod 700 "$CACHE_DIR"
+BINARY="$CACHE_DIR/slipstream-ocr"
+VERSION_FILE="$CACHE_DIR/slipstream-ocr.version"
 
 # Extract version from the Swift source
 SOURCE_VERSION=$(grep -o 'let OCR_VERSION = [0-9]*' "$SOURCE" | grep -o '[0-9]*')
@@ -30,6 +43,8 @@ if [ "$NEEDS_COMPILE" -eq 1 ]; then
         exit 1
     fi
     echo "$SOURCE_VERSION" > "$VERSION_FILE"
+    chmod 700 "$BINARY"
+    chmod 600 "$VERSION_FILE"
 fi
 
 # Validate argument

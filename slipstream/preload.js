@@ -6,8 +6,16 @@ const ALLOWED_INVOKE_CHANNELS = [
   'settings:set',
   'terms:get',
   'terms:save',
+  'terms:delete',
+  'user-data:clear',
+  'clipboard:write',
+  'clipboard:read',
   'llm:process',
+  'llm:cancel',
   'screenshot:capture',
+  'window:set-mode',
+  'window:hide',
+  'external:open',
 ];
 
 const ALLOWED_ON_CHANNELS = [

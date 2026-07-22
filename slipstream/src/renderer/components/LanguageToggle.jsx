@@ -37,6 +37,7 @@ export default function LanguageToggle({ value, onChange }) {
             <button
               key={opt.value}
               type="button"
+              aria-pressed={isSelected}
               onClick={() => onChange(opt.value)}
               style={{
                 padding: '6px 16px',

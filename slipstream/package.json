@@ -1,24 +1,48 @@
 {
   "name": "slipstream",
   "version": "1.0.0",
-  "description": "macOS floating translation and explanation assistant",
+  "description": "A privacy-first macOS assistant that turns consequential English into source-backed actions.",
   "author": "Slipstream",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/0boluan0/Slipstream.git"
+  },
+  "homepage": "https://github.com/0boluan0/Slipstream#readme",
+  "bugs": {
+    "url": "https://github.com/0boluan0/Slipstream/issues"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "packageManager": "npm@11.7.0",
   "main": "src/main/main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"electron . --dev\"",
-    "build": "vite build && electron-builder",
-    "build:signed": "vite build && electron-builder -c.mac.notarize.teamId=$APPLE_TEAM_ID",
+    "build": "vite build && electron-builder --mac --x64 -c.mac.identity=- -c.mac.notarize=false && electron-builder --mac --arm64 -c.mac.identity=- -c.mac.notarize=false",
+    "build:signed": "vite build && SLIPSTREAM_REQUIRE_SIGNING=1 electron-builder --mac --x64 -c.mac.notarize=true -c.forceCodeSigning=true && SLIPSTREAM_REQUIRE_SIGNING=1 electron-builder --mac --arm64 -c.mac.notarize=true -c.forceCodeSigning=true",
     "release:unsigned": "npm run build && npm run release:checksums && npm run check:release",
     "release:signed": "npm run check:signing && npm run check:notarization-env && npm run build:signed && npm run release:checksums && npm run check:release && npm run check:distribution",
     "start": "electron .",
-    "lint": "eslint src/",
+    "build:renderer": "vite build",
+    "lint": "eslint src preload.js scripts --ext .js,.jsx,.mjs,.cjs",
+    "check:core": "node scripts/check-core-regressions.js",
     "check:redaction": "node scripts/check-settings-redaction.js",
+    "check:prompts": "node scripts/check-prompt-templates.js",
+    "check:long-text": "node scripts/check-long-text-chunking.js && node scripts/check-long-text-flow.js",
+    "check:screenshot-shortcut": "node scripts/check-screenshot-shortcut.js && node scripts/check-screenshot-overlay.js",
+    "check:ocr-languages": "node scripts/check-ocr-languages.js",
     "check:truncation": "node scripts/check-truncation-warning.js",
-    "check:history": "tmpdir=$(mktemp -d) && electron scripts/check-history.js write \"$tmpdir\" && electron scripts/check-history.js read \"$tmpdir\"",
+    "check:action-brief": "node scripts/check-action-brief.js",
+    "check:action-brief-service": "node scripts/check-action-brief-service.js",
+    "check:verification": "node scripts/check-verification-security.js",
+    "check:storage-privacy": "node scripts/check-storage-privacy.js",
+    "check:history": "node scripts/run-history-check.js",
     "check:package-config": "node scripts/check-package-config.js",
     "check:release-info": "node scripts/check-release-info.js",
     "check:release-artifacts": "node scripts/check-release-artifacts.js",
-    "check:release": "npm run check:package-config && npm run lint && npm run check:redaction && npm run check:truncation && npm run check:history && npm run check:release-info && npm run check:release-artifacts",
+    "test": "npm run check:core && npm run check:action-brief && npm run check:action-brief-service && npm run check:verification && npm run check:storage-privacy && npm run check:redaction && npm run check:prompts && npm run check:long-text && npm run check:screenshot-shortcut && npm run check:ocr-languages && npm run check:truncation",
+    "check:release": "npm run check:package-config && npm test && npm run lint && npm run check:history && npm run check:release-info && npm run check:release-artifacts",
     "check:signing": "node scripts/check-signing-readiness.js",
     "check:notarization-env": "node scripts/check-notarization-env.js",
     "check:distribution": "node scripts/check-distribution-trust.js",
@@ -26,11 +50,12 @@
     "format": "prettier --write 'src/**/*.{js,jsx,css,html}'"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "electron-store": "^8.1.0",
     "@anthropic-ai/sdk": "^0.20.0",
-    "openai": "^4.20.0"
+    "@phosphor-icons/react": "2.1.10",
+    "electron-store": "^8.1.0",
+    "openai": "^4.20.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "build": {
     "appId": "com.slipstream.app",
@@ -39,12 +64,22 @@
       "output": "release"
     },
     "afterPack": "scripts/after-pack.js",
+    "afterSign": "scripts/after-sign.js",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
     "files": [
       "dist/**/*",
       "src/main/**/*",
       "src/shared/**/*",
       "assets/menubar-template.png",
       "assets/menubar-template@2x.png",
+      "LICENSE",
+      "README.md",
       "preload.js",
       "package.json"
     ],
@@ -52,28 +87,36 @@
       {
         "from": "scripts",
         "to": "scripts",
-        "filter": ["VisionOCR.swift", "ocr-swift-runner.sh"]
+        "filter": [
+          "VisionOCR.swift",
+          "ocr-swift-runner.sh"
+        ]
       }
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.productivity",
+      "minimumSystemVersion": "12.0",
       "icon": "build/icon.icns",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false,
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     }
   },
   "devDependencies": {
-    "electron": "^28.0.0",
-    "vite": "^5.0.0",
-    "@vitejs/plugin-react": "^4.2.0",
-    "electron-builder": "^24.0.0",
+    "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^8.2.0",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
     "eslint": "^8.50.0",
     "eslint-plugin-react": "^7.33.0",
     "eslint-plugin-react-hooks": "^4.6.0",
-    "prettier": "^3.1.0"
+    "prettier": "^3.1.0",
+    "vite": "^8.1.4"
   }
 }
