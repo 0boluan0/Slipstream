@@ -1,12 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { ArrowLeft, ShieldCheck } from '@phosphor-icons/react';
 import ApiKeyInput from './ApiKeyInput';
 import ModelSelector from './ModelSelector';
 import PromptEditor from './PromptEditor';
 import LanguageToggle from './LanguageToggle';
-import { useSettings } from '../hooks/useSettings';
 import constants from '../../shared/constants';
 
-const { LLM_BACKENDS, LANGUAGES } = constants;
+const { LLM_BACKENDS, MODEL_IDS } = constants;
 
 const BACKEND_OPTIONS = [
   { label: '免费翻译', value: LLM_BACKENDS.FREE_TRANSLATE },
@@ -17,36 +17,57 @@ const BACKEND_OPTIONS = [
   { label: '自定义', value: LLM_BACKENDS.CUSTOM },
 ];
 
-export default function SettingsPanel({ onClose }) {
-  const { settings, updateSettings, resetSettings } = useSettings();
+const VERIFICATION_OPTIONS = [
+  { value: 'ask', label: '每次询问', detail: '发现待核验内容时，由你决定是否访问官方来源。' },
+  { value: 'official-auto', label: '自动核验', detail: '自动核验明确的官方来源，并保留引用。' },
+  { value: 'local-only', label: '仅本地', detail: '不访问外部来源，相关结论始终标记为待核验。' },
+];
+
+export default function SettingsPanel({ onClose, settingsController }) {
+  const { settings, updateSettings, updateMultipleSettings, resetSettings, saveError } = settingsController;
   const [confirmReset, setConfirmReset] = useState(false);
+  const [shortcutDrafts, setShortcutDrafts] = useState({ clipboardShortcut: 'Alt+C', screenshotShortcut: 'F2' });
+
+  useEffect(() => {
+    setShortcutDrafts({
+      clipboardShortcut: settings.clipboardShortcut || 'Alt+C',
+      screenshotShortcut: settings.screenshotShortcut || 'F2',
+    });
+  }, [settings.clipboardShortcut, settings.screenshotShortcut]);
+
+  const saveSetting = useCallback(
+    (key, value) => updateSettings(key, value).catch(() => false),
+    [updateSettings]
+  );
 
   const handleBackendChange = useCallback(
     (backend) => {
-      updateSettings('activeBackend', backend);
+      const models = MODEL_IDS[backend] || [];
+      const activeModel = models.includes(settings.activeModel) ? settings.activeModel : models[0];
+      updateMultipleSettings({ activeBackend: backend, activeModel }).catch(() => false);
     },
-    [updateSettings]
+    [settings.activeModel, updateMultipleSettings]
   );
 
   const handleModelChange = useCallback(
     (model) => {
-      updateSettings('activeModel', model);
+      saveSetting('activeModel', model);
     },
-    [updateSettings]
+    [saveSetting]
   );
 
   const handlePromptChange = useCallback(
     (prompt) => {
-      updateSettings('customPrompt', prompt);
+      saveSetting('customPrompt', prompt);
     },
-    [updateSettings]
+    [saveSetting]
   );
 
   const handleLanguageChange = useCallback(
     (lang) => {
-      updateSettings('languageHint', lang);
+      saveSetting('languageHint', lang);
     },
-    [updateSettings]
+    [saveSetting]
   );
 
   const handleApiKeyChange = useCallback(
@@ -60,7 +81,6 @@ export default function SettingsPanel({ onClose }) {
       };
       const settingKey = keyMap[settings.activeBackend];
       if (settingKey) {
-        if ((settingKey === 'anthropicApiKey' || settingKey === 'openaiApiKey' || settingKey === 'deepseekApiKey') && !value.trim()) return;
         return updateSettings(settingKey, value);
       }
     },
@@ -69,7 +89,6 @@ export default function SettingsPanel({ onClose }) {
 
   const handleCustomApiKeyChange = useCallback(
     (value) => {
-      if (!value.trim()) return;
       return updateSettings('customEndpointApiKey', value);
     },
     [updateSettings]
@@ -77,22 +96,29 @@ export default function SettingsPanel({ onClose }) {
 
   const handleClipboardToggle = useCallback(
     (e) => {
-      updateSettings('clipboardMonitoring', e.target.checked);
+      saveSetting('clipboardMonitoring', e.target.checked);
     },
-    [updateSettings]
+    [saveSetting]
   );
 
   const handleShortcutChange = useCallback(
     (key, value) => {
-      updateSettings(key, value.trim());
+      const nextValue = value.trim();
+      saveSetting(key, nextValue).then((saved) => {
+        if (!saved) setShortcutDrafts((current) => ({ ...current, [key]: settings[key] }));
+      });
     },
-    [updateSettings]
+    [saveSetting, settings]
   );
 
-  const handleReset = useCallback(() => {
+  const handleReset = useCallback(async () => {
     if (confirmReset) {
-      resetSettings();
-      setConfirmReset(false);
+      try {
+        await resetSettings();
+        setConfirmReset(false);
+      } catch {
+        // The persistent error banner explains what failed.
+      }
     } else {
       setConfirmReset(true);
     }
@@ -153,6 +179,7 @@ export default function SettingsPanel({ onClose }) {
         <span style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>设置</span>
         <button
           type="button"
+          autoFocus
           onClick={onClose}
           aria-label="返回主面板"
           style={{
@@ -170,7 +197,7 @@ export default function SettingsPanel({ onClose }) {
           onMouseEnter={(e) => { e.target.style.backgroundColor = 'var(--accent-light)'; }}
           onMouseLeave={(e) => { e.target.style.backgroundColor = 'transparent'; }}
         >
-          {'←'} 返回
+          <ArrowLeft size={17} style={{ verticalAlign: 'middle', marginRight: 4 }} />返回
         </button>
       </div>
 
@@ -228,6 +255,7 @@ export default function SettingsPanel({ onClose }) {
                   : ''
               }
               onChange={handleApiKeyChange}
+              onDelete={() => handleApiKeyChange('')}
               isSaved={
                 settings.activeBackend === LLM_BACKENDS.ANTHROPIC
                   ? settings.hasAnthropicApiKey
@@ -245,6 +273,7 @@ export default function SettingsPanel({ onClose }) {
                 backend="custom_api_key"
                 value={settings.customEndpointApiKey}
                 onChange={handleCustomApiKeyChange}
+                onDelete={() => handleCustomApiKeyChange('')}
                 isSaved={settings.hasCustomEndpointApiKey}
               />
             )}
@@ -274,6 +303,14 @@ export default function SettingsPanel({ onClose }) {
           </div>
         )}
 
+        {settings.activeBackend !== LLM_BACKENDS.OLLAMA && (
+          <div style={{ padding: '10px 12px', marginTop: 8, fontSize: 12, lineHeight: 1.5, color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', borderRadius: 8 }}>
+            当前后端会把你主动提交的文字发送到所选在线服务。剪贴板监控默认关闭，开启后复制的新文字也会自动提交。
+          </div>
+        )}
+
+        {saveError && <div role="alert" style={{ marginTop: 10, color: 'var(--error)', fontSize: 12 }}>{saveError}</div>}
+
         {/* Language hint */}
         <LanguageToggle
           value={settings.languageHint}
@@ -301,10 +338,8 @@ export default function SettingsPanel({ onClose }) {
             style={{
               fontSize: 13,
               color: 'var(--text-primary)',
-              cursor: 'pointer',
               userSelect: 'none',
             }}
-            onClick={handleClipboardToggle}
           >
             自动检测剪贴板
           </span>
@@ -356,6 +391,26 @@ export default function SettingsPanel({ onClose }) {
           </label>
         </div>
 
+        <div style={sectionTitleStyle}>官方来源核验</div>
+        <div className="verification-policy" role="radiogroup" aria-label="官方来源核验策略">
+          {VERIFICATION_OPTIONS.map((option) => {
+            const selected = (settings.verificationPolicy || 'ask') === option.value;
+            return (
+              <button
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                key={option.value}
+                className={selected ? 'is-selected' : ''}
+                onClick={() => saveSetting('verificationPolicy', option.value)}
+              >
+                <ShieldCheck size={19} weight={selected ? 'fill' : 'regular'} />
+                <span><strong>{option.label}</strong><small>{option.detail}</small></span>
+              </button>
+            );
+          })}
+        </div>
+
         <div style={sectionTitleStyle}>快捷键</div>
         <label style={{ display: 'block', marginBottom: 10 }}>
           <span style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>
@@ -363,8 +418,10 @@ export default function SettingsPanel({ onClose }) {
           </span>
           <input
             className="slipstream-input"
-            value={settings.clipboardShortcut || 'Alt+C'}
-            onChange={(e) => handleShortcutChange('clipboardShortcut', e.target.value)}
+            value={shortcutDrafts.clipboardShortcut}
+            onChange={(e) => setShortcutDrafts((current) => ({ ...current, clipboardShortcut: e.target.value }))}
+            onBlur={(e) => handleShortcutChange('clipboardShortcut', e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
             placeholder="Alt+C"
           />
         </label>
@@ -374,8 +431,10 @@ export default function SettingsPanel({ onClose }) {
           </span>
           <input
             className="slipstream-input"
-            value={settings.screenshotShortcut || 'F2'}
-            onChange={(e) => handleShortcutChange('screenshotShortcut', e.target.value)}
+            value={shortcutDrafts.screenshotShortcut}
+            onChange={(e) => setShortcutDrafts((current) => ({ ...current, screenshotShortcut: e.target.value }))}
+            onBlur={(e) => handleShortcutChange('screenshotShortcut', e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
             placeholder="F2"
           />
         </label>

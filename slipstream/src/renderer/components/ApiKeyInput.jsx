@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useId } from 'react';
+import { Eye, EyeSlash } from '@phosphor-icons/react';
 
 const LABEL_MAP = {
   anthropic: 'Anthropic API Key',
@@ -18,24 +19,29 @@ const PLACEHOLDER_MAP = {
   custom_api_key: 'sk-...',
 };
 
-export default function ApiKeyInput({ backend, value, onChange, isSaved = false }) {
+export default function ApiKeyInput({ backend, value, onChange, onDelete, isSaved = false }) {
   const [showKey, setShowKey] = useState(false);
   const [draft, setDraft] = useState('');
+  const inputId = useId();
   const isUrlType = backend === 'ollama' || backend === 'custom';
-  const inputValue = isUrlType ? value : draft;
 
   const label = LABEL_MAP[backend] || 'API Key';
   const placeholder = PLACEHOLDER_MAP[backend] || (isUrlType ? '输入 URL...' : '输入 API Key...');
   const visiblePlaceholder = !isUrlType && isSaved ? '已保存，输入新值可替换' : placeholder;
 
   useEffect(() => {
-    if (!isUrlType) setDraft('');
-  }, [backend, isSaved, isUrlType]);
+    setDraft(isUrlType ? (value || '') : '');
+  }, [backend, isSaved, isUrlType, value]);
 
-  const commitSecret = async () => {
-    if (isUrlType || !draft.trim()) return;
-    await onChange(draft.trim());
-    setDraft('');
+  const commit = async () => {
+    const nextValue = draft.trim();
+    if ((!isUrlType && !nextValue) || (isUrlType && nextValue === (value || ''))) return;
+    try {
+      await onChange(nextValue);
+      if (!isUrlType) setDraft('');
+    } catch {
+      // Keep the draft visible so the user can correct or retry it.
+    }
   };
 
   const inputStyle = {
@@ -55,6 +61,7 @@ export default function ApiKeyInput({ backend, value, onChange, isSaved = false 
   return (
     <div style={{ marginBottom: 12 }}>
       <label
+        htmlFor={inputId}
         style={{
           display: 'block',
           fontSize: 12,
@@ -67,31 +74,26 @@ export default function ApiKeyInput({ backend, value, onChange, isSaved = false 
       </label>
       <div style={{ position: 'relative' }}>
         <input
+          id={inputId}
           type={showKey && !isUrlType ? 'text' : isUrlType ? 'text' : 'password'}
-          value={inputValue}
-          onChange={(e) => {
-            if (isUrlType) {
-              onChange(e.target.value);
-            } else {
-              setDraft(e.target.value);
-            }
-          }}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (!isUrlType && e.key === 'Enter') {
+            if (e.key === 'Enter') {
               e.preventDefault();
-              commitSecret();
+              commit();
             }
           }}
           placeholder={visiblePlaceholder}
           style={inputStyle}
           onFocus={(e) => {
             e.target.style.borderColor = 'var(--accent)';
-            e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent)';
+            e.target.style.boxShadow = '0 0 0 3px var(--accent-light)';
           }}
           onBlur={(e) => {
             e.target.style.borderColor = 'var(--border-secondary)';
             e.target.style.boxShadow = 'none';
-            commitSecret();
+            commit();
           }}
         />
         {!isUrlType && (
@@ -110,16 +112,18 @@ export default function ApiKeyInput({ backend, value, onChange, isSaved = false 
               padding: '2px 4px',
               lineHeight: 1,
             }}
-            tabIndex={-1}
             aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}
           >
-            {showKey ? '🙈' : '👁'}
+            {showKey ? <EyeSlash size={18} /> : <Eye size={18} />}
           </button>
         )}
       </div>
       {!isUrlType && isSaved && !draft && (
-        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-secondary)' }}>
-          已保存
+        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)' }}>
+          <span>已安全保存</span>
+          <button type="button" onClick={onDelete} style={{ border: 0, background: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px 8px' }}>
+            删除凭据
+          </button>
         </div>
       )}
     </div>

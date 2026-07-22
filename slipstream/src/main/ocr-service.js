@@ -30,7 +30,11 @@ function cleanOcrText(rawText) {
  */
 function performOCR(imagePath) {
   return new Promise((resolve, reject) => {
-    execFile('/bin/bash', [OCR_SCRIPT, imagePath], { timeout: 15000 }, (error, stdout, stderr) => {
+    const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
+    execFile('/bin/bash', [OCR_SCRIPT, imagePath], {
+      timeout: 15000,
+      env: { ...process.env, SLIPSTREAM_OCR_CACHE: cacheDir },
+    }, (error, stdout, stderr) => {
       if (error) {
         // Swift prints structured errors to stdout; shell/compiler errors usually use stderr.
         try {

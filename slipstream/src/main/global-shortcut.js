@@ -23,10 +23,10 @@ function registerShortcuts(mainWindow, settings = {}) {
     });
   };
 
-  const sendText = (text, source) => {
+  const sendText = (text, source, extra = {}) => {
     mainWindow.show();
     mainWindow.focus();
-    mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, { text, source });
+    mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, { text, source, ...extra });
   };
 
   const clipboardRegistered = globalShortcut.register(clipboardShortcut, () => {
@@ -59,14 +59,17 @@ function registerShortcuts(mainWindow, settings = {}) {
     const outputPath = path.join(screenshotService.getTempDir(), `screenshot-${Date.now()}.png`);
 
     try {
-      await screenshotService.captureRegion(outputPath);
+      await screenshotService.captureSelectedRegion(outputPath);
       const ocrResult = await ocrService.performOCR(outputPath);
       if (mainWindow && !mainWindow.isDestroyed()) {
         if (!ocrResult.text || !ocrResult.text.trim()) {
           mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: OCR_FAILURE_MESSAGE });
           return;
         }
-        sendText(ocrResult.text, 'ocr');
+        sendText(ocrResult.text, 'ocr', {
+          confidence: ocrResult.confidence,
+          blocks: ocrResult.blocks,
+        });
       }
     } catch (err) {
       // User pressed Escape — not an error, just silently return
@@ -75,7 +78,8 @@ function registerShortcuts(mainWindow, settings = {}) {
       }
       console.error('[GlobalShortcut] Screenshot error:', err.message);
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: OCR_FAILURE_MESSAGE });
+        const msg = err.message || OCR_FAILURE_MESSAGE;
+        mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, { error: msg });
       }
     } finally {
       // Clean up temporary file
@@ -87,6 +91,8 @@ function registerShortcuts(mainWindow, settings = {}) {
     console.warn(`[GlobalShortcut] Failed to register ${screenshotShortcut} shortcut (may be taken by another app).`);
     sendShortcutError(screenshotShortcut);
   }
+
+  return clipboardRegistered && screenshotRegistered;
 }
 
 /**

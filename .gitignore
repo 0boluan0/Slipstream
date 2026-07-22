@@ -4,12 +4,10 @@ BACKLOG.md
 PROGRESS.md
 Slipstream-Brainstorm.md
 extract_plan.py
-package-lock.json
 .codex/
+.git-nested-slipstream-backup/
 DIRECTIVES.md
 GOAL_PROMPT.md
 PLAN.md
-SPEC.md
 slipstream/.eslintrc.json
-slipstream/.nvmrc
 slipstream/.prettierrc

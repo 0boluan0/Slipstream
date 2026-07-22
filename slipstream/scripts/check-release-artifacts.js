@@ -7,14 +7,15 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const pkg = require('../package.json');
 const productName = pkg.build?.productName || pkg.name;
-const arch = process.arch;
-const appDir = arch === 'arm64' ? 'mac-arm64' : 'mac';
-const dmgPath = path.join(root, 'release', `${productName}-${pkg.version}-${arch}.dmg`);
-const zipPath = path.join(root, 'release', `${productName}-${pkg.version}-${arch}.zip`);
-const appPath = path.join(root, 'release', appDir, `${productName}.app`);
+const arches = ['arm64', 'x64'];
+const artifacts = arches.map((arch) => ({
+  arch,
+  dmgPath: path.join(root, 'release', `${productName}-${pkg.version}-${arch}.dmg`),
+  zipPath: path.join(root, 'release', `${productName}-${pkg.version}-${arch}.zip`),
+}));
 const checksumsPath = path.join(root, 'release', 'SHA256SUMS.txt');
 
-for (const file of [dmgPath, zipPath, appPath, checksumsPath]) {
+for (const file of [...artifacts.flatMap(({ dmgPath, zipPath }) => [dmgPath, zipPath]), checksumsPath]) {
   if (!fs.existsSync(file)) {
     console.error(`missing release artifact: ${file}`);
     process.exit(1);
@@ -30,7 +31,7 @@ const checksums = Object.fromEntries(
     .map(([hash, filename]) => [filename, hash])
 );
 
-for (const filePath of [dmgPath, zipPath]) {
+for (const filePath of artifacts.flatMap(({ dmgPath, zipPath }) => [dmgPath, zipPath])) {
   const filename = path.basename(filePath);
   const actual = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
   if (checksums[filename] !== actual) {
@@ -39,39 +40,38 @@ for (const filePath of [dmgPath, zipPath]) {
   }
 }
 
-execFileSync('hdiutil', ['verify', dmgPath], { stdio: 'ignore' });
-
-let mountPoint = '';
-let dmgError = '';
-try {
-  const attachOutput = execFileSync('hdiutil', ['attach', '-nobrowse', '-readonly', dmgPath], { encoding: 'utf8' });
-  mountPoint = attachOutput
-    .split('\n')
-    .map((line) => line.match(/(\/Volumes\/.+)$/)?.[1])
-    .find(Boolean);
-
-  if (!mountPoint || !fs.existsSync(path.join(mountPoint, `${productName}.app`))) {
-    dmgError = `DMG does not contain ${productName}.app`;
-  } else if (!fs.existsSync(path.join(mountPoint, 'Applications'))) {
-    dmgError = 'DMG does not contain Applications install shortcut';
+for (const { dmgPath } of artifacts) {
+  execFileSync('hdiutil', ['verify', dmgPath], { stdio: 'ignore' });
+  let mountPoint = '';
+  let dmgError = '';
+  try {
+    const attachOutput = execFileSync('hdiutil', ['attach', '-nobrowse', '-readonly', dmgPath], { encoding: 'utf8' });
+    mountPoint = attachOutput.split('\n').map((line) => line.match(/(\/Volumes\/.+)$/)?.[1]).find(Boolean);
+    if (!mountPoint || !fs.existsSync(path.join(mountPoint, `${productName}.app`))) {
+      dmgError = `DMG does not contain ${productName}.app`;
+    } else if (!fs.existsSync(path.join(mountPoint, 'Applications'))) {
+      dmgError = 'DMG does not contain Applications install shortcut';
+    } else {
+      execFileSync('codesign', ['--verify', '--deep', path.join(mountPoint, `${productName}.app`)], { stdio: 'ignore' });
+    }
+  } finally {
+    if (mountPoint) execFileSync('hdiutil', ['detach', mountPoint], { stdio: 'ignore' });
   }
-} finally {
-  if (mountPoint) {
-    execFileSync('hdiutil', ['detach', mountPoint], { stdio: 'ignore' });
+  if (dmgError) {
+    console.error(dmgError);
+    process.exit(1);
   }
-}
-
-if (dmgError) {
-  console.error(dmgError);
-  process.exit(1);
 }
 
 const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), 'slipstream-release-'));
 try {
-  execFileSync('unzip', ['-q', zipPath, '-d', tmpdir]);
-
-  const binaryPath = path.join(tmpdir, `${productName}.app`, 'Contents', 'MacOS', productName);
-  fs.accessSync(binaryPath, fs.constants.X_OK);
+  for (const { arch, zipPath } of artifacts) {
+    const archDir = path.join(tmpdir, arch);
+    execFileSync('unzip', ['-q', zipPath, '-d', archDir]);
+    const unzippedApp = path.join(archDir, `${productName}.app`);
+    fs.accessSync(path.join(unzippedApp, 'Contents', 'MacOS', productName), fs.constants.X_OK);
+    execFileSync('codesign', ['--verify', '--deep', '--strict', unzippedApp], { stdio: 'ignore' });
+  }
 } catch (error) {
   console.error(error.message.includes('access') ? `zip does not contain executable ${productName}.app` : error.message);
   process.exitCode = 1;

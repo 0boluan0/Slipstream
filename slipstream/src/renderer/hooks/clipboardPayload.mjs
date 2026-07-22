@@ -1,6 +1,6 @@
 export function normalizeClipboardPayload(payload) {
   if (typeof payload === 'string') {
-    return { text: payload, source: 'monitor', error: null, truncated: false, originalLength: payload.length };
+    return { text: payload, source: 'monitor', error: null, truncated: false, originalLength: payload.length, confidence: null, blocks: [] };
   }
   return {
     text: payload?.text || '',
@@ -9,5 +9,6 @@ export function normalizeClipboardPayload(payload) {
     truncated: Boolean(payload?.truncated),
     originalLength: payload?.originalLength || payload?.text?.length || 0,
     confidence: payload?.confidence ?? null,
+    blocks: Array.isArray(payload?.blocks) ? payload.blocks : [],
   };
 }

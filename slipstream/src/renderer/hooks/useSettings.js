@@ -26,7 +26,10 @@ const defaultSettings = {
   windowX: null,
   windowY: null,
   startMinimized: false,
-  clipboardMonitoring: true,
+  clipboardMonitoring: DEFAULTS.CLIPBOARD_MONITORING,
+  verificationPolicy: 'ask',
+  resultOrder: 'action-first',
+  privacyNoticeSeen: false,
   clipboardShortcut: 'Alt+C',
   screenshotShortcut: 'F2',
 };
@@ -34,6 +37,7 @@ const defaultSettings = {
 export function useSettings() {
   const [settings, setSettings] = useState(defaultSettings);
   const [loading, setLoading] = useState(true);
+  const [saveError, setSaveError] = useState('');
   const { invoke, on } = useIpc();
 
   useEffect(() => {
@@ -67,35 +71,38 @@ export function useSettings() {
     try {
       await invoke(IPC_CHANNELS.SETTINGS_SET, key, value);
       setSettings(prev => applyRendererSettingUpdate(prev, key, value));
+      setSaveError('');
+      return true;
     } catch (err) {
       console.error('Failed to save setting:', err);
+      setSaveError(err?.message || '设置保存失败');
+      throw err;
     }
   }, [invoke]);
 
   const updateMultipleSettings = useCallback(async (updates) => {
     const entries = Object.entries(updates);
-    for (const [key, value] of entries) {
-      try {
+    try {
+      for (const [key, value] of entries) {
         await invoke(IPC_CHANNELS.SETTINGS_SET, key, value);
-      } catch (err) {
-        console.error(`Failed to save ${key}:`, err);
       }
+      setSettings(prev => ({ ...prev, ...updates }));
+      setSaveError('');
+      return true;
+    } catch (err) {
+      setSaveError(err?.message || '设置保存失败');
+      throw err;
     }
-    setSettings(prev => ({ ...prev, ...updates }));
   }, [invoke]);
 
-  const resetSettings = useCallback(() => {
-    const safeDefaults = { ...defaultSettings };
-    delete safeDefaults.anthropicApiKey;
-    delete safeDefaults.openaiApiKey;
-    delete safeDefaults.deepseekApiKey;
-    delete safeDefaults.customEndpointApiKey;
-    delete safeDefaults.hasAnthropicApiKey;
-    delete safeDefaults.hasOpenaiApiKey;
-    delete safeDefaults.hasDeepseekApiKey;
-    delete safeDefaults.hasCustomEndpointApiKey;
-    updateMultipleSettings(safeDefaults);
-  }, [updateMultipleSettings]);
+  const resetSettings = useCallback(async () => {
+    const persistedDefaults = Object.fromEntries(
+      Object.entries(defaultSettings).filter(([key]) => !key.startsWith('has'))
+    );
+    await updateMultipleSettings(persistedDefaults);
+    await invoke(IPC_CHANNELS.USER_DATA_CLEAR);
+    setSettings(defaultSettings);
+  }, [invoke, updateMultipleSettings]);
 
-  return { settings, updateSettings, updateMultipleSettings, resetSettings, loading };
+  return { settings, updateSettings, updateMultipleSettings, resetSettings, loading, saveError };
 }

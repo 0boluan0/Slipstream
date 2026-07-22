@@ -1,14 +1,11 @@
-import React from 'react';
-import constants from '../../shared/constants';
-
-const { DEFAULT_PROMPTS } = constants;
-
-const defaultPromptPreview = DEFAULT_PROMPTS.explain?.userPromptTemplate
-  ? DEFAULT_PROMPTS.explain.userPromptTemplate.substring(0, 60) + '...'
-  : '自定义提示词模板';
+import React, { useEffect, useId, useState } from 'react';
 
 export default function PromptEditor({ value, onChange }) {
-  const charCount = value ? value.length : 0;
+  const [draft, setDraft] = useState(value || '');
+  const inputId = useId();
+  const charCount = draft.length;
+
+  useEffect(() => setDraft(value || ''), [value]);
 
   const textareaStyle = {
     width: '100%',
@@ -30,6 +27,7 @@ export default function PromptEditor({ value, onChange }) {
   return (
     <div style={{ marginBottom: 12 }}>
       <label
+        htmlFor={inputId}
         style={{
           display: 'block',
           fontSize: 12,
@@ -42,17 +40,19 @@ export default function PromptEditor({ value, onChange }) {
       </label>
       <div style={{ position: 'relative' }}>
         <textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          id={inputId}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           placeholder="(使用默认提示词)"
           style={textareaStyle}
           onFocus={(e) => {
             e.target.style.borderColor = 'var(--accent)';
-            e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent) 15%, transparent)';
+            e.target.style.boxShadow = '0 0 0 3px var(--accent-light)';
           }}
           onBlur={(e) => {
             e.target.style.borderColor = 'var(--border-secondary)';
             e.target.style.boxShadow = 'none';
+            if (draft !== value) onChange(draft);
           }}
         />
         <span
