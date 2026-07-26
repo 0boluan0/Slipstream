@@ -43,10 +43,12 @@ const MATERIAL_REQUIREMENTS = Object.freeze([
 
 const STEP_ACTORS = Object.freeze(['user', 'institution', 'other', 'unknown']);
 const STEP_URGENCIES = Object.freeze(['now', 'before_deadline', 'when_triggered', 'unknown']);
-const VERIFICATION_STATUSES = Object.freeze(['pending', 'verified', 'failed', 'not_needed']);
+const VERIFICATION_STATUSES = Object.freeze(['pending', 'retrieved', 'verified', 'failed', 'not_needed']);
 const SOURCE_LANGUAGES = Object.freeze(['en', 'zh', 'mixed', 'unknown']);
 const TARGET_LANGUAGES = Object.freeze(['zh', 'en']);
 const EVIDENCE_MATCH_KINDS = Object.freeze(['exact', 'whitespace_normalized']);
+const MAX_VERIFICATION_RETRIEVALS = 6;
+const MAX_CONTEXT_SECTION_LENGTH = 2000;
 
 function createEmptyActionBrief({
   status = 'invalid',
@@ -108,6 +110,7 @@ function validateActionBrief(brief, { sourceText } = {}) {
     expectNonEmptyString(errors, item?.surface, `${path}.surface`);
     expectEnum(errors, item?.kind, TERM_KINDS, `${path}.kind`);
     expectNonEmptyString(errors, item?.explanation, `${path}.explanation`);
+    expectOptionalNullableString(errors, item?.verificationId, `${path}.verificationId`);
     validateProvenance(errors, item?.provenance, `${path}.provenance`, sourceText);
   });
 
@@ -116,6 +119,25 @@ function validateActionBrief(brief, { sourceText } = {}) {
     expectNonEmptyString(errors, item?.label, `${path}.label`);
     expectEnum(errors, item?.kind, CONTEXT_KINDS, `${path}.kind`);
     expectNonEmptyString(errors, item?.explanation, `${path}.explanation`);
+    expectOptionalBoundedNullableString(
+      errors,
+      item?.whatItIs,
+      MAX_CONTEXT_SECTION_LENGTH,
+      `${path}.whatItIs`,
+    );
+    expectOptionalBoundedNullableString(
+      errors,
+      item?.whyItMatters,
+      MAX_CONTEXT_SECTION_LENGTH,
+      `${path}.whyItMatters`,
+    );
+    expectOptionalBoundedNullableString(
+      errors,
+      item?.whatToDo,
+      MAX_CONTEXT_SECTION_LENGTH,
+      `${path}.whatToDo`,
+    );
+    expectOptionalNullableString(errors, item?.verificationId, `${path}.verificationId`);
     validateProvenance(errors, item?.provenance, `${path}.provenance`, sourceText);
   });
 
@@ -154,15 +176,36 @@ function validateActionBrief(brief, { sourceText } = {}) {
     expectNonEmptyString(errors, item?.reason, `${path}.reason`);
     expectEnum(errors, item?.status, VERIFICATION_STATUSES, `${path}.status`);
     validateVerificationLookup(errors, item?.lookup, `${path}.lookup`);
+    validateArray(errors, item?.retrievals, `${path}.retrievals`, (retrieval, retrievalPath) => {
+      expectNonEmptyString(errors, retrieval?.id, `${retrievalPath}.id`);
+      expectNonEmptyString(errors, retrieval?.publisher, `${retrievalPath}.publisher`);
+      expectHttpsUrl(errors, retrieval?.url, `${retrievalPath}.url`);
+      expectIsoDate(errors, retrieval?.retrievedAt, `${retrievalPath}.retrievedAt`);
+      expectNonEmptyString(errors, retrieval?.excerpt, `${retrievalPath}.excerpt`);
+      if (retrieval?.official !== true) errors.push(`${retrievalPath}.official must be true`);
+    });
+    if (Array.isArray(item?.retrievals) && item.retrievals.length > MAX_VERIFICATION_RETRIEVALS) {
+      errors.push(`${path}.retrievals must contain at most ${MAX_VERIFICATION_RETRIEVALS} items`);
+    }
     validateProvenance(errors, item?.provenance, `${path}.provenance`, sourceText);
     if (item?.status === 'verified' && item?.provenance?.kind !== 'official') {
       errors.push(`${path} can be verified only with official provenance`);
     }
     if (item?.lookup !== null && (
-      !['pending', 'failed'].includes(item?.status) ||
+      !['pending', 'retrieved', 'failed'].includes(item?.status) ||
       item?.provenance?.kind !== 'pending'
     )) {
-      errors.push(`${path}.lookup is an untrusted retrieval plan and requires pending provenance with pending or failed status`);
+      errors.push(`${path}.lookup is an untrusted retrieval plan and requires pending provenance with pending, retrieved, or failed status`);
+    }
+    if (item?.status === 'retrieved' && (
+      item?.provenance?.kind !== 'pending' ||
+      !Array.isArray(item?.retrievals) ||
+      item.retrievals.length === 0
+    )) {
+      errors.push(`${path} with retrieved status requires pending provenance and at least one retrieval receipt`);
+    }
+    if (!['retrieved', 'verified'].includes(item?.status) && item?.retrievals?.length > 0) {
+      errors.push(`${path}.retrievals require retrieved or verified status`);
     }
   });
 
@@ -170,6 +213,8 @@ function validateActionBrief(brief, { sourceText } = {}) {
     expectNonEmptyString(errors, item?.code, `${path}.code`);
     expectNonEmptyString(errors, item?.message, `${path}.message`);
   });
+
+  validateKnowledgeVerificationLinks(errors, brief);
 
   if (!isPlainObject(brief.analysisProvenance)) {
     errors.push('analysisProvenance must be an object');
@@ -323,6 +368,49 @@ function validateVerificationLookup(errors, lookup, path) {
   });
 }
 
+function validateKnowledgeVerificationLinks(errors, brief) {
+  if (!Array.isArray(brief?.verifications)) return;
+  const verificationById = new Map(
+    brief.verifications
+      .filter((item) => typeof item?.id === 'string')
+      .map((item) => [item.id, item]),
+  );
+
+  for (const [collectionName, items] of [
+    ['terms', brief.terms],
+    ['contexts', brief.contexts],
+  ]) {
+    if (!Array.isArray(items)) continue;
+    items.forEach((item, index) => {
+      const path = `${collectionName}[${index}]`;
+      const verificationId = item?.verificationId;
+      const linkedVerification = typeof verificationId === 'string'
+        ? verificationById.get(verificationId)
+        : null;
+      if (typeof verificationId === 'string' && !linkedVerification) {
+        errors.push(`${path}.verificationId must reference an existing verification`);
+        return;
+      }
+      if (linkedVerification && !provenanceEvidenceOverlaps(item?.provenance, linkedVerification.provenance)) {
+        errors.push(`${path}.verificationId must reference a verification triggered by matching source evidence`);
+      }
+    });
+  }
+}
+
+function provenanceEvidenceOverlaps(left, right) {
+  const leftEvidence = Array.isArray(left?.evidence) ? left.evidence : [];
+  const rightEvidence = Array.isArray(right?.evidence) ? right.evidence : [];
+  return leftEvidence.some((leftEntry) => rightEvidence.some((rightEntry) => (
+    Number.isSafeInteger(leftEntry?.start) &&
+    Number.isSafeInteger(leftEntry?.end) &&
+    Number.isSafeInteger(rightEntry?.start) &&
+    Number.isSafeInteger(rightEntry?.end) &&
+    leftEntry.start < rightEntry.end &&
+    rightEntry.start < leftEntry.end
+  )));
+}
+
 function validateArray(errors, value, path, validateItem) {
   if (!Array.isArray(value)) {
     errors.push(`${path} must be an array`);
@@ -363,6 +451,19 @@ function expectBoundedNonEmptyString(errors, value, maxLength, path) {
 
 function expectNullableString(errors, value, path) {
   if (value !== null && typeof value !== 'string') errors.push(`${path} must be a string or null`);
+}
+
+function expectOptionalNullableString(errors, value, path) {
+  if (value !== undefined && value !== null && (typeof value !== 'string' || !value.trim())) {
+    errors.push(`${path} must be a non-empty string, null, or omitted`);
+  }
+}
+
+function expectOptionalBoundedNullableString(errors, value, maxLength, path) {
+  expectOptionalNullableString(errors, value, path);
+  if (typeof value === 'string' && value.length > maxLength) {
+    errors.push(`${path} must contain at most ${maxLength} characters`);
+  }
 }
 
 function expectIsoDate(errors, value, path) {

@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict');
 
-const { createActionBrief } = require('../src/main/action-brief-service');
+const {
+  createActionBrief,
+  verifyExistingActionBrief,
+} = require('../src/main/action-brief-service');
 const { validateActionBrief } = require('../src/shared/action-brief.cjs');
 
 const SOURCE_TEXT = 'The message asks whether Graduate Route eligibility rules have changed.';
@@ -50,6 +53,12 @@ function makePendingCandidate() {
   };
 }
 
+function makeDiscoveryCandidate() {
+  const candidate = makePendingCandidate();
+  candidate.verifications[0].lookup.candidateUrls = [];
+  return candidate;
+}
+
 function structuredOutput() {
   return JSON.stringify(makePendingCandidate());
 }
@@ -89,6 +98,40 @@ async function checkFreeTranslationFailsClosed() {
   assert(result.brief.warnings.some((warning) => warning.code === 'OFFICIAL_VERIFICATION_NOT_RUN'));
 }
 
+async function checkTruncatedCaptureWarningIsDurable() {
+  const candidate = makePendingCandidate();
+  candidate.verifications = [];
+  candidate.terms = [{
+    surface: 'Graduate Route',
+    kind: 'policy',
+    explanation: '英国毕业生签证路线。',
+    provenance: 'original',
+    evidenceQuotes: ['Graduate Route'],
+    citationIds: [],
+    confidence: 1,
+  }];
+  const result = await createActionBrief({
+    sourceText: SOURCE_TEXT,
+    rawOutput: JSON.stringify(candidate),
+    backend: 'openai',
+    model: 'test-model',
+    captureEnvelope: {
+      id: 'capture-truncated',
+      truncated: true,
+      originalLength: SOURCE_TEXT.length + 37,
+    },
+    verificationPolicy: 'local-only',
+  });
+
+  assertValid(result);
+  assert.equal(result.brief.status, 'partial');
+  const warning = result.brief.warnings.find((item) => item.code === 'SOURCE_TRUNCATED');
+  assert.ok(warning);
+  assert.equal(warning.originalLength, SOURCE_TEXT.length + 37);
+  assert.equal(warning.retainedLength, SOURCE_TEXT.length);
+  assert.match(warning.message, new RegExp(`${SOURCE_TEXT.length + 37}.*${SOURCE_TEXT.length}`));
+}
+
 async function checkAskWithoutApprovalMakesNoFetch() {
   let fetchCalls = 0;
   const result = await createActionBrief({
@@ -108,17 +151,299 @@ async function checkAskWithoutApprovalMakesNoFetch() {
 
   assertValid(result);
   assert.equal(fetchCalls, 0);
-  assert.deepEqual(result.verificationSummary, {
+  assert.match(result.verificationSummary.approvalId, /^[a-f0-9]{64}$/);
+  assert.deepEqual({ ...result.verificationSummary, approvalId: undefined }, {
     policy: 'ask',
     fetchAttempted: false,
     requestedCount: 1,
     verifiedCount: 0,
+    approvalId: undefined,
   });
   const verification = result.brief.verifications[0];
   assert.equal(verification.status, 'pending');
   assert.deepEqual(verification.lookup, LOOKUP);
   assert.equal(verification.provenance.kind, 'pending');
   assert.deepEqual(verification.provenance.citations, []);
+}
+
+async function checkAskApprovalIsBoundToCurrentLookup() {
+  const firstPass = await createActionBrief({
+    sourceText: SOURCE_TEXT,
+    rawOutput: structuredOutput(),
+    backend: 'openai',
+    model: 'test-model',
+    verificationPolicy: 'ask',
+  });
+  const approvalId = firstPass.verificationSummary.approvalId;
+  assert.match(approvalId, /^[a-f0-9]{64}$/);
+
+  for (const candidateApprovalId of [undefined, '0'.repeat(64)]) {
+    let fetchCalls = 0;
+    const result = await createActionBrief({
+      sourceText: SOURCE_TEXT,
+      rawOutput: structuredOutput(),
+      backend: 'openai',
+      model: 'test-model',
+      verificationPolicy: 'ask',
+      verificationApproved: true,
+      verificationApprovalId: candidateApprovalId,
+      verificationDependencies: {
+        fetchPage: async () => {
+          fetchCalls += 1;
+          throw new Error('unbound approval must never fetch');
+        },
+      },
+    });
+    assert.equal(fetchCalls, 0);
+    assert.equal(result.verificationSummary.fetchAttempted, false);
+    assert.equal(result.brief.verifications[0].status, 'pending');
+  }
+
+  const changedCandidate = makePendingCandidate();
+  changedCandidate.verifications[0].lookup.query = 'Graduate visa changed lookup';
+  let changedPlanFetchCalls = 0;
+  const changedPlan = await createActionBrief({
+    sourceText: SOURCE_TEXT,
+    rawOutput: JSON.stringify(changedCandidate),
+    backend: 'openai',
+    model: 'test-model',
+    verificationPolicy: 'ask',
+    verificationApproved: true,
+    verificationApprovalId: approvalId,
+    verificationDependencies: {
+      fetchPage: async () => {
+        changedPlanFetchCalls += 1;
+        throw new Error('approval for a previous lookup must never fetch a changed plan');
+      },
+    },
+  });
+  assert.equal(changedPlanFetchCalls, 0);
+  assert.equal(changedPlan.verificationSummary.fetchAttempted, false);
+  assert.notEqual(changedPlan.verificationSummary.approvalId, approvalId);
+
+  let approvedFetchCalls = 0;
+  const approvedPlan = await createActionBrief({
+    sourceText: SOURCE_TEXT,
+    rawOutput: structuredOutput(),
+    backend: 'openai',
+    model: 'test-model',
+    verificationPolicy: 'ask',
+    verificationApproved: true,
+    verificationApprovalId: approvalId,
+    verificationDependencies: {
+      fetchPage: async (url) => {
+        approvedFetchCalls += 1;
+        return {
+          fetched: true,
+          url,
+          retrievedAt: RETRIEVED_AT,
+          excerpt: 'Graduate Route eligibility rules are current.',
+          supportText: 'Graduate Route eligibility rules are current.',
+        };
+      },
+    },
+  });
+  assert.equal(approvedFetchCalls, 1);
+  assert.equal(approvedPlan.verificationSummary.verifiedCount, 0);
+  assert.equal(approvedPlan.brief.verifications[0].status, 'retrieved');
+  assert.equal(approvedPlan.brief.verifications[0].provenance.kind, 'pending');
+  assert.equal(approvedPlan.brief.verifications[0].retrievals.length, 1);
+}
+
+async function checkExistingBriefVerificationUsesApprovedPlanOnly() {
+  const pending = await createActionBrief({
+    sourceText: SOURCE_TEXT,
+    rawOutput: structuredOutput(),
+    backend: 'openai',
+    model: 'test-model',
+    verificationPolicy: 'ask',
+  });
+  const approvalId = pending.verificationSummary.approvalId;
+
+  let approvedFetchCalls = 0;
+  const verified = await verifyExistingActionBrief({
+    sourceText: SOURCE_TEXT,
+    brief: pending.brief,
+    verificationPolicy: 'ask',
+    verificationApproved: true,
+    verificationApprovalId: approvalId,
+    verificationDependencies: {
+      fetchPage: async (url) => {
+        approvedFetchCalls += 1;
+        return {
+          fetched: true,
+          url,
+          retrievedAt: RETRIEVED_AT,
+          excerpt: 'Graduate Route eligibility rules are current.',
+          supportText: 'Graduate Route eligibility rules are current.',
+        };
+      },
+    },
+  });
+  assert.equal(approvedFetchCalls, 1);
+  assert.notEqual(verified.brief, pending.brief);
+  assert.equal(pending.brief.verifications[0].status, 'pending');
+  assert.equal(verified.brief.verifications[0].status, 'retrieved');
+  assert.equal(verified.brief.verifications[0].provenance.kind, 'pending');
+  assert.equal(verified.brief.verifications[0].retrievals.length, 1);
+
+  for (const mutate of [
+    (brief) => {
+      brief.verifications[0].lookup.query = 'Changed unseen lookup';
+    },
+    (brief) => {
+      brief.verifications[0].claim = 'Changed unseen claim';
+    },
+  ]) {
+    const alteredBrief = structuredClone(pending.brief);
+    mutate(alteredBrief);
+    let alteredFetchCalls = 0;
+    const result = await verifyExistingActionBrief({
+      sourceText: SOURCE_TEXT,
+      brief: alteredBrief,
+      verificationPolicy: 'ask',
+      verificationApproved: true,
+      verificationApprovalId: approvalId,
+      verificationDependencies: {
+        fetchPage: async () => {
+          alteredFetchCalls += 1;
+          throw new Error('altered approved plan must never fetch');
+        },
+      },
+    });
+    assert.equal(alteredFetchCalls, 0);
+    assert.equal(result.verificationSummary.fetchAttempted, false);
+    assert.equal(result.brief.verifications[0].status, 'pending');
+  }
+
+  const wrongSource = structuredClone(pending.brief);
+  wrongSource.source.sha256 = '0'.repeat(64);
+  let wrongSourceFetchCalls = 0;
+  await assert.rejects(
+    verifyExistingActionBrief({
+      sourceText: SOURCE_TEXT,
+      brief: wrongSource,
+      verificationPolicy: 'ask',
+      verificationApproved: true,
+      verificationApprovalId: approvalId,
+      verificationDependencies: {
+        fetchPage: async () => {
+          wrongSourceFetchCalls += 1;
+        },
+      },
+    }),
+    (error) => error.code === 'source-mismatch'
+  );
+  assert.equal(wrongSourceFetchCalls, 0);
+}
+
+async function checkDiscoveryRunsOnlyInApprovedExecutionChain() {
+  let unapprovedDiscoveryCalls = 0;
+  let unapprovedFetchCalls = 0;
+  const pending = await createActionBrief({
+    sourceText: SOURCE_TEXT,
+    rawOutput: JSON.stringify(makeDiscoveryCandidate()),
+    backend: 'openai',
+    model: 'test-model',
+    verificationPolicy: 'ask',
+    verificationDependencies: {
+      discoverCandidates: async () => {
+        unapprovedDiscoveryCalls += 1;
+        throw new Error('unapproved analysis must not discover');
+      },
+      fetchPage: async () => {
+        unapprovedFetchCalls += 1;
+        throw new Error('unapproved analysis must not fetch');
+      },
+    },
+  });
+  assert.equal(unapprovedDiscoveryCalls, 0);
+  assert.equal(unapprovedFetchCalls, 0);
+  assert.equal(pending.brief.verifications[0].status, 'pending');
+  assert.deepEqual(pending.brief.verifications[0].lookup.candidateUrls, []);
+
+  const controller = new AbortController();
+  let approvedDiscoveryCalls = 0;
+  let approvedFetchCalls = 0;
+  const approved = await verifyExistingActionBrief({
+    sourceText: SOURCE_TEXT,
+    brief: pending.brief,
+    verificationPolicy: 'ask',
+    verificationApproved: true,
+    verificationApprovalId: pending.verificationSummary.approvalId,
+    signal: controller.signal,
+    verificationDependencies: {
+      discoverCandidates: async (input) => {
+        approvedDiscoveryCalls += 1;
+        assert.equal(input.publisher, LOOKUP.publisher);
+        assert.equal(input.query, LOOKUP.query);
+        assert.equal(input.signal, controller.signal);
+        return {
+          fetchAttempted: true,
+          candidateUrls: [OFFICIAL_URL],
+          candidates: [{
+            url: OFFICIAL_URL,
+            title: 'UNTRUSTED_SEARCH_METADATA',
+            description: 'Metadata is not evidence.',
+            metadataTrust: 'untrusted',
+          }],
+        };
+      },
+      fetchPage: async (url, options) => {
+        approvedFetchCalls += 1;
+        assert.equal(url, OFFICIAL_URL);
+        assert.equal(options.signal, controller.signal);
+        return {
+          fetched: true,
+          url,
+          retrievedAt: RETRIEVED_AT,
+          excerpt: 'Fetched GOV.UK page receipt.',
+          supportText: 'Fetched GOV.UK page receipt.',
+        };
+      },
+    },
+  });
+  assertValid(approved);
+  assert.equal(approvedDiscoveryCalls, 1);
+  assert.equal(approvedFetchCalls, 1);
+  assert.equal(approved.verificationSummary.fetchAttempted, true);
+  assert.equal(approved.verificationSummary.verifiedCount, 0);
+  assert.equal(approved.brief.verifications[0].status, 'retrieved');
+  assert.equal(approved.brief.verifications[0].provenance.kind, 'pending');
+  assert.equal(approved.brief.verifications[0].retrievals[0].url, OFFICIAL_URL);
+  assert.equal(approved.brief.verifications[0].retrievals[0].excerpt, 'Fetched GOV.UK page receipt.');
+  assert.equal(JSON.stringify(approved).includes('UNTRUSTED_SEARCH_METADATA'), false);
+  assert.equal(JSON.stringify(approved).includes('Metadata is not evidence'), false);
+
+  let autoDiscoveryCalls = 0;
+  let autoFetchCalls = 0;
+  const automatic = await createActionBrief({
+    sourceText: SOURCE_TEXT,
+    rawOutput: JSON.stringify(makeDiscoveryCandidate()),
+    backend: 'openai',
+    model: 'test-model',
+    verificationPolicy: 'official-auto',
+    verificationDependencies: {
+      discoverCandidates: async () => {
+        autoDiscoveryCalls += 1;
+        return { fetchAttempted: true, candidateUrls: [OFFICIAL_URL], candidates: [] };
+      },
+      fetchPage: async (url) => {
+        autoFetchCalls += 1;
+        return {
+          fetched: true,
+          url,
+          retrievedAt: RETRIEVED_AT,
+          excerpt: 'Automatically fetched GOV.UK page receipt.',
+        };
+      },
+    },
+  });
+  assertValid(automatic);
+  assert.equal(autoDiscoveryCalls, 1);
+  assert.equal(autoFetchCalls, 1);
+  assert.equal(automatic.brief.verifications[0].status, 'retrieved');
+  assert.equal(automatic.verificationSummary.verifiedCount, 0);
 }
 
 async function checkUnrelatedOfficialPageIsNotVerified() {
@@ -133,7 +458,7 @@ async function checkUnrelatedOfficialPageIsNotVerified() {
       fetchPage: async (url, options) => {
         fetchCalls += 1;
         assert.equal(url, OFFICIAL_URL);
-        assert.deepEqual(options, { query: LOOKUP.query });
+        assert.deepEqual(options, { query: LOOKUP.query, maxRedirects: 0 });
         return {
           fetched: true,
           url,
@@ -154,11 +479,14 @@ async function checkUnrelatedOfficialPageIsNotVerified() {
     verifiedCount: 0,
   });
   const verification = result.brief.verifications[0];
-  assert.equal(verification.status, 'failed');
+  assert.equal(verification.status, 'retrieved');
   assert.notEqual(verification.status, 'verified');
   assert.equal(verification.provenance.kind, 'pending');
   assert.deepEqual(verification.provenance.citations, []);
   assert.deepEqual(verification.lookup, LOOKUP);
+  assert.equal(verification.retrievals.length, 1);
+  assert.equal(verification.retrievals[0].url, OFFICIAL_URL);
+  assert.equal(verification.retrievals[0].retrievedAt, RETRIEVED_AT);
 }
 
 async function checkQueryMatchCannotVerifyUnsupportedClaim() {
@@ -175,7 +503,7 @@ async function checkQueryMatchCannotVerifyUnsupportedClaim() {
     verificationDependencies: {
       fetchPage: async (url, options) => {
         assert.equal(url, OFFICIAL_URL);
-        assert.deepEqual(options, { query: 'Graduate visa duration' });
+        assert.deepEqual(options, { query: 'Graduate visa duration', maxRedirects: 0 });
         return {
           fetched: true,
           url,
@@ -189,9 +517,10 @@ async function checkQueryMatchCannotVerifyUnsupportedClaim() {
 
   assertValid(result);
   assert.equal(result.verificationSummary.verifiedCount, 0);
-  assert.equal(result.brief.verifications[0].status, 'failed');
+  assert.equal(result.brief.verifications[0].status, 'retrieved');
   assert.equal(result.brief.verifications[0].provenance.kind, 'pending');
   assert.deepEqual(result.brief.verifications[0].provenance.citations, []);
+  assert.equal(result.brief.verifications[0].retrievals.length, 1);
 }
 
 async function checkSupportedOfficialPageCreatesReceipt() {
@@ -208,7 +537,7 @@ async function checkSupportedOfficialPageCreatesReceipt() {
       fetchPage: async (url, options) => {
         fetchCalls += 1;
         assert.equal(url, OFFICIAL_URL);
-        assert.deepEqual(options, { query: LOOKUP.query });
+        assert.deepEqual(options, { query: LOOKUP.query, maxRedirects: 0 });
         return {
           fetched: true,
           url,
@@ -217,8 +546,9 @@ async function checkSupportedOfficialPageCreatesReceipt() {
           supportText: `GOV.UK guidance. ${excerpt}`,
         };
       },
-      assessSupport: async ({ query, text, url, publisher }) => {
+      assessSupport: async ({ claim, query, text, url, publisher }) => {
         assessmentCalls += 1;
+        assert.equal(claim, 'Graduate Route eligibility rules are current');
         assert.equal(query, LOOKUP.query);
         assert.match(text, /Graduate Route eligibility rules/);
         assert.equal(url, OFFICIAL_URL);
@@ -280,13 +610,43 @@ async function checkFailedFetchRetainsRetryLookup() {
   assert.deepEqual(verification.lookup, LOOKUP, 'failed verification must retain its retry plan');
 }
 
+async function checkAbortedVerificationRejectsWithoutFailedBrief() {
+  const controller = new AbortController();
+  await assert.rejects(
+    createActionBrief({
+      sourceText: SOURCE_TEXT,
+      rawOutput: structuredOutput(),
+      backend: 'openai',
+      model: 'test-model',
+      verificationPolicy: 'official-auto',
+      signal: controller.signal,
+      verificationDependencies: {
+        fetchPage: async (url, options) => {
+          assert.equal(url, OFFICIAL_URL);
+          assert.equal(options.signal, controller.signal);
+          controller.abort();
+          const error = new Error('simulated cancellation');
+          error.code = 'aborted';
+          throw error;
+        },
+      },
+    }),
+    (error) => error.code === 'aborted'
+  );
+}
+
 async function main() {
   await checkFreeTranslationFailsClosed();
+  await checkTruncatedCaptureWarningIsDurable();
   await checkAskWithoutApprovalMakesNoFetch();
+  await checkAskApprovalIsBoundToCurrentLookup();
+  await checkExistingBriefVerificationUsesApprovedPlanOnly();
+  await checkDiscoveryRunsOnlyInApprovedExecutionChain();
   await checkUnrelatedOfficialPageIsNotVerified();
   await checkQueryMatchCannotVerifyUnsupportedClaim();
   await checkSupportedOfficialPageCreatesReceipt();
   await checkFailedFetchRetainsRetryLookup();
+  await checkAbortedVerificationRejectsWithoutFailedBrief();
   console.log('action brief service integration checks passed');
 }
 

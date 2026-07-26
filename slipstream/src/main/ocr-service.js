@@ -28,40 +28,64 @@ function cleanOcrText(rawText) {
  * @param {string} imagePath - Absolute path to the image file.
  * @returns {Promise<{text: string, confidence: number, blocks: Array}>}
  */
-function performOCR(imagePath) {
+function performOCR(imagePath, { signal } = {}) {
   return new Promise((resolve, reject) => {
     const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
-    execFile('/bin/bash', [OCR_SCRIPT, imagePath], {
+    let settled = false;
+    let child;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener?.('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => {
+      child?.kill('SIGTERM');
+      const error = new Error('OCR cancelled by user');
+      error.isCancellation = true;
+      finish(reject, error);
+    };
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath], {
       timeout: 15000,
       env: { ...process.env, SLIPSTREAM_OCR_CACHE: cacheDir },
     }, (error, stdout, stderr) => {
       if (error) {
+        if (signal?.aborted) {
+          const cancellation = new Error('OCR cancelled by user');
+          cancellation.isCancellation = true;
+          return finish(reject, cancellation);
+        }
         // Swift prints structured errors to stdout; shell/compiler errors usually use stderr.
         try {
           const errData = JSON.parse((stdout || stderr).trim());
           if (errData && errData.error) {
-            return reject(new Error(errData.error));
+            return finish(reject, new Error(errData.error));
           }
         } catch (_) {
           // stderr isn't JSON, fall through
         }
-        return reject(new Error(`OCR script failed: ${error.message}`));
+        return finish(reject, new Error(`OCR script failed: ${error.message}`));
       }
 
       try {
         const result = JSON.parse(stdout.trim());
 
         if (result.error) {
-          return reject(new Error(result.error));
+          return finish(reject, new Error(result.error));
         }
 
-        resolve({
+        finish(resolve, {
           text: cleanOcrText(result.text || ''),
           confidence: result.confidence || 0,
           blocks: result.blocks || [],
         });
       } catch (parseError) {
-        reject(new Error(`Failed to parse OCR output: ${parseError.message}`));
+        finish(reject, new Error(`Failed to parse OCR output: ${parseError.message}`));
       }
     });
   });

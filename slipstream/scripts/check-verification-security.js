@@ -130,6 +130,151 @@ async function main() {
   assert.equal(askByDefault.policy, VERIFICATION_POLICIES.ASK);
   assert.equal(askByDefault.results[0].status, VERIFICATION_STATUSES.APPROVAL_REQUIRED);
 
+  let gatedDiscoveryCalls = 0;
+  let gatedPageFetchCalls = 0;
+  const gatedDiscoveryService = createVerificationService({
+    discoverCandidates: async () => {
+      gatedDiscoveryCalls += 1;
+      throw new Error('discovery must remain behind policy approval');
+    },
+    fetchPage: async () => {
+      gatedPageFetchCalls += 1;
+      throw new Error('page fetch must remain behind policy approval');
+    },
+  });
+  for (const input of [
+    {
+      policy: VERIFICATION_POLICIES.LOCAL_ONLY,
+      publisher: 'GOV.UK',
+      claim: 'Graduate visa rules are current.',
+      query: 'graduate visa current rules',
+      candidateUrls: [],
+    },
+    {
+      policy: VERIFICATION_POLICIES.ASK,
+      approved: false,
+      publisher: 'UK Government',
+      claim: 'Graduate visa rules are current.',
+      query: 'graduate visa current rules',
+      candidateUrls: [],
+    },
+  ]) {
+    const gated = await gatedDiscoveryService.verify(input);
+    assert.equal(gated.fetchAttempted, false);
+  }
+  assert.equal(gatedDiscoveryCalls, 0);
+  assert.equal(gatedPageFetchCalls, 0);
+
+  const discoveredUrls = [
+    'https://www.gov.uk/graduate-visa',
+    'https://www.gov.uk/student-visa',
+    'https://www.gov.uk/browse/visas-immigration',
+    'https://www.gov.uk/fourth-result',
+  ];
+  for (const [policy, approved] of [
+    [VERIFICATION_POLICIES.ASK, true],
+    [VERIFICATION_POLICIES.OFFICIAL_AUTO, false],
+  ]) {
+    const controller = new AbortController();
+    let discoveryCalls = 0;
+    const pageFetches = [];
+    const discovered = await createVerificationService({
+      discoverCandidates: async (input) => {
+        discoveryCalls += 1;
+        assert.equal(input.query, 'graduate visa current rules');
+        assert.equal(input.signal, controller.signal);
+        return {
+          fetchAttempted: true,
+          candidateUrls: discoveredUrls,
+          candidates: [{
+            url: discoveredUrls[0],
+            title: 'SEARCH_METADATA_MUST_NOT_BECOME_EVIDENCE',
+            description: 'Metadata falsely claims the assertion is proven.',
+            metadataTrust: 'untrusted',
+          }],
+        };
+      },
+      fetchPage: async (url, options) => {
+        pageFetches.push({ url, options });
+        return {
+          fetched: true,
+          url,
+          retrievedAt: '2026-07-23T00:00:00.000Z',
+          excerpt: `Fetched official page ${pageFetches.length}.`,
+        };
+      },
+    }).verify({
+      policy,
+      approved,
+      publisher: 'GOV.UK',
+      claim: 'Graduate visa rules are current.',
+      query: 'graduate visa current rules',
+      candidateUrls: [],
+      signal: controller.signal,
+    });
+
+    assert.equal(discoveryCalls, 1);
+    assert.equal(discovered.fetchAttempted, true);
+    assert.deepEqual(discovered.request.candidateUrls, discoveredUrls.slice(0, 3));
+    assert.equal(pageFetches.length, 3, 'discovery must fetch at most three official pages');
+    assert(pageFetches.every(({ options }) => options.signal === controller.signal));
+    assert(pageFetches.every(({ options }) => options.maxRedirects === 0));
+    assert(discovered.results.every((result) => result.status === VERIFICATION_STATUSES.RETRIEVED));
+    assert(discovered.results.every((result) => result.status !== VERIFICATION_STATUSES.VERIFIED));
+    assert(discovered.results.every((result) => result.publisher === 'GOV.UK'));
+    assert.equal(JSON.stringify(discovered).includes('SEARCH_METADATA_MUST_NOT_BECOME_EVIDENCE'), false);
+    assert.equal(JSON.stringify(discovered).includes('Metadata falsely claims'), false);
+  }
+
+  let unsupportedDiscoveryCalls = 0;
+  let unsupportedFetchCalls = 0;
+  const unsupportedDiscovery = await createVerificationService({
+    discoverCandidates: async () => {
+      unsupportedDiscoveryCalls += 1;
+      throw new Error('unsupported publishers must not invoke discovery');
+    },
+    fetchPage: async () => {
+      unsupportedFetchCalls += 1;
+      throw new Error('unsupported publishers must not fetch');
+    },
+  }).verify({
+    policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
+    publisher: 'United States Government',
+    claim: 'A current government rule exists.',
+    query: 'current government rule',
+    candidateUrls: [],
+  });
+  assert.equal(unsupportedDiscoveryCalls, 0);
+  assert.equal(unsupportedFetchCalls, 0);
+  assert.equal(unsupportedDiscovery.fetchAttempted, false);
+  assert.equal(unsupportedDiscovery.results[0].reason, 'unsupported-publisher');
+
+  const discoveryAbortController = new AbortController();
+  let abortDiscoveryCalls = 0;
+  let abortPageFetchCalls = 0;
+  const abortDuringDiscovery = createVerificationService({
+    discoverCandidates: ({ signal }) => {
+      abortDiscoveryCalls += 1;
+      assert.equal(signal, discoveryAbortController.signal);
+      setImmediate(() => discoveryAbortController.abort());
+      return new Promise(() => {});
+    },
+    fetchPage: async () => {
+      abortPageFetchCalls += 1;
+      throw new Error('aborted discovery must not fetch a result page');
+    },
+  }).verify({
+    policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
+    publisher: 'GOV.UK',
+    claim: 'Graduate visa rules are current.',
+    query: 'graduate visa current rules',
+    candidateUrls: [],
+    signal: discoveryAbortController.signal,
+  });
+  await assertRejectCode(abortDuringDiscovery, 'aborted');
+  assert.equal(abortDiscoveryCalls, 1);
+  assert.equal(abortPageFetchCalls, 0);
+
   const approved = await createVerificationService({
     fetchPage: async (url) => {
       fetchCalls += 1;
@@ -144,19 +289,39 @@ async function main() {
     policy: VERIFICATION_POLICIES.ASK,
     approved: true,
     publisher: 'Example University',
+    claim: 'The official financial aid deadline is 1 August 2026.',
     query: 'financial aid deadline',
     candidateUrls: ['https://www.example.edu/aid'],
   });
-  assert.equal(approved.results[0].status, VERIFICATION_STATUSES.VERIFIED);
+  assert.equal(approved.results[0].status, VERIFICATION_STATUSES.RETRIEVED);
+  assert.equal(approved.results[0].reason, 'semantic-assessment-required');
   for (const field of ['publisher', 'url', 'retrievedAt', 'excerpt', 'status']) {
     assert.ok(Object.hasOwn(approved.results[0], field), 'missing result field ' + field);
   }
+
+  let missingClaimFetchCalls = 0;
+  const missingClaim = await createVerificationService({
+    fetchPage: async () => {
+      missingClaimFetchCalls += 1;
+      throw new Error('a request without a claim must not fetch');
+    },
+  }).verify({
+    policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
+    publisher: 'Example University',
+    query: 'financial aid deadline',
+    candidateUrls: ['https://www.example.edu/aid'],
+  });
+  assert.equal(missingClaimFetchCalls, 0);
+  assert.equal(missingClaim.fetchAttempted, false);
+  assert.equal(missingClaim.results[0].status, VERIFICATION_STATUSES.NOT_VERIFIED);
+  assert.equal(missingClaim.results[0].reason, 'missing-claim');
 
   const unconfirmed = await createVerificationService({
     fetchPage: async (url) => ({ url, excerpt: 'A claim without a fetch receipt' }),
   }).verify({
     policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
     publisher: 'Example University',
+    claim: 'A claim without a fetch receipt',
     candidateUrls: ['https://www.example.edu/aid'],
   });
   assert.equal(unconfirmed.results[0].status, VERIFICATION_STATUSES.NOT_VERIFIED);
@@ -173,11 +338,55 @@ async function main() {
   }).verify({
     policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
     publisher: 'Example University',
+    claim: 'The official financial aid deadline is 1 August 2026.',
     query: 'financial aid deadline 2026',
     candidateUrls: ['https://www.example.edu/unrelated'],
   });
   assert.equal(unrelated.results[0].status, VERIFICATION_STATUSES.RETRIEVED);
-  assert.equal(unrelated.results[0].reason, 'insufficient-support');
+  assert.equal(unrelated.results[0].reason, 'semantic-assessment-required');
+
+  const reversedRelation = await createVerificationService({
+    fetchPage: async (url) => ({
+      fetched: true,
+      url,
+      retrievedAt: '2026-07-23T00:00:00.000Z',
+      excerpt: 'You can apply after graduation. Before you apply, read the guidance.',
+      supportText: 'You can apply after graduation. Before you apply, read the guidance.',
+    }),
+  }).verify({
+    policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
+    publisher: 'Example University',
+    claim: 'You can apply before graduation',
+    query: 'graduation application timing',
+    candidateUrls: ['https://www.example.edu/apply'],
+  });
+  assert.equal(reversedRelation.results[0].status, VERIFICATION_STATUSES.RETRIEVED);
+  assert.equal(reversedRelation.results[0].reason, 'semantic-assessment-required');
+
+  for (const supportText of [
+    'If your sponsor gives written permission, you can apply before graduation.',
+    'Archived guidance: You can apply before graduation. This page is no longer current.',
+    'The page quotes the disputed wording “You can apply before graduation” without endorsing it.',
+  ]) {
+    const contextDependentWording = await createVerificationService({
+      fetchPage: async (url) => ({
+        fetched: true,
+        url,
+        retrievedAt: '2026-07-23T00:00:00.000Z',
+        excerpt: supportText,
+        supportText,
+      }),
+    }).verify({
+      policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
+      publisher: 'Example University',
+      claim: 'You can apply before graduation',
+      query: 'graduation application timing',
+      candidateUrls: ['https://www.example.edu/apply'],
+    });
+    assert.equal(contextDependentWording.results[0].status, VERIFICATION_STATUSES.RETRIEVED);
+    assert.notEqual(contextDependentWording.results[0].status, VERIFICATION_STATUSES.VERIFIED);
+    assert.equal(contextDependentWording.results[0].reason, 'semantic-assessment-required');
+  }
 
   for (const [policy, approved] of [
     [VERIFICATION_POLICIES.OFFICIAL_AUTO, false],
@@ -198,6 +407,7 @@ async function main() {
       policy,
       approved,
       publisher: 'United States Government',
+      claim: 'The official financial aid deadline is 1 August 2026.',
       query: 'financial aid deadline 2026',
       candidateUrls: ['https://example.com/claim'],
     });
@@ -218,10 +428,17 @@ async function main() {
   }).verify({
     policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
     publisher: 'Example Organization',
+    claim: 'The official financial aid deadline is 1 August 2026.',
     query: 'financial aid deadline 2026',
     candidateUrls: ['https://notices.example.com/claim'],
   });
-  assert.equal(explicitlyTrusted.results[0].status, VERIFICATION_STATUSES.VERIFIED);
+  assert.equal(explicitlyTrusted.results[0].status, VERIFICATION_STATUSES.RETRIEVED);
+  assert.equal(explicitlyTrusted.results[0].reason, 'semantic-assessment-required');
+  assert.equal(
+    explicitlyTrusted.results[0].publisher,
+    'notices.example.com',
+    'retrieval receipts must identify the fetched host, not the model-supplied publisher'
+  );
 
   let semanticAssessmentInput;
   const semanticallyConfirmed = await createVerificationService({
@@ -240,12 +457,14 @@ async function main() {
   }).verify({
     policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
     publisher: 'Example Organization',
+    claim: 'Financial aid applications close on 1 August 2026.',
     query: 'financial aid deadline 2026',
     candidateUrls: ['https://example.com/claim'],
   });
   assert.equal(semanticallyConfirmed.results[0].status, VERIFICATION_STATUSES.VERIFIED);
   assert.equal(semanticallyConfirmed.results[0].excerpt, 'Semantically confirmed evidence.');
   assert.equal(semanticAssessmentInput.query, 'financial aid deadline 2026');
+  assert.equal(semanticAssessmentInput.claim, 'Financial aid applications close on 1 August 2026.');
   assert.equal(semanticAssessmentInput.text, 'Full visible source text for local assessment.');
 
   const missingQuery = await createVerificationService({
@@ -258,6 +477,7 @@ async function main() {
   }).verify({
     policy: VERIFICATION_POLICIES.OFFICIAL_AUTO,
     publisher: 'Example University',
+    claim: 'Financial aid deadline 2026.',
     candidateUrls: ['https://www.example.edu/claim'],
   });
   assert.equal(missingQuery.results[0].status, VERIFICATION_STATUSES.RETRIEVED);
@@ -420,6 +640,16 @@ async function main() {
     }),
     'timeout'
   );
+
+  const abortController = new AbortController();
+  const abortedFetch = fetchPublicText('https://official.example.edu/cancelled', {
+    lookup: PUBLIC_LOOKUP,
+    timeoutMs: 5000,
+    signal: abortController.signal,
+    requestImpl: fakeRequestSequence([{ neverRespond: true }], []),
+  });
+  setImmediate(() => abortController.abort());
+  await assertRejectCode(abortedFetch, 'aborted');
 
   console.log('verification privacy and network security checks passed');
 }

@@ -33,7 +33,7 @@ The free translation backend uses third-party online translation endpoints and r
 
 ## Verification
 
-Official-source verification defaults to Ask first. Local-only performs no lookup. Official-auto retrieves only eligible HTTPS candidate sources using a minimized request. Retrieval, support, and official-host checks must pass before a result is labeled verified.
+Official-source verification defaults to Ask first. Local-only performs no lookup. Official-auto discovers or retrieves only eligible HTTPS official sources using a minimized request. A successful fetch is shown as a neutral retrieval receipt; it does not make a model explanation “verified.”
 
 ## Checks
 

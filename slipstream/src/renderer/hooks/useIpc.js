@@ -24,6 +24,7 @@ function invokeDemo(channel, ...args) {
     case IPC_CHANNELS.SETTINGS_SET:
     case IPC_CHANNELS.WINDOW_SET_MODE:
     case IPC_CHANNELS.LLM_CANCEL:
+    case IPC_CHANNELS.PROVIDER_CONNECTION_CANCEL:
     case IPC_CHANNELS.WINDOW_HIDE:
     case IPC_CHANNELS.EXTERNAL_OPEN:
     case IPC_CHANNELS.USER_DATA_CLEAR:
@@ -45,13 +46,51 @@ function invokeDemo(channel, ...args) {
       return navigator.clipboard?.writeText(args[0] || '').catch(() => true) || Promise.resolve(true);
     case IPC_CHANNELS.SCREENSHOT_CAPTURE:
       return Promise.resolve({ success: true, text: PREVIEW_SOURCE_TEXT, ...PREVIEW_CAPTURE });
+    case IPC_CHANNELS.PROVIDER_CONNECTION_TEST:
+      return new Promise((resolve) => {
+        window.setTimeout(() => resolve({ status: 'connected', code: 'ok' }), 450);
+      });
     case IPC_CHANNELS.LLM_PROCESS:
       return new Promise((resolve) => {
         window.setTimeout(() => resolve({
           success: true,
           brief: PREVIEW_ACTION_BRIEF,
+          verificationSummary: {
+            policy: 'ask',
+            fetchAttempted: false,
+            requestedCount: 1,
+            verifiedCount: 0,
+            approvalId: 'a'.repeat(64),
+          },
           processingTimeMs: 6800,
         }), args[0]?.verificationApproved ? 500 : 2600);
+      });
+    case IPC_CHANNELS.VERIFICATION_RUN:
+      return new Promise((resolve) => {
+        const retrievedBrief = {
+          ...PREVIEW_ACTION_BRIEF,
+          verifications: PREVIEW_ACTION_BRIEF.verifications.map((verification, index) => (index === 0 ? {
+            ...verification,
+            status: 'retrieved',
+            retrievals: [{
+              url: 'https://www.gov.uk/view-prove-immigration-status',
+              publisher: 'GOV.UK',
+              retrievedAt: '2026-07-23T09:00:00.000Z',
+              excerpt: 'Use this service to view and prove your immigration status and get a share code.',
+            }],
+          } : verification)),
+        };
+        window.setTimeout(() => resolve({
+          success: true,
+          brief: retrievedBrief,
+          verificationSummary: {
+            policy: 'ask',
+            fetchAttempted: true,
+            requestedCount: 1,
+            verifiedCount: 0,
+          },
+          processingTimeMs: 520,
+        }), 500);
       });
     default:
       return Promise.resolve(null);

@@ -1,0 +1,181 @@
+.clipboard-monitor-toggle input:focus-visible + span {
+  outline: 3px solid color-mix(in srgb, var(--accent) 36%, transparent);
+  outline-offset: 3px;
+}
+
+.backend-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.backend-options .backend-option-button {
+  min-height: 36px;
+  border: 1px solid var(--border-secondary) !important;
+  border-radius: 8px;
+}
+
+.settings-return-button:focus-visible,
+.backend-option-button:focus-visible,
+.translation-only-confirm-button:focus-visible,
+.setting-save-button:focus-visible,
+.setting-delete-button:focus-visible,
+.provider-connection-test-button:focus-visible,
+.full-analysis-enable-button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: 2px;
+}
+
+.setting-editor-actions {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  margin-top: 6px;
+}
+
+.setting-editor-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.setting-save-status {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.setting-save-status.is-dirty {
+  color: var(--warning);
+}
+
+.setting-save-status.is-error {
+  color: var(--error);
+}
+
+.setting-save-button,
+.setting-delete-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.setting-save-button {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.setting-save-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.setting-save-button:disabled {
+  border-color: var(--border-secondary);
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.setting-delete-button {
+  border: 0;
+  background: transparent;
+  color: var(--error);
+}
+
+.setting-delete-button:hover {
+  background: var(--error-bg);
+}
+
+.provider-connection-card {
+  margin-bottom: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 9px;
+  background: var(--surface-soft);
+  color: var(--text-primary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.provider-connection-card p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.provider-connection-privacy {
+  display: block;
+  margin-top: 7px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.provider-connection-test-button {
+  width: 100%;
+  margin-top: 9px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.provider-connection-test-button:hover:not(:disabled) {
+  background: var(--accent-light);
+}
+
+.provider-connection-test-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.provider-connection-result {
+  display: grid;
+  gap: 2px;
+  margin-top: 9px;
+  padding: 8px 9px;
+  border: 1px solid var(--border-primary);
+  border-radius: 7px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+}
+
+.provider-connection-result strong {
+  color: var(--text-primary);
+}
+
+.provider-connection-result[data-status="connected"] {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border-primary));
+  background: color-mix(in srgb, var(--accent-light) 70%, var(--bg-primary));
+}
+
+.provider-connection-result[data-status="connected"] strong {
+  color: var(--success);
+}
+
+.provider-connection-result[data-status="failed"] {
+  border-color: color-mix(in srgb, var(--error) 38%, var(--border-primary));
+  background: var(--error-bg);
+}
+
+.provider-connection-result[data-status="failed"] strong {
+  color: var(--error);
+}
+
+.provider-connection-result[data-status="inconclusive"] {
+  border-color: color-mix(in srgb, var(--warning) 38%, var(--border-primary));
+  background: var(--warning-bg);
+}
+
+.provider-connection-result[data-status="inconclusive"] strong {
+  color: var(--warning);
+}

@@ -12,6 +12,9 @@ const ALLOWED_INVOKE_CHANNELS = [
   'clipboard:read',
   'llm:process',
   'llm:cancel',
+  'provider:connection-test',
+  'provider:connection-cancel',
+  'verification:run',
   'screenshot:capture',
   'window:set-mode',
   'window:hide',
@@ -21,6 +24,7 @@ const ALLOWED_INVOKE_CHANNELS = [
 const ALLOWED_ON_CHANNELS = [
   'clipboard:text-changed',
   'ocr:error',
+  'screenshot:requested',
   'settings:loaded',
 ];
 

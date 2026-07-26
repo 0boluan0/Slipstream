@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const constants = require('../src/shared/constants.cjs');
 const { splitTextIntoChunks, splitTextByUtf8Bytes, mergeChunkResults } = require('../src/main/llm-service');
@@ -35,6 +37,7 @@ async function main() {
     const {
       validateSetting,
       validateProcessOptions,
+      validateVerificationOptions,
       isTrustedRendererUrl,
       validateExternalUrl,
       validateShortcut,
@@ -48,7 +51,23 @@ async function main() {
       ['customEndpointUrl', 'http://127.0.0.1:8000/v1']
     );
     assert.equal(validateProcessOptions({ text: 'hello', source: 'manual' }).text, 'hello');
+    assert.deepEqual(
+      validateProcessOptions({ text: 'hello', source: 'manual', truncated: true, originalLength: 12 }),
+      { text: 'hello', source: 'manual', capture: null, truncated: true, originalLength: 12, verificationApproved: false },
+    );
+    assert.throws(() => validateProcessOptions({ text: 'hello', truncated: true, originalLength: 5 }));
     assert.throws(() => validateProcessOptions({ text: 'x'.repeat(constants.DEFAULTS.MAX_TEXT_LENGTH + 1) }));
+    const approvalId = 'a'.repeat(64);
+    assert.deepEqual(validateVerificationOptions({
+      sourceText: 'hello',
+      brief: { schemaVersion: 'action-brief.v1' },
+      approvalId,
+    }), {
+      sourceText: 'hello',
+      brief: { schemaVersion: 'action-brief.v1' },
+      approvalId,
+    });
+    assert.throws(() => validateVerificationOptions({ sourceText: 'hello', brief: {}, approvalId: 'bad' }));
     assert.equal(isTrustedRendererUrl('http://localhost:5173/', true), true);
     assert.equal(isTrustedRendererUrl('http://localhost:5174/', true), false);
     assert.equal(isTrustedRendererUrl('https://example.com/', false), false);
@@ -58,6 +77,8 @@ async function main() {
     assert.throws(() => validateExternalUrl('http://example.com'));
     assert.throws(() => validateExternalUrl('https://127.0.0.1/private'));
     assert.throws(() => validateExternalUrl('https://settings.local/private'));
+    assert.throws(() => validateExternalUrl('https://intranet/private'));
+    assert.throws(() => validateExternalUrl('https://example.com:8443/private'));
     assert.deepEqual(validateSetting('verificationPolicy', 'ask'), ['verificationPolicy', 'ask']);
     assert.deepEqual(validateSetting('resultOrder', 'translation-first'), ['resultOrder', 'translation-first']);
     assert.throws(() => validateSetting('verificationPolicy', 'always'));
@@ -92,6 +113,21 @@ async function main() {
     assert.equal(constants.DEFAULTS.CLIPBOARD_MONITORING, false);
   });
 
+  await check('processing-setting changes abort stale work without relabeling old failures', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'src/main/main.js'), 'utf8');
+    assert.match(source, /LLM_PROCESSING_SETTING_KEYS = new Set\([\s\S]*?'customPrompt'[\s\S]*?'verificationPolicy'/);
+    assert.match(source, /LLM_PROCESSING_SETTING_KEYS\.has\(key\)[\s\S]*?llmAbortController\?\.abort\(\)/);
+    assert.match(source, /key === 'verificationPolicy'[\s\S]*?verificationAbortController\?\.abort\(\)/);
+    assert.match(source, /let requestBackend = store\.getSettings\('activeBackend'\)[\s\S]*?requestBackend = settings\.activeBackend[\s\S]*?classifyProcessingError\(error, requestBackend\)/);
+    assert.doesNotMatch(source, /classifyProcessingError\(error, store\.getSettings\('activeBackend'\)\)/);
+  });
+
+  await check('only the compact capture window stays above other apps', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'src/main/main.js'), 'utf8');
+    assert.match(source, /alwaysOnTop:\s*!needsSetup/);
+    assert.match(source, /mainWindow\.setAlwaysOnTop\(mode === 'capture'\)/);
+  });
+
   await check('capture envelopes preserve source offsets and OCR provenance', () => {
     const { createCaptureEnvelope } = require('../src/main/capture-envelope');
     const envelope = createCaptureEnvelope({
@@ -115,6 +151,16 @@ async function main() {
       'claude-sonnet-4-6',
       'claude-haiku-4-5-20251001',
     ]);
+  });
+
+  await check('Ollama requests bound the context window', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'src/main/llm-service.js'), 'utf8');
+    assert.match(source, /options:\s*\{\s*num_ctx:\s*16384\s*\}/);
+    assert.equal(constants.MODEL_IDS.ollama[0], 'qwen2.5');
+    assert.ok(
+      constants.MODEL_IDS.ollama.indexOf('deepseek-r1:14b') > constants.MODEL_IDS.ollama.indexOf('qwen2.5'),
+      'reasoning-first models must not be the default for structured evidence output',
+    );
   });
 
   await check('long-text chunks never contain lone UTF-16 surrogates', () => {

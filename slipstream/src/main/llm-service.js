@@ -560,6 +560,11 @@ async function processOllama(settings, model, systemPrompt, userMessage, parentS
           system: systemPrompt,
           prompt: userMessage,
           ...(structuredOutput ? { format: 'json' } : {}),
+          // Several current Ollama models advertise 128K+ context by default.
+          // Loading that full KV cache can exhaust memory before a modest
+          // Slipstream request begins, so use a bounded window that still
+          // covers the 10K-character source limit plus structured output.
+          options: { num_ctx: 16384 },
           stream: false,
         }),
         signal: signal,

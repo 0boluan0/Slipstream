@@ -6,6 +6,27 @@ const MAX_URL_CHARS = 2048;
 const MAX_QUERY_PARAMETERS = 8;
 const MAX_URL_QUERY_CHARS = 256;
 const MAX_URL_QUERY_VALUE_CHARS = 120;
+const SENSITIVE_URL_PARAMETERS = new Set([
+  'account',
+  'accountid',
+  'apikey',
+  'application',
+  'applicationid',
+  'auth',
+  'case',
+  'caseid',
+  'clientid',
+  'email',
+  'mail',
+  'mobile',
+  'phone',
+  'reference',
+  'referenceid',
+  'secret',
+  'studentid',
+  'token',
+  'userid',
+]);
 
 const RAW_TEXT_FIELDS = new Set([
   'body',
@@ -79,6 +100,45 @@ function normalizeMinimalQuery(value) {
   return query;
 }
 
+function containsLikelyPersonalIdentifier(value) {
+  const text = String(value || '');
+  return (
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(text) ||
+    /\b(?:\+?\d[\d ()-]{7,}\d)\b/.test(text) ||
+    /\b(?=[A-Z0-9_-]{7,}\b)(?=[A-Z0-9_-]*[A-Z])(?=[A-Z0-9_-]*\d)[A-Z0-9_-]+\b/.test(text) ||
+    /\b(?=[a-z0-9]{12,}\b)(?=[a-z0-9]*[a-z])(?=[a-z0-9]*\d)[a-z0-9]+\b/i.test(text)
+  );
+}
+
+function decodeUrlComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function rejectSensitiveUrlData(url) {
+  if (containsLikelyPersonalIdentifier(decodeUrlComponent(url.pathname))) {
+    throw new VerificationRequestError(
+      'candidate URL path contains a likely personal identifier',
+      'personal-data-rejected'
+    );
+  }
+  for (const [parameterName, parameterValue] of url.searchParams) {
+    const normalizedName = parameterName.toLocaleLowerCase().replace(/[^a-z0-9]/g, '');
+    if (
+      SENSITIVE_URL_PARAMETERS.has(normalizedName) ||
+      containsLikelyPersonalIdentifier(parameterValue)
+    ) {
+      throw new VerificationRequestError(
+        'candidate URL query contains a likely personal identifier',
+        'personal-data-rejected'
+      );
+    }
+  }
+}
+
 function normalizeCandidateUrl(value) {
   if (typeof value !== 'string' || !value.trim()) {
     throw new VerificationRequestError('candidate URL must be a non-empty string');
@@ -106,6 +166,8 @@ function normalizeCandidateUrl(value) {
       throw new VerificationRequestError('candidate URL contains an oversized query value');
     }
   }
+
+  rejectSensitiveUrlData(url);
 
   url.hash = '';
   return url.href;

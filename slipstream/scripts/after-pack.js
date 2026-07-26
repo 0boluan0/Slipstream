@@ -13,8 +13,9 @@ const UNUSED_PRIVACY_KEYS = [
 exports.default = async function afterPack(context) {
   if (context.electronPlatformName !== 'darwin') return;
 
-  const plistPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Info.plist');
-  const runtimeScripts = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`, 'Contents', 'Resources', 'scripts');
+  const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
+  const plistPath = path.join(appPath, 'Contents', 'Info.plist');
+  const runtimeScripts = path.join(appPath, 'Contents', 'Resources', 'scripts');
   const swiftSource = path.join(runtimeScripts, 'VisionOCR.swift');
   const ocrBinary = path.join(runtimeScripts, 'slipstream-ocr');
   const archName = Arch[context.arch] === 'arm64' ? 'arm64' : 'x86_64';
@@ -43,4 +44,8 @@ exports.default = async function afterPack(context) {
   } catch {
     // Key was already absent.
   }
+
+  // File-provider and downloaded dependency metadata can make macOS reject an
+  // otherwise valid bundle before either ad-hoc or Developer ID signing.
+  execFileSync('/usr/bin/xattr', ['-cr', appPath], { stdio: 'inherit' });
 };
