@@ -14,8 +14,8 @@ Slipstream must answer four questions in one pass:
 
 1. What does the original text say?
 2. What do I need to do, in what order, and by when?
-3. Which words, professional terms, institutions, or forms do I need to understand?
-4. Which cultural or social process is assumed, and what does an official source say about it?
+3. Which ordinary words or professional terms are blocking my understanding, and what do they mean here?
+4. Which cultural, social, or institutional process is being assumed, why does it exist, and what should I do next?
 
 The first result must be useful enough that a user does not need to repeat the same screenshot in a general chat product.
 
@@ -24,9 +24,11 @@ The first result must be useful enough that a user does not need to repeat the s
 Every displayed claim belongs to exactly one layer:
 
 - **Original evidence**: an action, material, deadline, condition, or reply requirement explicitly stated in the captured text. It must have one or more evidence anchors pointing to an exact quote and character offsets; OCR results may also point to source bounding boxes.
-- **Term explanation**: a Chinese explanation of a term that actually appears in the original. It is explanatory, not an instruction from the source.
-- **Process context**: background about an unfamiliar professional, cultural, administrative, or social process. It must be visually separated from original evidence.
-- **Official verification**: context that Slipstream actually retrieved from a public HTTPS official source. It includes publisher, URL, retrieval time, and a short supporting excerpt.
+- **Ordinary-word explanation**: a plain-Chinese explanation of an unfamiliar word or phrase that actually appears in the original, including what it means in this sentence.
+- **Professional-term explanation**: a plain-Chinese explanation of a domain term, abbreviation, institution, form, policy, course, or portal that actually appears in the original. It is explanatory, not an instruction from the source.
+- **Process context**: the minimum background needed to navigate an unfamiliar professional, cultural, administrative, or social process. It answers what the process is, why this step exists, and what the user does next, while remaining visually separate from original evidence.
+- **Official retrieval**: an official page that Slipstream actually retrieved from a public HTTPS source. It includes publisher, URL, retrieval time, and a short excerpt, but retrieval alone does not prove that the page supports a claim.
+- **Official verification**: a claim-level conclusion produced only by an explicit support assessor from retrieved official material. V1 does not promote a claim to this state through keyword matching.
 - **Inference or pending verification**: potentially useful model output without source confirmation. It must never be styled or worded as verified fact.
 
 If evidence cannot be resolved against the source text, the corresponding action claim is rejected rather than shown as trusted.
@@ -39,7 +41,7 @@ If evidence cannot be resolved against the source text, the corresponding action
 press F2
 → select a screen region
 → Apple Vision performs local OCR
-→ transient progress shows capture, recognition, analysis, and verification stages
+→ transient progress shows capture, recognition, structured analysis, and evidence-mapping stages
 → a wide action brief opens
 ```
 
@@ -72,7 +74,7 @@ The default `action-first` result order is:
    - ordered action path on the right;
    - matching numbered and colored anchors;
    - hover or click highlights both ends of the mapping.
-3. Official sources and verification status.
+3. Official-source retrievals and claim status.
 4. Full faithful translation.
 5. Key terms and process background.
 
@@ -86,23 +88,23 @@ The main process owns and validates a versioned `ActionBriefV1` object. It inclu
 - ordered steps;
 - deadlines and required materials;
 - faithful full translation;
-- terms and professional terminology;
-- process context;
+- ordinary words and professional terminology, each with its source occurrence;
+- process context with optional “what it is / why it matters / what to do” sections;
 - original evidence anchors;
-- official verification records;
+- pending claims, official retrieval receipts, and any explicit verification records;
 - warnings and provenance.
 
-Renderer code never treats arbitrary model prose as trusted action data. Invalid or legacy output fails closed to a translation-only result with a visible limitation warning.
+Renderer code never treats arbitrary model prose as trusted action data. Invalid structured output is rejected visibly; only a narrow legacy translation path may fail closed to a translation-only result with a limitation warning.
 
 ## Internet and privacy policy
 
-Official verification has three user-selectable policies:
+Official-source lookup has three user-selectable policies:
 
 - `local-only`: no verification network request; relevant context remains pending.
 - `ask` (default): prepare a minimal query or candidate official URL, but make no request until the user approves.
-- `official-auto`: automatically retrieve only eligible public HTTPS candidate sources.
+- `official-auto`: automatically discover or retrieve only eligible public HTTPS official sources.
 
-Verification requests must not contain the full email, screenshot text, names, account numbers, or other unnecessary context. Network code blocks loopback/private destinations, revalidates redirects, limits response type and size, and times out. A source is marked verified only after content was actually fetched.
+Verification requests must not contain the full email, screenshot text, names, account numbers, or other unnecessary context. Network code blocks loopback/private destinations, revalidates redirects, limits response type and size, and times out. A successful fetch is shown neutrally as “official page retrieved”; it does not turn the model's explanation into verified fact. V1 can discover GOV.UK pages through GOV.UK's public Search API; unsupported publishers remain pending unless the brief already contains an eligible candidate URL.
 
 OCR is always local. Model analysis is local when Ollama is selected; cloud backends send the user-submitted text to that configured provider. API keys use macOS secure storage. Original case text is not retained by default, and saved terms contain only the term, explanation, and the shortest necessary evidence excerpt.
 
@@ -115,7 +117,7 @@ While processing, show concise live stage feedback so the user is not left waiti
 - No general-purpose chat interface.
 - No autonomous sending, submission, booking, or form completion.
 - No claim that an inference or model memory is an official source.
-- No English writing assistant, Chinese-to-English generation, or multi-language support in the supported V1 contract.
+- No general English writing assistant, Chinese-to-English generation, or multi-language support in the supported V1 contract. A bounded reply draft is allowed only when the captured source requires a reply, and Slipstream never sends it.
 - No automatic collection of clipboard contents, analytics, or telemetry.
 
 ## Release success criteria

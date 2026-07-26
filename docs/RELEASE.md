@@ -13,6 +13,8 @@
 - Provide either App Store Connect API credentials or `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, and `APPLE_TEAM_ID`.
 - Run `npm run release:signed`.
 - Never replace a failed Developer ID signature with an ad-hoc signature.
+- Both release commands stage the complete build under the system temporary directory, outside synced/File Provider folders, and publish artifacts only after both architectures finish.
+- Ad-hoc builds use a local-only library-validation exception so Electron can launch without a Team ID. The signed distribution gate rejects that exception.
 
 ## Artifact gate
 
@@ -26,4 +28,4 @@
 
 - Create a version tag from the exact commit used to build.
 - Attach both DMGs, both ZIPs, and `SHA256SUMS.txt` to the release.
-- Include known limitations and privacy-impacting changes in the notes.
+- Include known limitations and privacy-impacting changes in the notes. In V1, GOV.UK is the only built-in search-discovery provider; other publishers require an eligible candidate URL and retrieved pages remain claim-neutral unless an explicit semantic assessor verifies support.

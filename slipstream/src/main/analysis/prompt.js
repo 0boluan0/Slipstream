@@ -26,7 +26,8 @@ Security and truthfulness rules:
 - terms must cover action-relevant language that a Chinese reader may not understand: ordinary words or noun phrases (general_term), professional/domain terms (specialist_term), abbreviations, proper nouns, institutions, forms, policies, courses, and portals. Do not produce a general vocabulary lesson or list obvious words.
 - Explain every term in its current sentence and task, not only with a dictionary definition. State any action implication only when the source supports it.
 - Keep three layers separate: translation says what the source says; terms explain unfamiliar language; contexts explain an unfamiliar cultural, social, or institutional process.
-- A context may be inference only when its explanation follows from the cited source wording. If it relies on outside facts or current rules, mark it pending and add a matching pending verification claim; never present that background as if the source stated it.
+- Each context may split its explanation into whatItIs, whyItMatters, and whatToDo. All three fields share the context's single provenance and evidence; they cannot introduce ungrounded facts or hidden action requirements.
+- A context may be inference only when every non-null explanation field follows from the cited source wording. If any field relies on outside facts or current rules, mark the whole context pending and link it to a matching pending verification claim using verificationIndex; never present that background as if the source stated it.
 - If a field is absent, use an empty array or null. Do not guess.
 - Verification entries identify claims that should be checked against an official source. Their status and provenance must both be pending.
 - verification.lookup is only an untrusted retrieval plan, never evidence, a citation, or proof of verification.
@@ -60,6 +61,7 @@ function buildActionBriefPrompt(sourceText) {
         surface: 'term exactly as written',
         kind: TERM_KINDS[2],
         explanation: '面向中文用户的必要解释',
+        verificationIndex: null,
         provenance: 'inference',
         evidenceQuotes: ['term exactly as written'],
         citationIds: [],
@@ -70,7 +72,11 @@ function buildActionBriefPrompt(sourceText) {
       {
         label: '流程名称',
         kind: CONTEXT_KINDS[2],
-        explanation: '仅解释采取正确行动所必需的文化、社会或机构流程背景',
+        explanation: '兼容字段：用一句话概括以下流程说明',
+        whatItIs: '这是什么流程；只写理解原文所需的信息',
+        whyItMatters: '为什么原文要求这一步；原文没有说明时用 null',
+        whatToDo: '用户应如何完成原文明示的步骤；不得新增要求',
+        verificationIndex: null,
         provenance: 'inference',
         evidenceQuotes: ['exact source quote'],
         citationIds: [],
@@ -149,7 +155,10 @@ Important normalization rules:
 - Select only unfamiliar words, noun phrases, names, abbreviations, professional terms, institutions, forms, policies, courses, or portals that materially affect understanding or action. Use general_term for an ordinary word or phrase whose meaning may block a Chinese reader.
 - For each term, explain “what it means here” in plain Chinese. If its operational meaning depends on an external rule, mark the term pending and create a matching pending verification entry.
 - Use contexts only for necessary cultural/social/institutional process explanations, never generic background.
-- A context explanation must answer only the process gap needed to act correctly (for example who normally issues a named form, what a named portal is for, or why a stated confirmation step exists). Source-supported explanation may be inference; external procedural facts must be pending and mirrored by a verification entry.
+- For each context, set whatItIs, whyItMatters, and whatToDo to a concise Chinese string or null. Also provide a short explanation summary for compatibility. Do not repeat the full translation.
+- whatItIs answers “这是什么”; whyItMatters answers “为什么要做”; whatToDo answers “你该怎么做”. whatToDo may clarify an action already required by the source, but cannot create a new action, deadline, document, consequence, or eligibility rule.
+- A context explanation must answer only the process gap needed to act correctly (for example who normally issues a named form, what a named portal is for, or why a stated confirmation step exists). Source-supported explanation may be inference; if any explanation field uses external procedural facts, mark the whole context pending and link it to a matching pending verification entry.
+- verificationIndex is a zero-based reference to the candidate verifications array, or null. Use it for a term or context whose explanation is pending. The linked verification must cite the same triggering source wording in evidenceQuotes.
 - All verification entries remain pending. Do not invent citationIds.
 - lookup is null or { publisher, query, candidateUrls }. publisher and query must each be at most 120 characters; query must contain at most 16 whitespace-delimited words.
 - Write query as minimal English keywords suitable for the expected official page. Include the term/form/process name only; omit people, email addresses, account/reference numbers, exact message sentences, and other personal context.

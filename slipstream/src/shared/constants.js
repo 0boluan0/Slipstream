@@ -13,7 +13,11 @@ const IPC_CHANNELS = {
   CLIPBOARD_READ: 'clipboard:read',
   LLM_PROCESS: 'llm:process',
   LLM_CANCEL: 'llm:cancel',
+  PROVIDER_CONNECTION_TEST: 'provider:connection-test',
+  PROVIDER_CONNECTION_CANCEL: 'provider:connection-cancel',
+  VERIFICATION_RUN: 'verification:run',
   SCREENSHOT_CAPTURE: 'screenshot:capture',
+  SCREENSHOT_REQUESTED: 'screenshot:requested',
   WINDOW_SET_MODE: 'window:set-mode',
   WINDOW_HIDE: 'window:hide',
   EXTERNAL_OPEN: 'external:open',
@@ -27,8 +31,8 @@ const MODEL_IDS = {
   free_translate: ['google-translate'],
   anthropic: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
   openai: ['gpt-4o', 'gpt-4o-mini'],
-  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
-  ollama: ['deepseek-r1:14b', 'gpt-oss:20b', 'llama3.3', 'llama3.2', 'qwen2.5', 'mistral-small', 'phi4'],
+  deepseek: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+  ollama: ['qwen2.5', 'phi4', 'mistral-small', 'llama3.2', 'llama3.3', 'gpt-oss:20b', 'deepseek-r1:14b'],
   custom: ['custom'],
 };
 
@@ -39,6 +43,8 @@ const DEFAULTS = {
   LANGUAGE: 'en',
   WINDOW_WIDTH: 520,
   WINDOW_HEIGHT: 680,
+  SETUP_WINDOW_WIDTH: 820,
+  SETUP_WINDOW_HEIGHT: 720,
   RESULT_WINDOW_WIDTH: 1180,
   RESULT_WINDOW_HEIGHT: 820,
   CLIPBOARD_POLL_INTERVAL: 1000, // ms

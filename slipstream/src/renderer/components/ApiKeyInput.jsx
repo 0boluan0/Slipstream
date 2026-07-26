@@ -19,9 +19,19 @@ const PLACEHOLDER_MAP = {
   custom_api_key: 'sk-...',
 };
 
-export default function ApiKeyInput({ backend, value, onChange, onDelete, isSaved = false }) {
+export default function ApiKeyInput({
+  backend,
+  value,
+  onChange,
+  onDelete,
+  onDraftStateChange,
+  isSaved = false,
+}) {
   const [showKey, setShowKey] = useState(false);
   const [draft, setDraft] = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
   const inputId = useId();
   const isUrlType = backend === 'ollama' || backend === 'custom';
 
@@ -31,18 +41,67 @@ export default function ApiKeyInput({ backend, value, onChange, onDelete, isSave
 
   useEffect(() => {
     setDraft(isUrlType ? (value || '') : '');
-  }, [backend, isSaved, isUrlType, value]);
+    setIsDirty(false);
+    setSaveFailed(false);
+    onDraftStateChange?.(false);
+  }, [backend, isUrlType, onDraftStateChange, value]);
+
+  const updateDraft = (nextDraft) => {
+    setDraft(nextDraft);
+    const normalized = nextDraft.trim();
+    const dirty = isUrlType
+      ? normalized !== String(value || '').trim()
+      : Boolean(normalized);
+    setIsDirty(dirty);
+    setSaveFailed(false);
+    onDraftStateChange?.(dirty);
+  };
 
   const commit = async () => {
     const nextValue = draft.trim();
-    if ((!isUrlType && !nextValue) || (isUrlType && nextValue === (value || ''))) return;
+    if (isSaving || !isDirty || (!isUrlType && !nextValue)) return false;
+    setIsSaving(true);
+    setSaveFailed(false);
     try {
-      await onChange(nextValue);
+      const saved = await onChange(nextValue);
+      if (saved === false) throw new Error('save-failed');
       if (!isUrlType) setDraft('');
+      else setDraft(nextValue);
+      setIsDirty(false);
+      onDraftStateChange?.(false);
+      return true;
     } catch {
       // Keep the draft visible so the user can correct or retry it.
+      setSaveFailed(true);
+      onDraftStateChange?.(true);
+      return false;
+    } finally {
+      setIsSaving(false);
     }
   };
+
+  const handleDelete = async () => {
+    setSaveFailed(false);
+    try {
+      await onDelete();
+      setDraft('');
+      setIsDirty(false);
+      onDraftStateChange?.(false);
+    } catch {
+      setSaveFailed(true);
+    }
+  };
+
+  const hasSavedValue = isUrlType ? Boolean(String(value || '').trim()) : isSaved;
+  const statusText = saveFailed
+    ? '保存失败，请重试'
+    : isSaving
+      ? '正在保存…'
+      : isDirty
+        ? '有未保存的更改'
+        : hasSavedValue
+          ? (isUrlType ? '已保存' : '已安全保存')
+          : '尚未保存';
 
   const inputStyle = {
     width: '100%',
@@ -77,7 +136,7 @@ export default function ApiKeyInput({ backend, value, onChange, onDelete, isSave
           id={inputId}
           type={showKey && !isUrlType ? 'text' : isUrlType ? 'text' : 'password'}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => updateDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
@@ -93,7 +152,6 @@ export default function ApiKeyInput({ backend, value, onChange, onDelete, isSave
           onBlur={(e) => {
             e.target.style.borderColor = 'var(--border-secondary)';
             e.target.style.boxShadow = 'none';
-            commit();
           }}
         />
         {!isUrlType && (
@@ -118,14 +176,30 @@ export default function ApiKeyInput({ backend, value, onChange, onDelete, isSave
           </button>
         )}
       </div>
-      {!isUrlType && isSaved && !draft && (
-        <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-secondary)' }}>
-          <span>已安全保存</span>
-          <button type="button" onClick={onDelete} style={{ border: 0, background: 'none', color: 'var(--error)', cursor: 'pointer', padding: '4px 8px' }}>
-            删除凭据
+      <div className="setting-editor-actions">
+        <span
+          className={saveFailed ? 'setting-save-status is-error' : isDirty ? 'setting-save-status is-dirty' : 'setting-save-status'}
+          role="status"
+          aria-live="polite"
+        >
+          {statusText}
+        </span>
+        <div>
+          {!isUrlType && isSaved && !draft && (
+            <button type="button" className="setting-delete-button" onClick={handleDelete}>
+              删除凭据
+            </button>
+          )}
+          <button
+            type="button"
+            className="setting-save-button"
+            disabled={!isDirty || isSaving || (!isUrlType && !draft.trim())}
+            onClick={commit}
+          >
+            {isSaving ? '正在保存…' : isDirty ? (hasSavedValue ? '保存更改' : '保存') : hasSavedValue ? '已保存' : '保存'}
           </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

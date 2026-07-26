@@ -21,20 +21,12 @@ app.whenReady().then(() => {
     return;
   }
 
-  const entry = store.getExplanationHistory().find((item) => item.sourceText === 'Financial aid deadline is Friday.');
-  if (
-    !entry ||
-    entry.explanation.includes('助学金') === false ||
-    entry.backend !== 'ollama' ||
-    entry.model !== 'deepseek-r1:14b' ||
-    entry.source !== 'manual' ||
-    Object.hasOwn(entry, 'openaiApiKey')
-  ) {
+  if (store.getExplanationHistory().length !== 0) {
     console.error(JSON.stringify(store.getExplanationHistory()));
     app.exit(1);
     return;
   }
 
-  console.log('history persistence check passed');
+  console.log('history non-retention check passed');
   app.exit(0);
 });

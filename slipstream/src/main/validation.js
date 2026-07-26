@@ -1,5 +1,6 @@
 const { DEFAULTS, LANGUAGES, LLM_BACKENDS } = require('../shared/constants.cjs');
 const net = require('net');
+const { assertSafeHostname } = require('./verification/url-safety');
 
 const BACKENDS = new Set(Object.values(LLM_BACKENDS));
 const LANGUAGE_HINTS = new Set(Object.values(LANGUAGES));
@@ -10,6 +11,7 @@ const URL_SETTINGS = new Set(['ollamaBaseUrl', 'customEndpointUrl']);
 const NUMBER_SETTINGS = new Set(['windowWidth', 'windowHeight', 'windowX', 'windowY']);
 const VERIFICATION_POLICIES = new Set(['local-only', 'ask', 'official-auto']);
 const RESULT_ORDERS = new Set(['action-first', 'translation-first']);
+const SETUP_MODES = new Set(['unconfigured', 'full', 'translation-only']);
 
 function validateShortcut(value) {
   const shortcut = value.trim();
@@ -21,17 +23,51 @@ function validateShortcut(value) {
 
 function validateEndpointUrl(value) {
   if (value === '') return value;
+  if (typeof value !== 'string') throw new Error('请输入有效的服务地址');
+  const candidate = value.trim();
   let parsed;
   try {
-    parsed = new URL(value);
+    parsed = new URL(candidate);
   } catch {
     throw new Error('请输入有效的服务地址');
   }
-  const isLoopback = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
-  if (parsed.protocol !== 'https:' && !(parsed.protocol === 'http:' && isLoopback)) {
+  if (parsed.username || parsed.password || candidate.includes('?') || candidate.includes('#')) {
+    throw new Error('服务地址不能包含凭据、查询参数或片段');
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+  if (parsed.protocol === 'http:') {
+    if (!isLoopback) throw new Error('远程服务地址必须使用 HTTPS');
+    if (hostname === 'localhost') parsed.hostname = '127.0.0.1';
+  } else if (parsed.protocol === 'https:') {
+    if (parsed.port || net.isIP(hostname.replace(/^\[|\]$/g, ''))) {
+      throw new Error('HTTPS 服务必须使用公开域名和默认端口');
+    }
+    try {
+      assertSafeHostname(hostname);
+    } catch {
+      throw new Error('HTTPS 服务必须使用公开域名和默认端口');
+    }
+  } else {
     throw new Error('远程服务地址必须使用 HTTPS');
   }
-  return value.replace(/\/$/, '');
+
+  const pathname = parsed.pathname === '/'
+    ? ''
+    : parsed.pathname.replace(/\/+$/, '');
+  if (/\/(?:models|chat\/completions|api\/(?:tags|generate))$/i.test(pathname)) {
+    throw new Error('请输入服务根地址，不要填写具体的模型或生成接口');
+  }
+  return `${parsed.origin}${pathname}`;
+}
+
+function validateProviderConnectionTestOptions(options) {
+  if (options === undefined) return {};
+  if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).length) {
+    throw new Error('连接测试不接受内容或连接参数');
+  }
+  return {};
 }
 
 function validateSetting(key, value) {
@@ -50,7 +86,9 @@ function validateSetting(key, value) {
   } else if (key === 'activeBackend') {
     if (!BACKENDS.has(value)) throw new Error('不支持的模型后端');
   } else if (key === 'languageHint') {
-    if (!LANGUAGE_HINTS.has(value)) throw new Error('不支持的语言方向');
+    if (!LANGUAGE_HINTS.has(value) || value !== 'en') throw new Error('当前版本仅支持英文到中文');
+  } else if (key === 'setupMode') {
+    if (!SETUP_MODES.has(value)) throw new Error('不支持的功能模式');
   } else if (key === 'verificationPolicy') {
     if (!VERIFICATION_POLICIES.has(value)) throw new Error('不支持的联网核验策略');
   } else if (key === 'resultOrder') {
@@ -71,7 +109,44 @@ function validateProcessOptions(options) {
   const source = ['manual', 'monitor', 'shortcut', 'ocr'].includes(options.source) ? options.source : 'manual';
   const capture = normalizeCaptureMetadata(options.capture);
   const verificationApproved = options.verificationApproved === true;
-  return { text: options.text, source, capture, verificationApproved };
+  const truncated = options.truncated === true;
+  const requestedOriginalLength = Number.isSafeInteger(options.originalLength)
+    ? options.originalLength
+    : options.text.length;
+  const originalLength = Math.max(options.text.length, requestedOriginalLength);
+  if (truncated && originalLength <= options.text.length) {
+    throw new Error('截断文本必须提供大于保留长度的原始长度');
+  }
+  return { text: options.text, source, capture, truncated, originalLength, verificationApproved };
+}
+
+function validateVerificationOptions(options) {
+  if (!options || typeof options.sourceText !== 'string' || !options.sourceText.trim()) {
+    throw new Error('缺少待核验结果对应的原文');
+  }
+  if (options.sourceText.length > DEFAULTS.MAX_TEXT_LENGTH) {
+    throw new Error(`核验原文不能超过 ${DEFAULTS.MAX_TEXT_LENGTH} 个字符`);
+  }
+  if (!/^[a-f0-9]{64}$/.test(options.approvalId || '')) {
+    throw new Error('官方核验批准标识无效');
+  }
+  if (!options.brief || typeof options.brief !== 'object' || Array.isArray(options.brief)) {
+    throw new Error('缺少待核验的结构化结果');
+  }
+  let serialized;
+  try {
+    serialized = JSON.stringify(options.brief);
+  } catch {
+    throw new Error('待核验结果无法序列化');
+  }
+  if (!serialized || serialized.length > 1_000_000) {
+    throw new Error('待核验结果超出大小限制');
+  }
+  return {
+    sourceText: options.sourceText,
+    brief: JSON.parse(serialized),
+    approvalId: options.approvalId,
+  };
 }
 
 function normalizeCaptureMetadata(capture) {
@@ -122,7 +197,14 @@ function validateExternalUrl(value) {
   } catch {
     throw new Error('链接无效');
   }
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || isPrivateHostname(parsed.hostname)) {
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    (parsed.port && parsed.port !== '443') ||
+    !parsed.hostname.includes('.') ||
+    isPrivateHostname(parsed.hostname)
+  ) {
     throw new Error('只能打开安全的公开 HTTPS 链接');
   }
   return parsed.toString();
@@ -146,6 +228,8 @@ module.exports = {
   isTrustedRendererUrl,
   validateEndpointUrl,
   validateProcessOptions,
+  validateProviderConnectionTestOptions,
+  validateVerificationOptions,
   validateExternalUrl,
   validateSetting,
   validateShortcut,

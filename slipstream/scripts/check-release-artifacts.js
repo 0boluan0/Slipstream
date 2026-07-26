@@ -1,4 +1,4 @@
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -14,6 +14,34 @@ const artifacts = arches.map((arch) => ({
   zipPath: path.join(root, 'release', `${productName}-${pkg.version}-${arch}.zip`),
 }));
 const checksumsPath = path.join(root, 'release', 'SHA256SUMS.txt');
+
+function inspectCodeSignature(appPath, args) {
+  const result = spawnSync('codesign', ['-d', ...args, appPath], { encoding: 'utf8' });
+  const output = `${result.stdout || ''}${result.stderr || ''}`;
+  if (result.status !== 0) throw new Error(`unable to inspect code signature: ${output.trim()}`);
+  return output;
+}
+
+function assertRuntimeEntitlements(appPath) {
+  const signature = inspectCodeSignature(appPath, ['--verbose=4']);
+  const entitlements = inspectCodeSignature(appPath, ['--entitlements', '-']);
+  for (const entitlement of [
+    'com.apple.security.cs.allow-jit',
+    'com.apple.security.cs.allow-unsigned-executable-memory',
+  ]) {
+    if (!entitlements.includes(entitlement)) {
+      throw new Error(`release app is missing runtime entitlement: ${entitlement}`);
+    }
+  }
+
+  const hasLibraryValidationException = entitlements.includes('com.apple.security.cs.disable-library-validation');
+  if (/Signature=adhoc/i.test(signature) && !hasLibraryValidationException) {
+    throw new Error('ad-hoc release app is missing the Electron library-validation exception');
+  }
+  if (/Authority=Developer ID Application:/i.test(signature) && hasLibraryValidationException) {
+    throw new Error('Developer ID release app contains the ad-hoc library-validation exception');
+  }
+}
 
 for (const file of [...artifacts.flatMap(({ dmgPath, zipPath }) => [dmgPath, zipPath]), checksumsPath]) {
   if (!fs.existsSync(file)) {
@@ -71,6 +99,7 @@ try {
     const unzippedApp = path.join(archDir, `${productName}.app`);
     fs.accessSync(path.join(unzippedApp, 'Contents', 'MacOS', productName), fs.constants.X_OK);
     execFileSync('codesign', ['--verify', '--deep', '--strict', unzippedApp], { stdio: 'ignore' });
+    assertRuntimeEntitlements(unzippedApp);
   }
 } catch (error) {
   console.error(error.message.includes('access') ? `zip does not contain executable ${productName}.app` : error.message);

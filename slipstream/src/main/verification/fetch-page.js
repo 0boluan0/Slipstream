@@ -103,26 +103,43 @@ function errorFromStatus(statusCode) {
   return error;
 }
 
-function withTimeout(promise, timeoutMs) {
+function abortedError() {
+  return new FetchConstraintError('official source request was cancelled', 'aborted');
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) throw abortedError();
+}
+
+function withTimeout(promise, timeoutMs, signal) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener?.('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, abortedError());
     const timer = setTimeout(
-      () => reject(new FetchConstraintError('official source request timed out', 'timeout')),
+      () => finish(reject, new FetchConstraintError('official source request timed out', 'timeout')),
       timeoutMs
     );
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
     Promise.resolve(promise).then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timer);
-        reject(error);
-      }
+      (value) => finish(resolve, value),
+      (error) => finish(reject, error)
     );
   });
 }
 
 async function fetchWithRedirect(value, options, redirectCount, deadline) {
+  throwIfAborted(options.signal);
   if (redirectCount > options.maxRedirects) {
     throw new FetchConstraintError('redirect limit exceeded', 'too-many-redirects');
   }
@@ -131,23 +148,38 @@ async function fetchWithRedirect(value, options, redirectCount, deadline) {
 
   const { url, addresses } = await withTimeout(
     resolvePublicAddresses(value, { lookup: options.lookup }),
-    remainingMs
+    remainingMs,
+    options.signal
   );
+  throwIfAborted(options.signal);
   const requestRemainingMs = deadline - options.now();
   if (requestRemainingMs <= 0) throw new FetchConstraintError('official source request timed out', 'timeout');
   return new Promise((resolve, reject) => {
     let settled = false;
     let request;
+    let activeResponse;
+    const onAbort = () => {
+      const error = abortedError();
+      activeResponse?.destroy(error);
+      if (request) request.destroy(error);
+      else finish(reject, error);
+    };
     const finish = (callback, valueToReturn) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener?.('abort', onAbort);
       callback(valueToReturn);
     };
     const fail = (error) => finish(reject, error);
     const timer = setTimeout(() => {
       request?.destroy(new FetchConstraintError('official source request timed out', 'timeout'));
     }, requestRemainingMs);
+    options.signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (options.signal?.aborted) {
+      onAbort();
+      return;
+    }
 
     const requestOptions = {
       protocol: 'https:',
@@ -169,6 +201,7 @@ async function fetchWithRedirect(value, options, redirectCount, deadline) {
 
     try {
       request = options.requestImpl(requestOptions, (response) => {
+        activeResponse = response;
         const statusCode = Number(response.statusCode) || 0;
         if (REDIRECT_STATUS_CODES.has(statusCode)) {
           const location = response.headers?.location;
@@ -187,6 +220,7 @@ async function fetchWithRedirect(value, options, redirectCount, deadline) {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          options.signal?.removeEventListener?.('abort', onAbort);
           resolve(fetchWithRedirect(redirectUrl, options, redirectCount + 1, deadline));
           return;
         }
@@ -247,6 +281,7 @@ async function fetchWithRedirect(value, options, redirectCount, deadline) {
 }
 
 async function fetchPublicText(value, options = {}) {
+  throwIfAborted(options.signal);
   const timeoutMs = boundedInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS, MAX_TIMEOUT_MS, 'timeoutMs');
   const maxBytes = boundedInteger(options.maxBytes, DEFAULT_MAX_BYTES, HARD_MAX_BYTES, 'maxBytes');
   const maxRedirects =
@@ -264,6 +299,7 @@ async function fetchPublicText(value, options = {}) {
       now,
       query: typeof options.query === 'string' ? options.query.slice(0, 120) : '',
       requestImpl: options.requestImpl || https.request,
+      signal: options.signal,
     },
     0,
     now() + timeoutMs

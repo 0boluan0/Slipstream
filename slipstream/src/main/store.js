@@ -1,5 +1,6 @@
 const { safeStorage } = require('electron');
 const { SECRET_SETTING_KEYS } = require('./safe-settings');
+const { MODEL_IDS } = require('../shared/constants.cjs');
 
 /**
  * @typedef {Object} UserSettings
@@ -21,6 +22,7 @@ const { SECRET_SETTING_KEYS } = require('./safe-settings');
  * @property {boolean} clipboardMonitoring
  * @property {'local-only'|'ask'|'official-auto'} verificationPolicy
  * @property {'action-first'|'translation-first'} resultOrder
+ * @property {'unconfigured'|'full'|'translation-only'} setupMode
  * @property {string} clipboardShortcut
  * @property {string} screenshotShortcut
  * @property {Array<object>} savedTerms
@@ -40,6 +42,12 @@ const schema = {
   activeModel: { type: 'string', default: 'google-translate' },
   customPrompt: { type: 'string', default: '' },
   languageHint: { type: 'string', default: 'en' },
+  setupMode: {
+    type: 'string',
+    enum: ['unconfigured', 'full', 'translation-only'],
+    default: 'unconfigured',
+  },
+  productReadinessVersion: { type: 'number', default: 0 },
   windowWidth: { type: 'number', default: 520 },
   windowHeight: { type: 'number', default: 680 },
   windowX: { type: ['number', 'null'], default: null },
@@ -66,7 +74,10 @@ const schema = {
 };
 
 const SECRET_KEYS = SECRET_SETTING_KEYS;
-const PRIVACY_STORAGE_VERSION = 1;
+const PRIVACY_STORAGE_VERSION = 2;
+const INITIAL_SETUP_MIGRATION_VERSION = 1;
+const PRODUCT_READINESS_VERSION = 2;
+const LEGACY_DEEPSEEK_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
 const MAX_EVIDENCE_CHARS = 180;
 const MAX_TERM_EXPLANATION_CHARS = 400;
 
@@ -160,7 +171,11 @@ function safeStorageAvailable(storage) {
 }
 
 function migrateLegacySecretsInStore(store, storage = safeStorage) {
-  const encryptionAvailable = safeStorageAvailable(storage);
+  let encryptionAvailable;
+  const canUseEncryption = () => {
+    if (encryptionAvailable === undefined) encryptionAvailable = safeStorageAvailable(storage);
+    return encryptionAvailable;
+  };
   const migrated = [];
   const cleared = [];
 
@@ -168,7 +183,7 @@ function migrateLegacySecretsInStore(store, storage = safeStorage) {
     const value = store.get(key);
     if (typeof value !== 'string' || !value) continue;
     if (value.startsWith('enc:')) {
-      if (encryptionAvailable) {
+      if (canUseEncryption()) {
         try {
           storage.decryptString(Buffer.from(value.slice(4), 'base64'));
         } catch {
@@ -178,7 +193,7 @@ function migrateLegacySecretsInStore(store, storage = safeStorage) {
       }
       continue;
     }
-    if (!encryptionAvailable) {
+    if (!canUseEncryption()) {
       store.set(key, '');
       cleared.push(key);
       continue;
@@ -196,13 +211,90 @@ function migrateLegacySecretsInStore(store, storage = safeStorage) {
   return { migrated, cleared };
 }
 
+function backendIsConfigured(store) {
+  const backend = store.get('activeBackend');
+  const model = normalizeRetainedText(store.get('activeModel'));
+  if (!model || !backend || backend === 'free_translate') return false;
+  const secretIsUsable = (key) => {
+    const value = store.get(key);
+    if (typeof value !== 'string' || !value) return false;
+    if (!value.startsWith('enc:')) return true;
+    if (!safeStorageAvailable(safeStorage)) return false;
+    try {
+      safeStorage.decryptString(Buffer.from(value.slice(4), 'base64'));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (backend === 'anthropic') return secretIsUsable('anthropicApiKey');
+  if (backend === 'openai') return secretIsUsable('openaiApiKey');
+  if (backend === 'deepseek') return secretIsUsable('deepseekApiKey');
+  if (backend === 'ollama') return Boolean(normalizeRetainedText(store.get('ollamaBaseUrl')));
+  if (backend === 'custom') return Boolean(normalizeRetainedText(store.get('customEndpointUrl')));
+  return false;
+}
+
+function migrateProductReadinessInStore(store) {
+  const previousLanguageHint = store.get('languageHint');
+  if (previousLanguageHint !== 'en') store.set('languageHint', 'en');
+
+  const previousVersion = Number(store.get('productReadinessVersion')) || 0;
+  const knownModes = new Set(['unconfigured', 'full', 'translation-only']);
+  let setupMode = store.get('setupMode');
+  if (!knownModes.has(setupMode)) setupMode = 'unconfigured';
+
+  if (
+    previousVersion < PRODUCT_READINESS_VERSION &&
+    store.get('activeBackend') === 'deepseek' &&
+    LEGACY_DEEPSEEK_MODELS.has(store.get('activeModel'))
+  ) {
+    store.set('activeModel', MODEL_IDS.deepseek[0]);
+  }
+
+  if (
+    previousVersion < INITIAL_SETUP_MIGRATION_VERSION &&
+    setupMode === 'unconfigured' &&
+    backendIsConfigured(store)
+  ) {
+    // Preserve a genuinely configured legacy installation without pretending
+    // that a bare provider selection is already ready for full analysis.
+    setupMode = 'full';
+  }
+
+  if (setupMode === 'translation-only') {
+    store.set('activeBackend', 'free_translate');
+    store.set('activeModel', 'google-translate');
+  } else if (setupMode === 'full' && !backendIsConfigured(store)) {
+    setupMode = 'unconfigured';
+  }
+
+  if (store.get('setupMode') !== setupMode) store.set('setupMode', setupMode);
+  if (previousVersion < PRODUCT_READINESS_VERSION) {
+    store.set('productReadinessVersion', PRODUCT_READINESS_VERSION);
+  }
+
+  return {
+    languageChanged: previousLanguageHint !== 'en',
+    setupMode,
+    migrated: previousVersion < PRODUCT_READINESS_VERSION,
+  };
+}
+
 function runPrivacyMigrations(store) {
   const secrets = migrateLegacySecretsInStore(store);
   const terms = minimizeSavedTermsInStore(store);
+  const readiness = migrateProductReadinessInStore(store);
+  const legacyHistoryCount = Array.isArray(store.get('explanationHistory'))
+    ? store.get('explanationHistory').length
+    : 0;
+  // V1 intentionally retains no source/result history. Clear legacy plaintext
+  // records during migration instead of silently carrying them forward.
+  if (legacyHistoryCount > 0) store.set('explanationHistory', []);
   if ((store.get('privacyStorageVersion') || 0) < PRIVACY_STORAGE_VERSION) {
     store.set('privacyStorageVersion', PRIVACY_STORAGE_VERSION);
   }
-  return { secrets, terms };
+  return { secrets, terms, readiness, history: { cleared: legacyHistoryCount } };
 }
 
 function getStore() {
@@ -249,6 +341,10 @@ function getSettings(key) {
  */
 function setSetting(key, value) {
   const store = getStore();
+  if (key === 'languageHint') {
+    store.set(key, 'en');
+    return;
+  }
   if (SECRET_KEYS.includes(key)) {
     if (typeof value !== 'string') {
       throw new TypeError('API Key must be a string');
@@ -325,17 +421,10 @@ function addExplanationHistory(entry) {
   if (!sourceText.trim() || !explanation.trim()) {
     throw new Error('History entry requires source text and explanation');
   }
-  const historyEntry = {
-    id: Date.now(),
-    createdAt: new Date().toISOString(),
-    sourceText,
-    explanation,
-    backend: typeof entry?.backend === 'string' ? entry.backend : '',
-    model: typeof entry?.model === 'string' ? entry.model : '',
-    source: typeof entry?.source === 'string' ? entry.source : '',
-  };
-  getStore().set('explanationHistory', [historyEntry, ...getExplanationHistory()].slice(0, 50));
-  return historyEntry;
+  // Kept as a compatibility no-op for older callers. Deliberately do not
+  // persist captured source text or generated explanations.
+  clearExplanationHistory();
+  return { stored: false };
 }
 
 function clearExplanationHistory() {
@@ -382,5 +471,6 @@ module.exports = {
   minimizeSavedTerm,
   minimizeSavedTermsInStore,
   migrateLegacySecretsInStore,
+  migrateProductReadinessInStore,
   runPrivacyMigrations,
 };

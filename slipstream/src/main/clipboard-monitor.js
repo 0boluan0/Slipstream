@@ -1,6 +1,7 @@
 const { clipboard } = require('electron');
 const { createHash } = require('crypto');
 const { DEFAULTS } = require('../shared/constants.cjs');
+const { createClipboardPayload } = require('./global-shortcut');
 
 class ClipboardMonitor {
   constructor() {
@@ -40,16 +41,13 @@ class ClipboardMonitor {
           const maxLen = DEFAULTS.MAX_TEXT_LENGTH;
 
           if (currentText.length > maxLen) {
-            // Check if the text was truncated identically before — skip if same
-            const trimmed = currentText.slice(0, maxLen);
-            if (trimmed === this._lastSentText) return;
-            this._lastSentText = trimmed;
+            const payload = createClipboardPayload(currentText);
+            // Check if the visible prefix was sent before, while the full-text
+            // fingerprint above still prevents unrelated clipboard repeats.
+            if (payload.text === this._lastSentText) return;
+            this._lastSentText = payload.text;
             if (this._callback) {
-              this._callback({
-                text: trimmed,
-                truncated: true,
-                originalLength: currentText.length,
-              });
+              this._callback(payload);
             }
           } else {
             this._lastSentText = null;

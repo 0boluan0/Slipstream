@@ -98,6 +98,7 @@ function main() {
           explanation: 'General translation. FAFSA means Free Application for Federal Student Aid.',
         },
       ],
+      explanationHistory: [{ sourceText: longPrivateSource, explanation: 'legacy private result' }],
     },
     availableSafeStorage()
   );
@@ -111,7 +112,8 @@ function main() {
   assert.match(encryptedRaw.openaiApiKey, /^enc:/);
   assert.equal(encryptedRaw.openaiApiKey.includes('legacy-openai-secret'), false);
   assert.equal(encryptedRaw.customEndpointApiKey, '');
-  assert.equal(encryptedRaw.privacyStorageVersion, 1);
+  assert.equal(encryptedRaw.privacyStorageVersion, 2);
+  assert.deepEqual(encryptedRaw.explanationHistory, []);
   assert.equal(encryptedRaw.savedTerms.length, 1);
   assert.equal(Object.hasOwn(encryptedRaw.savedTerms[0], 'sourceText'), false);
   assert.equal(encryptedRaw.savedTerms[0].evidence, 'FAFSA is due on Friday.');
@@ -161,11 +163,12 @@ function main() {
   assert.equal(JSON.stringify(added).includes('student@example.edu'), false);
   assert.equal(JSON.stringify(encrypted.getRawStore().savedTerms).includes(longPrivateSource), false);
 
-  encrypted.store.addExplanationHistory({
+  const historyResult = encrypted.store.addExplanationHistory({
     sourceText: 'Temporary source',
     explanation: 'Temporary explanation',
   });
-  assert.equal(encrypted.store.getExplanationHistory().length, 1);
+  assert.deepEqual(historyResult, { stored: false });
+  assert.equal(encrypted.store.getExplanationHistory().length, 0);
   encrypted.store.clearRetainedContent();
   assert.deepEqual(encrypted.store.getSavedTerms(), []);
   assert.deepEqual(encrypted.store.getExplanationHistory(), []);

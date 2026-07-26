@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle, LinkSimple, ListChecks, SpinnerGap, TextAa, X } from '@phosphor-icons/react';
+import { LinkSimple, ListChecks, SpinnerGap, TextAa, X } from '@phosphor-icons/react';
 
 const STAGES = [
   { label: '整理完整原文', detail: '保留段落、日期与材料名称', Icon: TextAa },
@@ -14,18 +14,14 @@ const TRANSLATION_STAGES = [
 ];
 
 export default function LoadingOverlay({ visible, sourcePreview, onCancel, translationOnly = false }) {
-  const [activeStage, setActiveStage] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const stages = translationOnly ? TRANSLATION_STAGES : STAGES;
 
   useEffect(() => {
     if (!visible) return undefined;
-    setActiveStage(0);
-    const secondStage = window.setTimeout(() => setActiveStage(1), 900);
-    const thirdStage = window.setTimeout(() => setActiveStage(2), 2100);
-    return () => {
-      window.clearTimeout(secondStage);
-      window.clearTimeout(thirdStage);
-    };
+    setElapsedSeconds(0);
+    const timer = window.setInterval(() => setElapsedSeconds((value) => value + 1), 1000);
+    return () => window.clearInterval(timer);
   }, [visible]);
 
   if (!visible) return null;
@@ -46,28 +42,32 @@ export default function LoadingOverlay({ visible, sourcePreview, onCancel, trans
 
       {sourcePreview && <p className="processing-preview">{sourcePreview}</p>}
 
+      <p className="processing-status">
+        <SpinnerGap size={18} className="spin" aria-hidden="true" />
+        <span role="status" aria-live="polite" aria-atomic="true">
+          {elapsedSeconds < 2
+            ? '正在准备原文…'
+            : elapsedSeconds < 20
+              ? '正在等待所选服务返回…'
+              : '仍在等待；你可以取消并检查模型设置。'}
+        </span>
+        <small aria-hidden="true">{elapsedSeconds} 秒</small>
+      </p>
+
+      <p className="processing-plan-label">返回后会检查这些内容</p>
+
       <ol className="processing-steps">
-        {stages.map(({ label, detail, Icon }, index) => {
-          const complete = index < activeStage;
-          const active = index === activeStage;
-          return (
-            <li key={label} className={`processing-step${active ? ' is-active' : ''}${complete ? ' is-complete' : ''}`}>
-              <span className="processing-step__icon" aria-hidden="true">
-                {complete ? (
-                  <CheckCircle size={20} weight="fill" />
-                ) : active ? (
-                  <SpinnerGap size={20} className="spin" />
-                ) : (
-                  <Icon size={20} />
-                )}
-              </span>
-              <span>
-                <strong>{label}</strong>
-                <small>{detail}</small>
-              </span>
-            </li>
-          );
-        })}
+        {stages.map(({ label, detail, Icon }) => (
+          <li key={label} className="processing-step is-planned">
+            <span className="processing-step__icon" aria-hidden="true">
+              <Icon size={20} />
+            </span>
+            <span>
+              <strong>{label}</strong>
+              <small>{detail}</small>
+            </span>
+          </li>
+        ))}
       </ol>
     </section>
   );

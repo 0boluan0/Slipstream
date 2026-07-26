@@ -24,6 +24,13 @@ function inspectSignature(appPath) {
   return output;
 }
 
+function inspectEntitlements(appPath) {
+  const result = spawnSync('codesign', ['-d', '--entitlements', '-', appPath], { encoding: 'utf8' });
+  const output = `${result.stdout || ''}${result.stderr || ''}`;
+  if (result.status !== 0) throw new Error(`unable to inspect entitlements: ${output.trim()}`);
+  return output;
+}
+
 for (const arch of architectures) {
   const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), `slipstream-trust-${arch}-`));
   const zipPath = path.join(releaseDir, `${productName}-${pkg.version}-${arch}.zip`);
@@ -43,6 +50,13 @@ for (const arch of architectures) {
     }
     if (!/flags=.*runtime/i.test(signature)) {
       throw new Error(`${arch} app does not have hardened runtime enabled`);
+    }
+    const entitlements = inspectEntitlements(appPath);
+    if (!entitlements.includes('com.apple.security.cs.allow-jit')) {
+      throw new Error(`${arch} app is missing the Electron JIT entitlement`);
+    }
+    if (entitlements.includes('com.apple.security.cs.disable-library-validation')) {
+      throw new Error(`${arch} app contains the ad-hoc library-validation exception`);
     }
 
     run('xcrun', ['stapler', 'validate', appPath]);

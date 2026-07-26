@@ -26,16 +26,37 @@ function cancelError() {
   return error;
 }
 
-function captureRegion(outPath) {
+function captureRegion(outPath, { signal } = {}) {
   return new Promise((resolve, reject) => {
     const filePath = outPath || outputPath();
-    execFile('/usr/sbin/screencapture', ['-i', '-x', '-t', 'png', filePath], { timeout: 30000 }, (error) => {
+    let settled = false;
+    let child;
+    const cleanupFile = () => {
+      try { fs.unlinkSync(filePath); } catch (_) { /* nothing to clean */ }
+    };
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener?.('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => {
+      child?.kill('SIGTERM');
+      cleanupFile();
+      finish(reject, cancelError());
+    };
+    signal?.addEventListener?.('abort', onAbort, { once: true });
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    child = execFile('/usr/sbin/screencapture', ['-i', '-x', '-t', 'png', filePath], { timeout: 30000 }, (error) => {
       if (error) {
-        try { fs.unlinkSync(filePath); } catch (_) { /* nothing to clean */ }
-        if (error.code === 1) return reject(cancelError());
-        return reject(new Error(`screencapture failed: ${error.message}`));
+        cleanupFile();
+        if (signal?.aborted || error.code === 1) return finish(reject, cancelError());
+        return finish(reject, new Error(`screencapture failed: ${error.message}`));
       }
-      resolve(filePath);
+      finish(resolve, filePath);
     });
   });
 }

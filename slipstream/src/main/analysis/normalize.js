@@ -90,20 +90,30 @@ function normalizeActionBriefCandidate(candidate, options) {
     sourceText,
     officialSourcesById,
     defaultKind: 'inference',
-    requireEvidence: false,
+    requireEvidence: true,
     warnings,
     path: 'explanation',
   });
 
+  const normalizedVerifications = normalizeVerifications(candidate.verifications, {
+    sourceText,
+    officialSourcesById,
+    warnings,
+  });
+  brief.verifications = normalizedVerifications.items;
   brief.terms = normalizeTerms(candidate.terms, {
     sourceText,
     officialSourcesById,
     warnings,
+    verifications: normalizedVerifications.items,
+    verificationIdsByCandidateIndex: normalizedVerifications.idsByCandidateIndex,
   });
   brief.contexts = normalizeContexts(candidate.contexts, {
     sourceText,
     officialSourcesById,
     warnings,
+    verifications: normalizedVerifications.items,
+    verificationIdsByCandidateIndex: normalizedVerifications.idsByCandidateIndex,
   });
   const normalizedDeadlines = normalizeDeadlines(candidate.deadlines, {
     sourceText,
@@ -121,11 +131,6 @@ function normalizeActionBriefCandidate(candidate, options) {
     officialSourcesById,
     warnings,
     deadlineIdsByCandidateIndex: normalizedDeadlines.idsByCandidateIndex,
-  });
-  brief.verifications = normalizeVerifications(candidate.verifications, {
-    sourceText,
-    officialSourcesById,
-    warnings,
   });
   addCandidateWarnings(candidate.warnings, warnings);
 
@@ -171,12 +176,20 @@ function normalizeTerms(value, context) {
       context.warnings.add('UNSUPPORTED_TERM_DROPPED', `术语“${surface}”未在原文或官方来源中找到，已丢弃。`);
       return;
     }
+    const verificationId = resolveKnowledgeVerificationId(candidate, provenance, context, `术语“${surface}”`);
+    if (provenance.kind === 'pending' && !verificationId) {
+      context.warnings.add(
+        'UNLINKED_PENDING_TERM',
+        `术语“${surface}”的解释仍待核验，且当前没有由同一原文触发的安全核验项。`,
+      );
+    }
     seen.add(key);
     items.push({
       id: `term-${items.length + 1}`,
       surface,
       kind: TERM_KINDS.includes(candidate?.kind) ? candidate.kind : 'other',
       explanation,
+      verificationId,
       provenance,
     });
   });
@@ -188,7 +201,11 @@ function normalizeContexts(value, context) {
   const seen = new Set();
   forEachCandidate(value, 'contexts', context.warnings, (candidate) => {
     const label = boundedString(candidate?.label, 500);
-    const explanation = boundedString(candidate?.explanation, 5000);
+    const whatItIs = nullableBoundedString(candidate?.whatItIs, 2000);
+    const whyItMatters = nullableBoundedString(candidate?.whyItMatters, 2000);
+    const whatToDo = nullableBoundedString(candidate?.whatToDo, 2000);
+    const explanation = boundedString(candidate?.explanation, 5000) ||
+      [whatItIs, whyItMatters, whatToDo].filter(Boolean).join(' ');
     if (!label || !explanation || !CONTEXT_KINDS.includes(candidate?.kind)) {
       context.warnings.add('INVALID_CONTEXT_DROPPED', '无效的文化或流程背景条目已丢弃。');
       return;
@@ -206,12 +223,23 @@ function normalizeContexts(value, context) {
       context.warnings.add('UNSUPPORTED_CONTEXT_DROPPED', `背景“${label}”没有可追溯依据，已丢弃。`);
       return;
     }
+    const verificationId = resolveKnowledgeVerificationId(candidate, provenance, context, `流程背景“${label}”`);
+    if (provenance.kind === 'pending' && !verificationId) {
+      context.warnings.add(
+        'UNLINKED_PENDING_CONTEXT',
+        `流程背景“${label}”仍待核验，且当前没有由同一原文触发的安全核验项。`,
+      );
+    }
     seen.add(key);
     items.push({
       id: `context-${items.length + 1}`,
       label,
       kind: candidate.kind,
       explanation,
+      whatItIs,
+      whyItMatters,
+      whatToDo,
+      verificationId,
       provenance,
     });
   });
@@ -343,8 +371,9 @@ function normalizeNextSteps(value, context) {
 
 function normalizeVerifications(value, context) {
   const items = [];
+  const idsByCandidateIndex = [];
   const seen = new Set();
-  forEachCandidate(value, 'verifications', context.warnings, (candidate) => {
+  forEachCandidate(value, 'verifications', context.warnings, (candidate, candidateIndex) => {
     const claim = boundedString(candidate?.claim, 2000);
     const reason = boundedString(candidate?.reason, 2000);
     if (!claim || !reason) {
@@ -375,16 +404,63 @@ function normalizeVerifications(value, context) {
       );
     }
     seen.add(key);
+    const id = `verification-${items.length + 1}`;
+    idsByCandidateIndex[candidateIndex] = id;
     items.push({
-      id: `verification-${items.length + 1}`,
+      id,
       claim,
       reason,
       status: verified ? 'verified' : 'pending',
       lookup,
+      retrievals: [],
       provenance: verified ? provenance : downgradeToPending(provenance),
     });
   });
-  return items;
+  return { items, idsByCandidateIndex };
+}
+
+function resolveKnowledgeVerificationId(candidate, provenance, context, label) {
+  const requestedIndex = candidate?.verificationIndex;
+  const requestedId = Number.isSafeInteger(requestedIndex) && requestedIndex >= 0
+    ? context.verificationIdsByCandidateIndex?.[requestedIndex] || null
+    : null;
+  if (requestedIndex !== undefined && requestedIndex !== null && requestedId === null) {
+    context.warnings.add(
+      'INVALID_VERIFICATION_REFERENCE',
+      `${label}引用了无效的核验项。`,
+    );
+  }
+
+  const requestedVerification = requestedId
+    ? context.verifications?.find((item) => item.id === requestedId)
+    : null;
+  if (requestedVerification && provenanceEvidenceOverlaps(provenance, requestedVerification.provenance)) {
+    return requestedVerification.id;
+  }
+  if (requestedVerification) {
+    context.warnings.add(
+      'MISMATCHED_VERIFICATION_REFERENCE',
+      `${label}与其核验项没有共享同一处原文触发证据，已忽略该关联。`,
+    );
+  }
+
+  const matchingVerification = context.verifications?.find((item) => (
+    provenanceEvidenceOverlaps(provenance, item.provenance)
+  ));
+  return matchingVerification?.id || null;
+}
+
+function provenanceEvidenceOverlaps(left, right) {
+  const leftEvidence = Array.isArray(left?.evidence) ? left.evidence : [];
+  const rightEvidence = Array.isArray(right?.evidence) ? right.evidence : [];
+  return leftEvidence.some((leftEntry) => rightEvidence.some((rightEntry) => (
+    Number.isSafeInteger(leftEntry?.start) &&
+    Number.isSafeInteger(leftEntry?.end) &&
+    Number.isSafeInteger(rightEntry?.start) &&
+    Number.isSafeInteger(rightEntry?.end) &&
+    leftEntry.start < rightEntry.end &&
+    rightEntry.start < leftEntry.end
+  )));
 }
 
 function normalizeVerificationLookup(value, warnings, claim) {

@@ -41,6 +41,16 @@ function originalProvenance(...quotes) {
   };
 }
 
+function inferenceProvenance(...quotes) {
+  return {
+    kind: 'inference',
+    confidence: 0.9,
+    note: '解释仅概括原文明示的要求，不补充外部流程事实。',
+    evidence: quotes.map((quote) => evidenceFor(quote)),
+    citations: [],
+  };
+}
+
 function pendingProvenance(note, ...quotes) {
   return {
     kind: 'pending',
@@ -86,6 +96,7 @@ const PREVIEW_ACTION_BRIEF = {
       surface: 'passport information page',
       kind: 'specialist_term',
       explanation: '护照上包含姓名、照片、护照号码、出生日期等个人资料的页面。',
+      verificationId: null,
       provenance: originalProvenance('passport information page'),
     },
     {
@@ -93,13 +104,23 @@ const PREVIEW_ACTION_BRIEF = {
       surface: 'eVisa share code',
       kind: 'specialist_term',
       explanation: '英国电子签证系统用于让机构在线核验移民身份的共享代码。代码通常有有效期，提交前应在官方账户中确认。',
+      verificationId: 'verify-evisa-guidance',
       provenance: pendingProvenance('术语含义需要结合英国政府官方说明核验。', 'eVisa share code'),
+    },
+    {
+      id: 'term-received',
+      surface: 'received',
+      kind: 'general_term',
+      explanation: '这里不是“你发出去”就算完成，而是材料最晚必须在该日期前被对方收到。',
+      verificationId: null,
+      provenance: inferenceProvenance('All items must be received by 28 July 2026.'),
     },
     {
       id: 'term-university-services',
       surface: 'University Services',
       kind: 'institution',
       explanation: '邮件署名中的学校服务部门名称；原文未给出更具体的办公室。',
+      verificationId: null,
       provenance: originalProvenance('University Services'),
     },
   ],
@@ -108,8 +129,12 @@ const PREVIEW_ACTION_BRIEF = {
       id: 'context-identity-check',
       label: '身份材料核验流程',
       kind: 'institutional_process',
-      explanation: '邮件要求以文件副本核验学生记录，并要求在提交后通过邮件确认。',
-      provenance: originalProvenance(
+      explanation: '学校要求通过两项身份证明材料核对学生记录；你要提交材料，再回复邮件确认已经提交。',
+      whatItIs: '学校要求你提交两项身份证明材料，用来核对学生记录。',
+      whyItMatters: '这是邮件明确要求的记录核验步骤；原文没有说明不完成会有什么后果。',
+      whatToDo: '准备两项清晰材料，在截止日期前提交，然后回复邮件确认已经提交。',
+      verificationId: null,
+      provenance: inferenceProvenance(
         'Please submit copies of the following identity documents to verify your record:',
         'Please reply to this email to confirm that you have submitted the required documents.',
       ),
@@ -185,14 +210,16 @@ const PREVIEW_ACTION_BRIEF = {
         query: 'GOV.UK eVisa share code official guidance',
         candidateUrls: ['https://www.gov.uk/view-prove-immigration-status'],
       },
-      provenance: pendingProvenance('等待官方来源。', 'eVisa share code'),
+      retrievals: [],
+      provenance: pendingProvenance('等待官方来源。', 'A clear scan of your eVisa share code.'),
     },
   ],
   warnings: [],
   analysisProvenance: {
     responseKind: 'structured',
-    provider: 'preview',
+    provider: 'ollama',
     model: 'action-brief-preview',
+    processingTimeMs: null,
     promptVersion: 'action-brief.prompt.v1',
     generatedAt: '2026-07-23T08:00:00.000Z',
   },

@@ -17,13 +17,13 @@ Temporary screenshot files are deleted after OCR. Full source text is not saved 
 - The free translation backend sends submitted text to Google Translate and may fall back to MyMemory. It is therefore not a local mode.
 - Official verification sends only a bounded query and/or candidate official URL. The verification API rejects fields that resemble full email or source text.
 
-Default official verification policy is **Ask first**. `Local only` performs no verification request. `Official auto` retrieves eligible candidate sources automatically.
+Default official verification policy is **Ask first**. `Local only` performs no verification request. `Official auto` discovers or retrieves only eligible official sources automatically. The built-in GOV.UK discovery adapter sends only a minimized query to GOV.UK's public Search API; it never sends the captured source text.
 
 Slipstream cannot control a third-party provider's retention policy. Review the chosen provider's policy before submitting sensitive school, immigration, employment, financial, legal, or medical content.
 
 ## Local deletion
 
-Settings provide controls to remove saved terms, retained history, credentials, or all local user data. Deleting the app alone may not delete its Electron settings directory.
+Settings provide controls to remove saved terms, any legacy history, credentials, or all local user data. The supported V1 flow does not retain new source history. Deleting the app alone may not delete its Electron settings directory.
 
 ## Reporting a privacy problem
 

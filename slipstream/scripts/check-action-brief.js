@@ -43,12 +43,26 @@ function makeCandidate() {
         citationIds: [],
         confidence: 0.9,
       },
+      {
+        surface: 'completed',
+        kind: 'general_term',
+        explanation: '这里表示表格已经填写完整，而不是只下载或打开过。',
+        verificationIndex: null,
+        provenance: 'inference',
+        evidenceQuotes: ['completed form'],
+        citationIds: [],
+        confidence: 0.92,
+      },
     ],
     contexts: [
       {
         label: 'Graduate Route application',
         kind: 'institutional_process',
         explanation: '这是一个需要按要求提交材料的申请流程。',
+        whatItIs: '这是原文所称的 Graduate Route 申请流程。',
+        whyItMatters: '原文把提交表格和护照副本列为申请动作。',
+        whatToDo: '按原文要求在截止时间前提交两份材料。',
+        verificationIndex: null,
         provenance: 'inference',
         evidenceQuotes: ['To apply for the Graduate Route'],
         citationIds: [],
@@ -144,7 +158,11 @@ function checkStructuredBrief() {
   assert.equal(brief.source.length, sourceText.length);
   assert.match(brief.source.sha256, /^[a-f0-9]{64}$/);
   assert.equal(brief.terms[0].kind, 'specialist_term');
+  assert.equal(brief.terms[1].kind, 'general_term');
   assert.equal(brief.contexts[0].kind, 'institutional_process');
+  assert.equal(brief.contexts[0].whatItIs, '这是原文所称的 Graduate Route 申请流程。');
+  assert.equal(brief.contexts[0].whyItMatters, '原文把提交表格和护照副本列为申请动作。');
+  assert.equal(brief.contexts[0].whatToDo, '按原文要求在截止时间前提交两份材料。');
   assert.equal(brief.deadlines[0].normalizedAt, '2026-08-14T16:00:00.000Z');
   assert.equal(brief.nextSteps[0].deadlineId, brief.deadlines[0].id);
   assert.equal(brief.verifications[0].status, 'verified');
@@ -176,9 +194,11 @@ function checkOfficialDowngrade() {
 
   assert.equal(brief.status, 'partial');
   assert.equal(brief.terms[0].provenance.kind, 'pending');
+  assert.equal(brief.terms[0].verificationId, brief.verifications[0].id);
   assert.deepEqual(brief.terms[0].provenance.citations, []);
   assert.equal(brief.verifications[0].status, 'pending');
   assert.equal(brief.verifications[0].provenance.kind, 'pending');
+  assert.deepEqual(brief.verifications[0].retrievals, []);
   assert(brief.warnings.some((warning) => warning.code === 'OFFICIAL_PROVENANCE_DOWNGRADED'));
   assert(brief.warnings.some((warning) => warning.code === 'UNVERIFIED_OFFICIAL_CLAIM_DOWNGRADED'));
 }
@@ -222,6 +242,20 @@ function checkVerificationLookup() {
   const retryableFailure = JSON.parse(JSON.stringify(brief));
   retryableFailure.verifications[0].status = 'failed';
   assert.deepEqual(validateActionBrief(retryableFailure, { sourceText }), { valid: true, errors: [] });
+
+  const retrieved = JSON.parse(JSON.stringify(brief));
+  retrieved.verifications[0].status = 'retrieved';
+  retrieved.verifications[0].retrievals = [{
+    id: 'retrieval-1',
+    publisher: 'GOV.UK',
+    url: 'https://www.gov.uk/graduate-visa',
+    retrievedAt: '2026-07-23T08:00:00.000Z',
+    excerpt: 'A retrieved page excerpt that has not yet proven the claim.',
+    official: true,
+  }];
+  assert.deepEqual(validateActionBrief(retrieved, { sourceText }), { valid: true, errors: [] });
+  retrieved.verifications[0].retrievals = [];
+  assert.equal(validateActionBrief(retrieved, { sourceText }).valid, false);
 
   const unsafeCandidate = makeCandidate();
   unsafeCandidate.verifications[0] = {
@@ -339,6 +373,124 @@ function checkUnsupportedClaimsAreDropped() {
   assert(brief.warnings.some((warning) => warning.code === 'UNSUPPORTED_NEXT_STEP_DROPPED'));
 }
 
+function checkUngroundedExplanationFailsClosed() {
+  const candidate = makeCandidate();
+  candidate.explanation = {
+    text: '你必须立即支付 500 美元。',
+    provenance: 'inference',
+    evidenceQuotes: [],
+    citationIds: [],
+    confidence: 0.99,
+  };
+  const brief = analyzeModelOutput({
+    sourceText,
+    rawOutput: candidate,
+    officialSources: [{
+      id: 'gov-graduate-route',
+      url: 'https://www.gov.uk/graduate-visa',
+      title: 'Graduate visa',
+      publisher: 'GOV.UK',
+      retrievedAt: '2026-07-22T10:00:00Z',
+      quote: 'Official eligibility information.',
+      official: true,
+    }],
+    generatedAt: GENERATED_AT,
+  });
+
+  assert.equal(brief.explanation.provenance.kind, 'pending');
+  assert.deepEqual(brief.explanation.provenance.evidence, []);
+  assert.equal(brief.status, 'partial');
+}
+
+function checkUnderstandingLayers() {
+  const candidate = makeCandidate();
+  candidate.contexts = [{
+    label: 'Graduate Route application',
+    kind: 'institutional_process',
+    explanation: null,
+    whatItIs: '这是原文点名的申请流程。',
+    whyItMatters: '具体资格属于原文之外的现行规则，需要官方核验。',
+    whatToDo: '先按原文明示准备材料。'.repeat(240),
+    verificationIndex: 0,
+    provenance: 'pending',
+    evidenceQuotes: ['Graduate Route'],
+    citationIds: [],
+    confidence: null,
+  }];
+  candidate.verifications = [{
+    claim: 'Graduate Route 当前资格与办理规则',
+    reason: '这些现行规则不在原文中。',
+    status: 'pending',
+    provenance: 'pending',
+    lookup: {
+      publisher: 'GOV.UK',
+      query: 'Graduate Route eligibility application',
+      candidateUrls: [],
+    },
+    evidenceQuotes: ['Graduate Route'],
+    citationIds: [],
+    confidence: null,
+  }];
+
+  const brief = analyzeModelOutput({
+    sourceText,
+    rawOutput: candidate,
+    generatedAt: GENERATED_AT,
+  });
+
+  assert.equal(brief.status, 'partial');
+  assert.equal(brief.contexts.length, 1);
+  assert.equal(brief.contexts[0].provenance.kind, 'pending');
+  assert.equal(brief.contexts[0].verificationId, brief.verifications[0].id);
+  assert.equal(brief.contexts[0].whatItIs, '这是原文点名的申请流程。');
+  assert.equal(brief.contexts[0].whyItMatters, '具体资格属于原文之外的现行规则，需要官方核验。');
+  assert.equal(brief.contexts[0].whatToDo.length, 2000);
+  assert.match(brief.contexts[0].explanation, /这是原文点名的申请流程/);
+  assert.deepEqual(validateActionBrief(brief, { sourceText }), { valid: true, errors: [] });
+
+  const tooLong = JSON.parse(JSON.stringify(brief));
+  tooLong.contexts[0].whatItIs = 'x'.repeat(2001);
+  assert.equal(validateActionBrief(tooLong, { sourceText }).valid, false);
+
+  const mismatched = JSON.parse(JSON.stringify(brief));
+  mismatched.contexts[0].verificationId = 'missing-verification';
+  assert.equal(validateActionBrief(mismatched, { sourceText }).valid, false);
+
+  const unmatchedCandidate = makeCandidate();
+  unmatchedCandidate.contexts = [{
+    label: 'Unverified external process',
+    kind: 'social_process',
+    explanation: '这段说明依赖外部社会流程。',
+    whatItIs: '一种原文之外的流程解释。',
+    whyItMatters: null,
+    whatToDo: null,
+    verificationIndex: null,
+    provenance: 'pending',
+    evidenceQuotes: ['Graduate Route'],
+    citationIds: [],
+    confidence: null,
+  }];
+  unmatchedCandidate.verifications = [];
+  const unmatched = analyzeModelOutput({
+    sourceText,
+    rawOutput: unmatchedCandidate,
+    generatedAt: GENERATED_AT,
+  });
+  assert.equal(unmatched.contexts.length, 1);
+  assert.equal(unmatched.contexts[0].provenance.kind, 'pending');
+  assert.equal(unmatched.contexts[0].verificationId, null);
+  assert(unmatched.warnings.some((warning) => warning.code === 'UNLINKED_PENDING_CONTEXT'));
+  assert.deepEqual(validateActionBrief(unmatched, { sourceText }), { valid: true, errors: [] });
+
+  const legacyShape = JSON.parse(JSON.stringify(brief));
+  legacyShape.contexts[0].provenance.kind = 'inference';
+  legacyShape.contexts[0].verificationId = null;
+  delete legacyShape.contexts[0].whatItIs;
+  delete legacyShape.contexts[0].whyItMatters;
+  delete legacyShape.contexts[0].whatToDo;
+  assert.deepEqual(validateActionBrief(legacyShape, { sourceText }), { valid: true, errors: [] });
+}
+
 function checkLegacyFallback() {
   const rawOutput = `1. 中文翻译\n\n请提交表格和护照复印件。\n\n2. 专有名词 / 缩写 / 机构 / 课程名\n\n- Graduate Route：英国毕业生签证路径\n- CAS：录取确认函`;
   const brief = analyzeModelOutput({
@@ -410,13 +562,16 @@ function checkPromptContract() {
   assert.match(prompt.systemPrompt, /Cultural, social-process, or institutional-process context/);
   assert.match(prompt.systemPrompt, /ordinary words or noun phrases \(general_term\)/);
   assert.match(prompt.systemPrompt, /Keep three layers separate/);
-  assert.match(prompt.systemPrompt, /mark it pending and add a matching pending verification claim/);
+  assert.match(prompt.systemPrompt, /mark the whole context pending and link it to a matching pending verification claim/);
+  assert.match(prompt.systemPrompt, /whatItIs, whyItMatters, and whatToDo/);
   assert.match(prompt.systemPrompt, /untrusted retrieval plan/);
   assert.match(prompt.userMessage, /evidenceQuotes/);
   assert.match(prompt.userMessage, /candidateUrls/);
   assert.match(prompt.userMessage, /at most 16 whitespace-delimited words/);
   assert.match(prompt.userMessage, /Use general_term for an ordinary word or phrase/);
-  assert.match(prompt.userMessage, /external procedural facts must be pending/);
+  assert.match(prompt.userMessage, /external procedural facts, mark the whole context pending/);
+  assert.match(prompt.userMessage, /verificationIndex is a zero-based reference/);
+  assert.match(prompt.userMessage, /“这是什么”/);
   assert(prompt.userMessage.includes(JSON.stringify({ text: hostileSource })));
   assert.doesNotThrow(() => JSON.stringify(prompt));
 }
@@ -539,6 +694,8 @@ async function main() {
   checkOfficialDowngrade();
   checkVerificationLookup();
   checkUnsupportedClaimsAreDropped();
+  checkUngroundedExplanationFailsClosed();
+  checkUnderstandingLayers();
   checkLegacyFallback();
   checkTranslationOnlyFallback();
   checkMalformedJsonFailsClosed();
