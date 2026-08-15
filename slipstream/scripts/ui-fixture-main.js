@@ -5068,8 +5068,25 @@ async function finishUiFixtureRuntimeCheck() {
             'Safe sample confirmation is not vertically reachable without horizontal clipping',
           );
           ensure(loadedNoHorizontalOverflow, 'Loaded safe sample introduced horizontal overflow');
-          ensure(Number(document.documentElement.dataset.demoProcessRequests) === 0,
+          const safeSampleDidNotAutoProcess = Number(
+            document.documentElement.dataset.demoProcessRequests,
+          ) === 0;
+          ensure(safeSampleDidNotAutoProcess,
             'Loading the safe sample unexpectedly started processing');
+
+          click(processButton);
+          await waitFor(
+            () => Number(document.documentElement.dataset.demoProcessRequests) === 1,
+            'explicit safe sample processing request',
+          );
+          const [safeSampleRequest] = JSON.parse(
+            document.documentElement.dataset.demoProcessPayloads || '[]',
+          );
+          ensure(
+            safeSampleRequest?.source === 'sample' && safeSampleRequest.capture === null,
+            'A non-OCR safe sample must not cross IPC with screenshot metadata: '
+              + JSON.stringify(safeSampleRequest),
+          );
 
           firstUseCaptureTextScale = {
             viewport: { width: window.innerWidth, height: window.innerHeight },
@@ -5123,7 +5140,9 @@ async function finishUiFixtureRuntimeCheck() {
               safetyCopyVisible: sampleSafetyCopyVisible,
               generateEnabled: !processButton.disabled,
               generateLabelCorrect: processButton.textContent.includes('生成完整翻译'),
-              noAutoProcess: Number(document.documentElement.dataset.demoProcessRequests) === 0,
+              noAutoProcess: safeSampleDidNotAutoProcess,
+              submittedSource: safeSampleRequest.source,
+              submittedCapture: safeSampleRequest.capture,
               noHorizontalOverflow: loadedNoHorizontalOverflow,
               allFocusEvidenceVisible: captureLoadedFocusVisible,
               focusEvidence: captureLoadedFocusEvidence,

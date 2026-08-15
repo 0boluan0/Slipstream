@@ -34,6 +34,8 @@ const required = [
   ['build.mac.hardenedRuntime', pkg.build?.mac?.hardenedRuntime === true],
   ['build.mac.entitlements', pkg.build?.mac?.entitlements],
   ['build.mac.entitlementsInherit', pkg.build?.mac?.entitlementsInherit],
+  ['build.mac.extendInfo.NSScreenCaptureUsageDescription',
+    pkg.build?.mac?.extendInfo?.NSScreenCaptureUsageDescription],
 ];
 
 const missing = required.filter(([, value]) => !value).map(([key]) => key);

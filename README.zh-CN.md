@@ -60,8 +60,8 @@ Slipstream 支持 **macOS 12 或以上版本**。
 
 | 你的 Mac | 下载 |
 | --- | --- |
-| Apple 芯片——M1、M2、M3、M4 及更新型号 | [下载 Slipstream 1.0.1 arm64 版](https://github.com/0boluan0/Slipstream/releases/download/v1.0.1/Slipstream-1.0.1-arm64.dmg) |
-| Intel 处理器 | [下载 Slipstream 1.0.1 x64 版](https://github.com/0boluan0/Slipstream/releases/download/v1.0.1/Slipstream-1.0.1-x64.dmg) |
+| Apple 芯片——M1、M2、M3、M4 及更新型号 | [下载 Slipstream 1.0.2 arm64 版](https://github.com/0boluan0/Slipstream/releases/download/v1.0.2/Slipstream-1.0.2-arm64.dmg) |
+| Intel 处理器 | [下载 Slipstream 1.0.2 x64 版](https://github.com/0boluan0/Slipstream/releases/download/v1.0.2/Slipstream-1.0.2-x64.dmg) |
 
 1. 打开下载好的 DMG。
 2. 把 **Slipstream** 拖进 **Applications（应用程序）**。

@@ -1555,8 +1555,8 @@ function setWindowMode(mode) {
   }
 
   currentWindowMode = mode;
-  mainWindow.setAlwaysOnTop(mode === 'capture');
   mainWindow.setBounds(nextBounds, true);
+  mainWindow.setAlwaysOnTop(mode === 'capture');
   return true;
 }
 
@@ -1585,12 +1585,6 @@ function restoreWindowAfterCapture(windowState) {
 
 async function captureScreenshotTask(senderId) {
   if (captureRequestInFlight) return userError(USER_ERRORS.SCREENSHOT_BUSY);
-  const initialPermissionStatus = getScreenRecordingAccessStatus();
-  if (isScreenRecordingAccessDenied(initialPermissionStatus)) {
-    return userError(USER_ERRORS.SCREENSHOT_PERMISSION_DENIED, {
-      permissionStatus: initialPermissionStatus,
-    });
-  }
   let imagePath = null;
   let windowState = null;
   let phase = 'selection';
@@ -1826,8 +1820,8 @@ function promoteRecoveredWindow(settings) {
     const targetMode = settings.setupMode === 'unconfigured' ? 'setup' : 'capture';
     if (targetMode === 'capture') captureWindowBounds = getRecoveredCaptureBounds(settings);
     if (targetMode === currentWindowMode) {
-      mainWindow.setAlwaysOnTop(targetMode === 'capture');
       if (targetMode === 'capture') mainWindow.setBounds(captureWindowBounds, true);
+      mainWindow.setAlwaysOnTop(targetMode === 'capture');
       if (
         targetMode === 'setup'
         && Number.isFinite(settings.windowX)

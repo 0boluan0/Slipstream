@@ -2020,7 +2020,7 @@ export default function FloatingPanel({
         promptTemplate: settings.customPrompt,
         languageHint: settings.languageHint,
         source: options.source || 'manual',
-        capture: options.capture || null,
+        capture: options.source === 'ocr' ? (options.capture || null) : null,
         truncated: Boolean(options.truncated),
         originalLength: options.originalLength ?? text.length,
         verificationApproved: Boolean(options.verificationApproved),

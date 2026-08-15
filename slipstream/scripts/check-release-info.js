@@ -144,6 +144,9 @@ function inspectArchive(arch, outputDir, runtimeRoot) {
   if (!output.includes('"LSMinimumSystemVersion" => "12.0"')) {
     throw new Error('packaged app must declare macOS 12.0 as its minimum system version');
   }
+  if (!output.includes('"NSScreenCaptureUsageDescription"')) {
+    throw new Error('packaged app must explain its screen capture permission request');
+  }
 
   const asarPath = path.join(resourcesPath, 'app.asar');
   const packagedPackage = JSON.parse(extractFile(asarPath, 'package.json').toString('utf8'));
