@@ -437,6 +437,8 @@ async function main() {
   );
   assert.match(gateSource, /我明确选择只用基础翻译/);
   assert.match(gateSource, /不包含行动步骤、材料清单、截止日期、术语解释或流程说明/);
+  assert.match(gateSource, /已有 API Key，或已安装并准备好 Ollama；在线服务可能收费/,
+    'the recommended choice must disclose its prerequisites and possible cost before selection');
   assert.match(gateSource, /Google \/ MyMemory/, 'the first choice must disclose where basic translation sends text');
   assert.match(gateSource, /retryFailedSettings/);
   assert.match(gateSource, /重试保存/,

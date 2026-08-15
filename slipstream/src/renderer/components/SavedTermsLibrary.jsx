@@ -649,7 +649,11 @@ export default function SavedTermsLibrary({
       if (!dialog?.isConnected) return;
       const activeElement = document.activeElement;
       if (normalizedLoadStatus === 'ready') {
-        if (activeElement !== closeButtonRef.current && activeElement !== dialog) return;
+        if (
+          activeElement !== document.body
+          && activeElement !== closeButtonRef.current
+          && activeElement !== dialog
+        ) return;
         const target = searchInputRef.current
           || emptyImportButtonRef.current
           || closeButtonRef.current;

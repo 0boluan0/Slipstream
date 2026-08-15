@@ -1386,6 +1386,24 @@ svg {
   line-height: 1.55;
 }
 
+.capture-start-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: -7px 0 14px;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.4;
+  list-style-position: inside;
+}
+
+.capture-start-steps li {
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
 .capture-input {
   position: relative;
   display: block;
@@ -1732,16 +1750,16 @@ svg {
   padding: 6px 9px;
   border: 1px solid var(--accent);
   border-radius: 8px;
-  background: var(--surface-raised);
-  color: var(--accent-ink);
+  background: var(--accent-fill);
+  color: var(--on-solid);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 750;
   white-space: nowrap;
 }
 
 .capture-sample button:hover {
-  background: var(--accent-light);
+  background: var(--accent-fill-hover);
 }
 
 .capture-sample button:focus-visible {
@@ -1839,6 +1857,21 @@ svg {
   line-height: 1.4;
   overflow-wrap: anywhere;
   white-space: normal;
+}
+
+.capture-permission-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 9px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.capture-permission-note svg {
+  flex: 0 0 auto;
+  color: var(--success);
 }
 
 .processing-privacy-disclosure {
@@ -2915,7 +2948,7 @@ kbd {
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  margin-top: 9px;
+  margin-bottom: 9px;
   color: var(--text-tertiary);
   font-size: 11px;
   line-height: 1.45;
@@ -4875,6 +4908,7 @@ kbd {
 }
 
 @media (max-width: 430px) {
+  .capture-start-steps { grid-template-columns: 1fr; }
   .shortcut-readiness-alert {
     grid-template-columns: auto minmax(0, 1fr);
   }

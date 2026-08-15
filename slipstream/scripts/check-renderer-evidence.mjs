@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import {
   buildActionGroups,
   buildEvidenceCatalog,
@@ -35,6 +36,13 @@ function briefWith(overrides = {}) {
     ...overrides,
   };
 }
+
+const resultSource = fs.readFileSync(
+  new URL('../src/renderer/components/ResultDisplay.jsx', import.meta.url),
+  'utf8',
+);
+assert.match(resultSource, /点击任意彩色原文，右侧会跳到并展开对应结论/,
+  'the result must directly teach source-to-conclusion evidence navigation');
 
 {
   const sourceText = [

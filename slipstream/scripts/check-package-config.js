@@ -43,6 +43,37 @@ if (missing.length) {
   process.exit(1);
 }
 
+const expectedDmgConfig = {
+  title: 'Install Slipstream',
+  background: 'dmg-background.png',
+  iconSize: 128,
+  iconTextSize: 12,
+  contents: [
+    { x: 170, y: 215, type: 'file' },
+    { x: 490, y: 215, type: 'link', path: '/Applications' },
+  ],
+};
+if (JSON.stringify(pkg.build.dmg) !== JSON.stringify(expectedDmgConfig)) {
+  console.error('DMG must keep the approved drag-to-Applications layout');
+  process.exit(1);
+}
+
+for (const [filename, width, height] of [
+  ['dmg-background.png', 660, 440],
+  ['dmg-background@2x.png', 1320, 880],
+]) {
+  const image = fs.readFileSync(path.join(__dirname, '..', 'build', filename));
+  if (
+    image.length < 24
+    || image.toString('hex', 0, 8) !== '89504e470d0a1a0a'
+    || image.readUInt32BE(16) !== width
+    || image.readUInt32BE(20) !== height
+  ) {
+    console.error(`${filename} must be a ${width}x${height} PNG`);
+    process.exit(1);
+  }
+}
+
 if (!pkg.scripts.build.includes('node scripts/build-macos.js')) {
   console.error('macOS build must use the isolated staging script');
   process.exit(1);
