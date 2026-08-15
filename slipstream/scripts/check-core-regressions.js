@@ -144,7 +144,10 @@ async function main() {
     assert.match(source, /alwaysOnTop:\s*uiFixtureMode\.enabled \|\| !storageReady \? false : !needsSetup/);
     assert.match(source, /skipTaskbar:\s*!uiFixtureMode\.enabled && storageReady/,
       'a storage-recovery window must remain discoverable without a tray');
-    assert.match(source, /mainWindow\.setAlwaysOnTop\(mode === 'capture'\)/);
+    assert.match(source, /currentWindowMode = mode;\s*mainWindow\.setBounds\(nextBounds, true\);\s*mainWindow\.setAlwaysOnTop\(mode === 'capture'\)/,
+      'resize an onscreen macOS window before raising it to the floating layer');
+    assert.match(source, /if \(targetMode === 'capture'\) mainWindow\.setBounds\(captureWindowBounds, true\);\s*mainWindow\.setAlwaysOnTop\(targetMode === 'capture'\)/,
+      'storage recovery must restore capture bounds before raising the window');
   });
 
   await check('capture envelopes preserve source offsets and OCR provenance', () => {

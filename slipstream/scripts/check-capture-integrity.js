@@ -99,8 +99,8 @@ assert.match(mainSource, /backgroundTaskHandoffRegistry\.claim\(\{[\s\S]*?source
   'matching OCR analysis must claim the same background task identity');
 assert.match(mainSource, /if \(backgroundTask && !handoffArmed\) finishBackgroundTask\(backgroundTask, taskOutcome\)/,
   'capture failures and cancellation must settle, while armed OCR success waits for analysis');
-assert.match(mainSource, /const initialPermissionStatus = getScreenRecordingAccessStatus\(\)[\s\S]*?SCREENSHOT_PERMISSION_DENIED[\s\S]*?windowState = await hideWindowForCapture\(\)/,
-  'known permission denial must be reported before hiding the app or starting selection');
+assert.doesNotMatch(mainSource, /const initialPermissionStatus = getScreenRecordingAccessStatus\(\)[\s\S]*?SCREENSHOT_PERMISSION_DENIED[\s\S]*?windowState = await hideWindowForCapture\(\)/,
+  'a first screenshot request must reach native capture so macOS can register and prompt for Slipstream');
 assert.match(mainSource, /catch \(error\) \{[\s\S]*?getScreenRecordingAccessStatus\(\)[\s\S]*?SCREENSHOT_PERMISSION_DENIED[\s\S]*?error\?\.isCancellation/,
   'a denial that occurs during the macOS prompt must not be mistaken for ordinary selection cancellation');
 assert.match(mainSource, /const SCREEN_RECORDING_SETTINGS_URL = 'x-apple\.systempreferences:com\.apple\.preference\.security\?Privacy_ScreenCapture'/,

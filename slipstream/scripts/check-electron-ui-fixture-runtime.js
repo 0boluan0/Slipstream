@@ -722,6 +722,8 @@ async function main() {
     assert.equal(loadedSample.generateEnabled, true);
     assert.equal(loadedSample.generateLabelCorrect, true);
     assert.equal(loadedSample.noAutoProcess, true);
+    assert.equal(loadedSample.submittedSource, 'sample');
+    assert.equal(loadedSample.submittedCapture, null);
     assert.equal(loadedSample.noHorizontalOverflow, true);
     assert.equal(loadedSample.allFocusEvidenceVisible, true);
     assert.deepEqual(Object.keys(loadedSample.focusEvidence).sort(), [

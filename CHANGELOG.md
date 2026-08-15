@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.2 — 2026-08-15
+
+### First use works as intended
+
+- Keep the app visible when the first-use choice opens the main window.
+- Restore basic translation for pasted text, clipboard text, and the safe example.
+- Ask macOS for Screen Recording access on the first screenshot attempt, so Slipstream is registered in System Settings without requiring the user to add it manually.
+
 ## 1.0.1 — 2026-08-15
 
 ### A clearer first run
