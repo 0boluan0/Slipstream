@@ -242,6 +242,16 @@
   color: var(--accent);
 }
 
+.setup-requirements {
+  margin: 0 0 12px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .setup-limit {
   margin: 14px 0 17px;
   padding: 10px;

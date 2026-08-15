@@ -60,8 +60,8 @@ Slipstream supports **macOS 12 or later**.
 
 | Your Mac | Download |
 | --- | --- |
-| Apple silicon — M1, M2, M3, M4, and later | [Slipstream 1.0.0 for arm64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.0/Slipstream-1.0.0-arm64.dmg) |
-| Intel processor | [Slipstream 1.0.0 for x64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.0/Slipstream-1.0.0-x64.dmg) |
+| Apple silicon — M1, M2, M3, M4, and later | [Slipstream 1.0.1 for arm64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.1/Slipstream-1.0.1-arm64.dmg) |
+| Intel processor | [Slipstream 1.0.1 for x64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.1/Slipstream-1.0.1-x64.dmg) |
 
 1. Open the downloaded DMG.
 2. Drag **Slipstream** into **Applications**.

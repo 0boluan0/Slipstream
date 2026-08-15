@@ -60,6 +60,12 @@ assert.doesNotMatch(setupSource, /captureRequest\.(text|sourceText|preview)/,
 assert.match(panelSource, /const shouldHoldCapture = !visible \|\| shouldHoldClipboardCapture/);
 assert.match(panelSource, /if \(!visible\)[\s\S]*?announceHiddenCaptureRequest\('screenshot'\)/);
 assert.match(panelSource, /reason: setupIncomplete \? 'setup' : 'settings'/);
+assert.match(panelSource, /放入一段完整英文[\s\S]*?确认下方发送位置[\s\S]*?生成后点彩色原文核对依据/,
+  'the empty full-analysis view must explain the first successful path');
+assert.match(panelSource, /载入安全示例（不会生成）/,
+  'the safe sample action must state that loading does not generate');
+assert.match(panelSource, /首次框选截图时，macOS 可能请求屏幕录制权限；截图和 OCR 都在本机进行。直接粘贴或读取剪贴板无需此权限/,
+  'screenshot permission must be explained before the user requests capture');
 assert.match(ipcSource, /demoActiveCaptureEventsCode === 'setup-clipboard'/);
 assert.match(ipcSource, /demoActiveCaptureEventsCode === 'setup-empty'/);
 assert.match(ipcSource, /'setup-screenshot'/);

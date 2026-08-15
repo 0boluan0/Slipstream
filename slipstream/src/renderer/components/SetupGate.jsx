@@ -278,6 +278,9 @@ export default function SetupGate({
               <li><Check size={15} />陌生术语与社会流程解释</li>
               <li><Check size={15} />每条结论指回英文原文</li>
             </ul>
+            <div className="setup-requirements" role="note">
+              开始前需已有 API Key，或已安装并准备好 Ollama；在线服务可能收费。
+            </div>
             <button
               ref={recommendedCtaRef}
               type="button"
@@ -288,7 +291,6 @@ export default function SetupGate({
             >
               配置完整分析 <ArrowRight size={17} />
             </button>
-            <small>需要连接你已有的在线或本地智能分析服务。</small>
           </article>
 
           <article className="setup-choice setup-choice--basic">

@@ -5383,6 +5383,14 @@ export default function FloatingPanel({
                 </div>
               </div>
 
+              {!inputText.trim() && !isEditingSource && !isFreeTranslate && (
+                <ol className="capture-start-steps" aria-label="第一次使用步骤">
+                  <li>放入一段完整英文</li>
+                  <li>确认下方发送位置</li>
+                  <li>生成后点彩色原文核对依据</li>
+                </ol>
+              )}
+
               {error && (
                 <div
                   id="processing-error-card"
@@ -5600,10 +5608,10 @@ export default function FloatingPanel({
                 <div className="capture-sample" role="note">
                   <span className="capture-sample__icon"><FileText size={19} /></span>
                   <span>
-                    <strong>没有现成内容？</strong>
+                    <strong>先用安全示例体验</strong>
                     <small>载入一封虚构英文邮件先看看效果；不会读取剪贴板，也不会自动处理。</small>
                   </span>
-                  <button type="button" onClick={handleLoadExample}>载入安全示例</button>
+                  <button type="button" onClick={handleLoadExample}>载入安全示例（不会生成）</button>
                 </div>
               )}
 
@@ -5666,6 +5674,13 @@ export default function FloatingPanel({
                     </small>
                   </button>
                 </div>
+              )}
+
+              {!ocrReviewCopy && (
+                <p className="capture-permission-note" role="note">
+                  <ShieldCheck size={16} weight="fill" aria-hidden="true" />
+                  <span>首次框选截图时，macOS 可能请求屏幕录制权限；截图和 OCR 都在本机进行。直接粘贴或读取剪贴板无需此权限。</span>
+                </p>
               )}
 
               <div

@@ -148,6 +148,10 @@ for (const { arch, dmgPath } of artifacts) {
       dmgError = `DMG does not contain ${productName}.app`;
     } else if (!fs.existsSync(path.join(mountPoint, 'Applications'))) {
       dmgError = 'DMG does not contain Applications install shortcut';
+    } else if (!fs.existsSync(path.join(mountPoint, '.background.tiff'))) {
+      dmgError = 'DMG does not contain the custom installer background';
+    } else if (!fs.existsSync(path.join(mountPoint, '.DS_Store'))) {
+      dmgError = 'DMG does not contain the Finder installer layout';
     } else {
       const mountedApp = path.join(mountPoint, `${productName}.app`);
       assertNoFilesystemConflictCopies(mountPoint, `${arch} DMG`);

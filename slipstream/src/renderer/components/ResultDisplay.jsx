@@ -1468,14 +1468,14 @@ export default function ResultDisplay({
               {typeof captureConfidence === 'number' && <span>OCR {Math.round(captureConfidence * 100)}%</span>}
             </div>
           </div>
-          <div className="source-paper" lang={sourceLanguageTag}>
-            {renderSource()}
-          </div>
           <p className="source-help">
             {isTranslationOnly
               ? <><BookOpen size={15} /> 本次仅完成翻译，没有生成彩色证据映射。</>
-              : <><MagnifyingGlass size={15} /> 悬停或点按彩色原文，可定位右侧对应结论。</>}
+              : <><MagnifyingGlass size={15} /> 点击任意彩色原文，右侧会跳到并展开对应结论，方便你逐条核对依据。</>}
           </p>
+          <div className="source-paper" lang={sourceLanguageTag}>
+            {renderSource()}
+          </div>
         </section>
 
         <section

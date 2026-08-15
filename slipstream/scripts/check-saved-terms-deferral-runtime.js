@@ -1043,7 +1043,7 @@ if (process.type === 'renderer') {
         await window.webContents.executeJavaScript(`
           (() => {
             const sampleButton = [...document.querySelectorAll('button')]
-              .find((button) => button.textContent.trim() === '载入安全示例');
+              .find((button) => button.textContent.includes('载入安全示例'));
             if (!sampleButton) throw new Error('Saved Terms startup sample action is unavailable');
             sampleButton.click();
             return true;
@@ -1139,7 +1139,8 @@ if (process.type === 'renderer') {
           window,
           `document.querySelectorAll('#saved-terms-drawer [role="alert"]').length === 1
             && document.querySelector('[data-saved-terms-retry-load="true"]')
-            && document.querySelector('[data-saved-terms-return-to-task="true"]')`,
+            && document.querySelector('[data-saved-terms-return-to-task="true"]')
+            && document.querySelector('#saved-terms-drawer').contains(document.activeElement)`,
           'Saved Terms controlled rejected read',
         );
         const rejectedProof = await window.webContents.executeJavaScript(`
@@ -1183,7 +1184,8 @@ if (process.type === 'renderer') {
         await waitForRendererCondition(
           window,
           `document.querySelectorAll('#saved-terms-drawer [role="alert"]').length === 1
-            && document.querySelectorAll('[data-saved-terms-retry-load="true"]').length === 1`,
+            && document.querySelectorAll('[data-saved-terms-retry-load="true"]').length === 1
+            && document.querySelector('#saved-terms-drawer').contains(document.activeElement)`,
           'Saved Terms controlled invalid retry recovery',
         );
         const invalidProof = await window.webContents.executeJavaScript(`

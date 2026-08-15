@@ -1,6 +1,6 @@
 {
   "name": "slipstream",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A privacy-first macOS assistant that turns consequential English into source-backed actions.",
   "author": "Slipstream",
   "license": "MIT",
@@ -205,6 +205,25 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
       "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "Install Slipstream",
+      "background": "dmg-background.png",
+      "iconSize": 128,
+      "iconTextSize": 12,
+      "contents": [
+        {
+          "x": 170,
+          "y": 215,
+          "type": "file"
+        },
+        {
+          "x": 490,
+          "y": 215,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     }
   },
   "devDependencies": {

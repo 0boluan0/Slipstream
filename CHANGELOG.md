@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.1 — 2026-08-15
+
+### A clearer first run
+
+- Explain the API key or ready-to-use Ollama requirement before users choose full analysis, including possible online-service charges.
+- Add a short first-task path, a prominent load-only safe example, and an up-front explanation of macOS Screen Recording permission.
+- Keep the source-evidence instruction visible above the original text, so users can immediately verify where each conclusion came from.
+
+### A polished macOS installer
+
+- Replace the default DMG window with a branded drag-to-Applications layout.
+- Keep both app labels readable in Finder and align the app, arrow, and Applications shortcut to their intended landing zones.
+
 ## 1.0.0 — 2026-08-15
 
 Slipstream's first public macOS release.
