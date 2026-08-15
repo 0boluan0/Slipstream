@@ -1,9 +1,19 @@
 const store = require('./store');
 const { buildActionBriefPrompt } = require('./analysis');
 const { DEFAULTS, PROMPT_TEMPLATES } = require('../shared/constants.cjs');
+const {
+  validateEndpointUrl,
+  validateOllamaEndpointUrl,
+} = require('./validation');
+const {
+  createCustomEndpointFetch,
+  findCustomEndpointBoundaryError,
+} = require('./custom-endpoint-fetch');
 
 const MODEL_TIMEOUT_MESSAGE = '模型响应超时';
 const LONG_TEXT_CHUNK_SIZE = 3500;
+const FREE_TRANSLATE_CHUNK_TIMEOUT_MS = 15000;
+const FREE_TRANSLATE_TASK_TIMEOUT_MS = 45000;
 const MAX_ACTION_BRIEF_PREFERENCE_LENGTH = 4000;
 const TRUNCATION_WARNING = '⚠️ 注意：回复可能被截断，内容可能不完整。';
 
@@ -50,39 +60,84 @@ function stripReasoning(text) {
  * @param {AbortSignal} [options.parentSignal] - Optional external signal to link
  * @returns {Promise<any>}
  */
-function withTimeout({ fn, ms, parentSignal }) {
-  const controller = new AbortController();
-  const signal = controller.signal;
+function createParentAbortError(parentSignal) {
+  const reason = parentSignal?.reason;
+  if (reason?.name === 'AbortError') return reason;
 
-  // Link parent signal if provided
-  if (parentSignal) {
-    const onParentAbort = () => controller.abort();
-    parentSignal.addEventListener('abort', onParentAbort, { once: true });
-    // Clean up listener if our controller aborts first
-    signal.addEventListener('abort', () => parentSignal.removeEventListener('abort', onParentAbort), { once: true });
+  const error = new Error(
+    typeof reason?.message === 'string' && reason.message
+      ? reason.message
+      : '操作已取消',
+  );
+  error.name = 'AbortError';
+  if (reason !== undefined) error.cause = reason;
+  return error;
+}
+
+function createModelTimeoutError() {
+  return new Error(MODEL_TIMEOUT_MESSAGE);
+}
+
+function throwIfSignalAborted(signal) {
+  if (!signal?.aborted) return;
+  const reason = signal.reason;
+  if (reason instanceof Error) throw reason;
+  const error = new Error(MODEL_TIMEOUT_MESSAGE);
+  error.name = 'AbortError';
+  throw error;
+}
+
+function withTimeout({ fn, ms, parentSignal }) {
+  if (parentSignal?.aborted) {
+    return Promise.reject(createParentAbortError(parentSignal));
   }
 
-  const timer = setTimeout(() => {
-    controller.abort(new Error(MODEL_TIMEOUT_MESSAGE));
-  }, ms);
+  const controller = new AbortController();
+  const signal = controller.signal;
+  let timedOut = false;
+  let timer;
+  let onParentAbort;
 
-  return fn(signal)
+  const interruption = new Promise((_, reject) => {
+    onParentAbort = () => {
+      const error = createParentAbortError(parentSignal);
+      controller.abort(error);
+      reject(error);
+    };
+    parentSignal?.addEventListener('abort', onParentAbort, { once: true });
+
+    timer = setTimeout(() => {
+      timedOut = true;
+      const error = createModelTimeoutError();
+      controller.abort(error);
+      reject(error);
+    }, ms);
+  });
+
+  const operation = Promise.resolve().then(() => fn(signal));
+  return Promise.race([operation, interruption])
     .catch((error) => {
       const message = error?.message || '';
+      if (parentSignal?.aborted) {
+        throw createParentAbortError(parentSignal);
+      }
       if (
-        signal.aborted ||
+        timedOut ||
         error?.name === 'AbortError' ||
         message.includes('timeout') ||
         message.includes('Timeout') ||
         message.includes('aborted') ||
         message.includes('abort')
       ) {
-        throw new Error(MODEL_TIMEOUT_MESSAGE);
+        throw createModelTimeoutError();
       }
       throw error;
     })
     .finally(() => {
       clearTimeout(timer);
+      if (parentSignal && onParentAbort) {
+        parentSignal.removeEventListener('abort', onParentAbort);
+      }
     });
 }
 
@@ -96,11 +151,23 @@ function withTimeout({ fn, ms, parentSignal }) {
  * @param {string} [options.model]       - Model name/ID to use.
  * @param {string} [options.promptTemplate] - User prompt template (with {{text}} and {{languageHint}} placeholders).
  * @param {string} [options.languageHint]   - Language hint (e.g. 'en', 'zh').
+ * @param {boolean} [options.ignoreCustomPrompt] - Use only the built-in prompt for fixed compatibility checks.
  * @returns {Promise<{result: string, processingTimeMs: number, provider: string, model: string, responseKind: string, promptVersion: string|null}>}
  */
-async function processText({ text, backend, model, promptTemplate, languageHint, signal }) {
+async function processText({
+  text,
+  backend,
+  model,
+  promptTemplate,
+  languageHint,
+  ignoreCustomPrompt = false,
+  settingsSnapshot = null,
+  signal,
+}) {
   const startTime = Date.now();
-  const settings = store.getAllSettings();
+  const settings = settingsSnapshot && typeof settingsSnapshot === 'object'
+    ? { ...settingsSnapshot }
+    : store.getAllSettings();
 
   const resolvedBackend = backend || settings.activeBackend || 'free_translate';
   const resolvedModel = model || settings.activeModel || 'google-translate';
@@ -113,7 +180,7 @@ async function processText({ text, backend, model, promptTemplate, languageHint,
   const systemPrompt = langTemplates.system;
 
   // Build the user message — use custom prompt if provided, otherwise the template
-  const resolvedPromptTemplate = promptTemplate || settings.customPrompt;
+  const resolvedPromptTemplate = ignoreCustomPrompt ? '' : (promptTemplate || settings.customPrompt);
   const actionBriefMessages = buildActionBriefMessages({
     text,
     backend: resolvedBackend,
@@ -493,7 +560,10 @@ async function processOpenAI(settings, model, systemPrompt, userMessage, parentS
           { role: 'user', content: userMessage },
         ],
         max_tokens: structuredOutput ? 8192 : 4096,
-        ...(structuredOutput ? { response_format: { type: 'json_object' } } : {}),
+        ...(structuredOutput ? {
+          response_format: { type: 'json_object' },
+          temperature: 0,
+        } : {}),
       }, { signal });
 
       const result = response.choices[0].message.content;
@@ -531,7 +601,10 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
           { role: 'user', content: userMessage },
         ],
         max_tokens: structuredOutput ? 8192 : 4096,
-        ...(structuredOutput ? { response_format: { type: 'json_object' } } : {}),
+        ...(structuredOutput ? {
+          response_format: { type: 'json_object' },
+          temperature: 0,
+        } : {}),
       }, { signal });
 
       const result = response.choices[0].message.content;
@@ -548,34 +621,66 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
  * Process via Ollama's local API.
  */
 async function processOllama(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false) {
-  const baseUrl = settings.ollamaBaseUrl || 'http://localhost:11434';
+  const baseUrl = resolveOllamaBaseUrl(settings?.ollamaBaseUrl);
+  const generateUrl = new URL(baseUrl);
+  const basePath = generateUrl.pathname === '/' ? '' : generateUrl.pathname.replace(/\/+$/, '');
+  generateUrl.pathname = `${basePath}/api/generate`;
+
+  // Keep the existing fetch seam used by deterministic integration checks,
+  // while forcing the production Fetch implementation into manual-redirect
+  // mode and the same validated-origin boundary as custom endpoints.
+  const endpointFetch = createCustomEndpointFetch(baseUrl, {
+    fetchImpl: globalThis.fetch,
+  });
 
   return withTimeout({
     fn: async (signal) => withRetry(async () => {
-      const response = await fetch(`${baseUrl}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: model,
-          system: systemPrompt,
-          prompt: userMessage,
-          ...(structuredOutput ? { format: 'json' } : {}),
-          // Several current Ollama models advertise 128K+ context by default.
-          // Loading that full KV cache can exhaust memory before a modest
-          // Slipstream request begins, so use a bounded window that still
-          // covers the 10K-character source limit plus structured output.
-          options: { num_ctx: 16384 },
-          stream: false,
-        }),
-        signal: signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`Ollama 服务错误：${response.status} ${response.statusText}`);
+      let response;
+      try {
+        response = await endpointFetch(generateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: model,
+            system: systemPrompt,
+            prompt: userMessage,
+            ...(structuredOutput ? { format: 'json' } : {}),
+            // Several current Ollama models advertise 128K+ context by default.
+            // Loading that full KV cache can exhaust memory before a modest
+            // Slipstream request begins, so use a bounded window that still
+            // covers the 10K-character source limit plus structured output.
+            options: { num_ctx: 16384 },
+            stream: false,
+          }),
+          signal: signal,
+        });
+      } catch (error) {
+        const boundaryError = findCustomEndpointBoundaryError(error);
+        if (boundaryError) throw createOllamaTransportError(boundaryError);
+        throw error;
       }
 
-      const data = await response.json();
-      const result = stripReasoning(data.response || '');
+      if (!response.ok) {
+        const status = Number(response.status);
+        const error = new Error(`Ollama 服务错误：${Number.isInteger(status) ? status : '未知状态'}`);
+        if (Number.isInteger(status)) error.status = status;
+        throw error;
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        const error = new Error('Ollama 返回了无法解析的响应');
+        error.code = 'ollama-invalid-response';
+        throw error;
+      }
+      if (!data || typeof data !== 'object' || typeof data.response !== 'string') {
+        const error = new Error('Ollama 返回了无效响应');
+        error.code = 'ollama-invalid-response';
+        throw error;
+      }
+      const result = stripReasoning(data.response);
 
       if (data.done && data.done_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
@@ -585,37 +690,232 @@ async function processOllama(settings, model, systemPrompt, userMessage, parentS
   });
 }
 
+function createOllamaEndpointError(message, code) {
+  const error = new Error(message);
+  error.name = 'OllamaEndpointError';
+  error.code = code;
+  return error;
+}
+
+function resolveOllamaBaseUrl(configuredValue) {
+  const candidate = configuredValue == null || configuredValue === ''
+    ? 'http://localhost:11434'
+    : configuredValue;
+  let validated;
+  try {
+    validated = validateOllamaEndpointUrl(candidate);
+  } catch {
+    throw createOllamaEndpointError(
+      'Ollama 服务地址必须是这台 Mac 的 HTTP 回环地址',
+      'ollama-endpoint-unsafe',
+    );
+  }
+
+  return validated;
+}
+
+function createOllamaTransportError(boundaryError) {
+  if (boundaryError.code === 'custom-endpoint-redirect-rejected') {
+    return createOllamaEndpointError(
+      'Ollama 服务返回了重定向，已停止请求',
+      'ollama-redirect-rejected',
+    );
+  }
+  if (
+    boundaryError.code === 'custom-endpoint-origin-mismatch'
+    || boundaryError.code === 'custom-endpoint-unsafe-target'
+    || boundaryError.code === 'custom-endpoint-invalid-request'
+  ) {
+    return createOllamaEndpointError(
+      'Ollama 请求未通过本机回环边界检查',
+      'ollama-endpoint-unsafe',
+    );
+  }
+  return createOllamaEndpointError(
+    'Ollama 服务请求失败（fetch failed）',
+    'ollama-fetch-failed',
+  );
+}
+
+const CUSTOM_PROVIDER_ERROR_CODES = Object.freeze({
+  HTTP_ERROR: 'custom-provider-http-error',
+  INVALID_RESPONSE: 'custom-provider-invalid-response',
+  RESPONSE_TOO_LARGE: 'custom-provider-response-too-large',
+});
+
+const CUSTOM_PROVIDER_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+
+function createCustomProviderError(code, message, status) {
+  const error = new Error(message);
+  error.name = 'CustomProviderError';
+  error.code = code;
+  if (Number.isInteger(status) && status >= 400 && status <= 599) error.status = status;
+  return error;
+}
+
+async function discardPrivateResponseBody(response, reader = null) {
+  try {
+    if (reader?.cancel) await reader.cancel();
+    else await response?.body?.cancel?.();
+  } catch {
+    // The body is deliberately ignored; cancellation failure must not expose it.
+  }
+}
+
+function customProviderInvalidResponseError() {
+  return createCustomProviderError(
+    CUSTOM_PROVIDER_ERROR_CODES.INVALID_RESPONSE,
+    '自定义服务返回了无效响应',
+  );
+}
+
+function customProviderResponseTooLargeError() {
+  return createCustomProviderError(
+    CUSTOM_PROVIDER_ERROR_CODES.RESPONSE_TOO_LARGE,
+    '自定义服务返回的响应过大',
+  );
+}
+
+async function readBoundedCustomProviderJson(response) {
+  const contentEncoding = String(response?.headers?.get?.('content-encoding') || '')
+    .trim()
+    .toLowerCase();
+  if (contentEncoding && contentEncoding !== 'identity') {
+    await discardPrivateResponseBody(response);
+    throw customProviderInvalidResponseError();
+  }
+
+  const declaredLengthText = String(response?.headers?.get?.('content-length') || '').trim();
+  if (/^\d+$/u.test(declaredLengthText)) {
+    const declaredLength = Number(declaredLengthText);
+    if (!Number.isSafeInteger(declaredLength)
+      || declaredLength > CUSTOM_PROVIDER_MAX_RESPONSE_BYTES) {
+      await discardPrivateResponseBody(response);
+      throw customProviderResponseTooLargeError();
+    }
+  }
+
+  const reader = response?.body?.getReader?.();
+  if (!reader) {
+    await discardPrivateResponseBody(response);
+    throw customProviderInvalidResponseError();
+  }
+
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const bytes = Buffer.from(value);
+      totalBytes += bytes.length;
+      if (totalBytes > CUSTOM_PROVIDER_MAX_RESPONSE_BYTES) {
+        await discardPrivateResponseBody(response, reader);
+        throw customProviderResponseTooLargeError();
+      }
+      chunks.push(bytes);
+    }
+    return JSON.parse(Buffer.concat(chunks, totalBytes).toString('utf8'));
+  } catch (error) {
+    if (error?.name === 'CustomProviderError') throw error;
+    await discardPrivateResponseBody(response, reader);
+    throw customProviderInvalidResponseError();
+  }
+}
+
+function customProviderHttpError(status) {
+  if (status === 401 || status === 403) {
+    return createCustomProviderError(
+      CUSTOM_PROVIDER_ERROR_CODES.HTTP_ERROR,
+      '自定义服务拒绝了连接凭据',
+      status,
+    );
+  }
+  if (status === 429) {
+    return createCustomProviderError(
+      CUSTOM_PROVIDER_ERROR_CODES.HTTP_ERROR,
+      '自定义服务暂时限制了请求',
+      status,
+    );
+  }
+  if (status >= 500) {
+    return createCustomProviderError(
+      CUSTOM_PROVIDER_ERROR_CODES.HTTP_ERROR,
+      '自定义服务暂时不可用',
+      status,
+    );
+  }
+  return createCustomProviderError(
+    CUSTOM_PROVIDER_ERROR_CODES.HTTP_ERROR,
+    '自定义服务拒绝了请求',
+    status,
+  );
+}
+
 /**
  * Process via a custom OpenAI-compatible endpoint.
  */
 async function processCustom(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false) {
-  const OpenAI = require('openai');
-  const baseURL = settings.customEndpointUrl;
+  const configuredBaseURL = settings.customEndpointUrl;
   const apiKey = settings.customEndpointApiKey;
 
-  if (!baseURL) {
+  if (!configuredBaseURL) {
     throw new Error('请先配置自定义服务地址');
   }
 
+  // Revalidate at the last boundary before the source text and credential can
+  // leave the process. Stored settings normally arrive normalized, but a
+  // formal analysis request must not rely on that earlier validation alone.
+  const baseURL = validateEndpointUrl(configuredBaseURL);
+  const completionUrl = new URL(baseURL);
+  const basePath = completionUrl.pathname === '/'
+    ? ''
+    : completionUrl.pathname.replace(/\/+$/, '');
+  completionUrl.pathname = `${basePath}/chat/completions`;
+  const endpointFetch = createCustomEndpointFetch(baseURL);
+
   return withTimeout({
     fn: async (signal) => withRetry(async () => {
-      const openai = new OpenAI({
-        apiKey: apiKey || 'sk-no-key-required',
-        baseURL: baseURL,
-      });
+      let response;
+      try {
+        response = await endpointFetch(completionUrl, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-Encoding': 'identity',
+            Authorization: `Bearer ${apiKey || 'sk-no-key-required'}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: model || 'custom',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userMessage },
+            ],
+            max_tokens: structuredOutput ? 8192 : 4096,
+          }),
+          signal,
+        });
+      } catch (error) {
+        const boundaryError = findCustomEndpointBoundaryError(error);
+        if (boundaryError) throw boundaryError;
+        throw error;
+      }
 
-      const response = await openai.chat.completions.create({
-        model: model || 'custom',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        max_tokens: structuredOutput ? 8192 : 4096,
-      }, { signal });
+      if (!response?.ok) {
+        const status = Number(response?.status);
+        await discardPrivateResponseBody(response);
+        throw customProviderHttpError(status);
+      }
 
-      const result = response.choices[0].message.content;
+      const data = await readBoundedCustomProviderJson(response);
+      const choice = data?.choices?.[0];
+      const result = choice?.message?.content;
+      if (typeof result !== 'string') {
+        throw customProviderInvalidResponseError();
+      }
 
-      if (response.choices[0].finish_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
+      if (choice.finish_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
     }),
     ms: 60000,
@@ -632,78 +932,118 @@ async function processCustom(settings, model, systemPrompt, userMessage, parentS
  * @returns {Promise<string>} - Translated text
  */
 async function processFreeTranslate(text, languageHint, parentSignal) {
-  let targetLang = 'zh-CN';
-  let sourceLang = 'auto'; // Both Google and MyMemory detect the source language natively
+  return withTimeout({
+    fn: (taskSignal) => processFreeTranslateChunks(text, languageHint, taskSignal),
+    ms: FREE_TRANSLATE_TASK_TIMEOUT_MS,
+    parentSignal,
+  });
+}
 
-  if (languageHint === 'zh') {
-    targetLang = 'en';
-    sourceLang = 'zh-CN';
-  } else if (languageHint === 'en') {
-    targetLang = 'zh-CN';
-    sourceLang = 'en';
-  } else {
-    // Auto-detect: use CJK ratio heuristic to pick translation direction
-    const cjkCount = (text.match(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
-    if (cjkCount / text.length > 0.2) {
-      targetLang = 'en';
-    }
-    // sourceLang stays 'auto' for the API's native language detection
-  }
+async function processFreeTranslateChunks(text, languageHint, taskSignal) {
+  const {
+    googleSourceLang,
+    fallbackSourceLang,
+    targetLang,
+  } = resolveFreeTranslateLanguages(text, languageHint);
 
   const chunks = splitTextByUtf8Bytes(text, 450);
   const translatedChunks = [];
   for (const chunk of chunks) {
     translatedChunks.push(await withTimeout({
-    fn: async (signal) => withRetry(async () => {
-      let result;
+      fn: async (signal) => withRetry(async () => {
+        throwIfSignalAborted(signal);
+        let result;
 
-      // Try Google Translate first (free, unauthenticated endpoint)
-      try {
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(chunk)}`;
-        const response = await fetch(url, { signal });
-        if (response.ok) {
-          const data = await response.json();
-          // Google's response is [[["translated text", ...], null, ...], ...]
-          if (data && data[0] && Array.isArray(data[0])) {
-            const translatedParts = data[0].map(part => part[0]).join('');
-            result = translatedParts.trim();
+        // Try Google Translate first (free, unauthenticated endpoint)
+        try {
+          const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${googleSourceLang}&tl=${targetLang}&dt=t&q=${encodeURIComponent(chunk)}`;
+          const response = await fetch(url, { signal });
+          if (response.ok) {
+            const data = await response.json();
+            // Google's response is [[["translated text", ...], null, ...], ...]
+            if (data && data[0] && Array.isArray(data[0])) {
+              const translatedParts = data[0].map(part => part[0]).join('');
+              result = translatedParts.trim();
+            }
+          }
+        } catch (error) {
+          if (signal.aborted) throw error;
+          // Google failed, try fallback
+        }
+
+        throwIfSignalAborted(signal);
+
+        // MyMemory rejects "auto" as a source language, so always send a
+        // concrete source inferred from the product's English/Chinese direction.
+        if (!result) {
+          const languagePair = encodeURIComponent(`${fallbackSourceLang}|${targetLang}`);
+          const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=${languagePair}`;
+          const mmResponse = await fetch(mmUrl, { signal });
+          if (!mmResponse.ok) {
+            throw new Error(`备用翻译服务错误：${mmResponse.status}`);
+          }
+          const mmData = await mmResponse.json();
+          if (mmData.responseStatus !== 200 && mmData.responseStatus !== '200') {
+            throw new Error(mmData.responseDetails || '备用翻译服务失败');
+          }
+          const translatedText = mmData.responseData?.translatedText;
+          if (typeof translatedText === 'string') {
+            result = translatedText.trim();
           }
         }
-      } catch {
-        // Google failed, try fallback
-      }
 
-      // Fallback: MyMemory API
-      if (!result) {
-        const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(chunk)}&langpair=${sourceLang}|${targetLang}`;
-        const mmResponse = await fetch(mmUrl, { signal });
-        if (!mmResponse.ok) {
-          throw new Error(`备用翻译服务错误：${mmResponse.status}`);
+        if (!result) {
+          throw new Error('翻译服务未返回结果，请稍后重试');
         }
-        const mmData = await mmResponse.json();
-        if (mmData.responseStatus !== 200 && mmData.responseStatus !== '200') {
-          throw new Error(mmData.responseDetails || '备用翻译服务失败');
-        }
-        result = mmData.responseData.translatedText.trim();
-      }
 
-      if (!result) {
-        throw new Error('翻译服务未返回结果，请稍后重试');
-      }
-
-      return result;
-    }),
-    ms: 15000,
-    parentSignal,
+        return result;
+      }),
+      ms: FREE_TRANSLATE_CHUNK_TIMEOUT_MS,
+      parentSignal: taskSignal,
     }));
   }
   return translatedChunks.join(targetLang === 'en' ? ' ' : '') + '\n\n---\n免费翻译仅提供翻译；配置 LLM API Key 后可获得术语解释。';
 }
 
+function resolveFreeTranslateLanguages(text, languageHint) {
+  let targetLang = 'zh-CN';
+  let googleSourceLang = 'auto';
+  let fallbackSourceLang = 'en';
+
+  if (languageHint === 'zh') {
+    targetLang = 'en';
+    googleSourceLang = 'zh-CN';
+    fallbackSourceLang = 'zh-CN';
+  } else if (languageHint === 'en') {
+    targetLang = 'zh-CN';
+    googleSourceLang = 'en';
+    fallbackSourceLang = 'en';
+  } else {
+    // Auto-detect: use CJK ratio heuristic to pick translation direction
+    const cjkCount = (text.match(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
+    if (cjkCount / text.length > 0.2) {
+      targetLang = 'en';
+      fallbackSourceLang = 'zh-CN';
+    }
+    // Google can still detect the source natively; MyMemory requires a
+    // concrete ISO/RFC3066 language pair.
+  }
+
+  return { googleSourceLang, fallbackSourceLang, targetLang };
+}
+
 module.exports = {
+  CUSTOM_PROVIDER_MAX_RESPONSE_BYTES,
+  CUSTOM_PROVIDER_ERROR_CODES,
+  FREE_TRANSLATE_CHUNK_TIMEOUT_MS,
+  FREE_TRANSLATE_TASK_TIMEOUT_MS,
   buildActionBriefMessages,
+  processCustom,
+  processOllama,
   processText,
   processLongTextChunks,
+  processFreeTranslate,
+  resolveFreeTranslateLanguages,
   splitTextIntoChunks,
   splitTextByUtf8Bytes,
   mergeChunkResults,

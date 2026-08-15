@@ -1,3 +1,12 @@
+import { getDeadlineDateOrdinal } from './deadlineUrgency.mjs';
+import {
+  findPositiveReplyStep,
+  getReplyProgressConsistency,
+  getReplyRequiredCompletionActionIds,
+} from './replyProgress.mjs';
+
+export { getReplyProgressConsistency };
+
 export const EVIDENCE_COLORS = [
   { solid: '#0F766E', soft: '#E4F4F0' },
   { solid: '#B45309', soft: '#FFF0DE' },
@@ -35,9 +44,6 @@ const VERIFICATION_LABELS = {
   not_needed: '无需核验',
 };
 
-const POSITIVE_REPLY_PATTERN = /回复|回信|reply|respond/i;
-const NEGATIVE_REPLY_PATTERN = /(?:无需|不用|不必|不要|请勿|无须|可不).{0,10}(?:回复|回信)|(?:回复|回信).{0,8}(?:不是|并非).{0,6}(?:必须|必要)|(?:do not|don['’]?t|no need to|not required to).{0,12}(?:reply|respond)|(?:reply|respond).{0,12}(?:isn['’]?t|is not|not).{0,8}(?:required|necessary)|(?:reply|respond).{0,8}(?:is )?optional/i;
-
 export function isTranslationOnlyBrief(brief) {
   return brief?.status === 'translation_only';
 }
@@ -69,12 +75,21 @@ function formatDeadline(deadline) {
   return `${deadline.whenText}${details.length > 0 ? `（${details.join('；')}）` : ''}`;
 }
 
-function formatStep(step, index, deadlines) {
+function formatStep(step, index, deadlines, completedActionIds = null, stepNumberById = new Map()) {
   const linkedDeadline = deadlines.find((deadline) => deadline.id === step.deadlineId);
-  const details = linkedDeadline
+  const prerequisiteNumbers = (Array.isArray(step?.prerequisiteStepIds) ? step.prerequisiteStepIds : [])
+    .map((stepId) => stepNumberById.get(stepId))
+    .filter(Number.isSafeInteger);
+  const details = (linkedDeadline
     ? [`关联截止：${linkedDeadline.whenText}`, ...deadlineDetails(linkedDeadline)]
-    : [];
-  return `${index + 1}. ${step.action}${details.length > 0 ? `（${details.join('；')}）` : ''}`;
+    : []).concat(
+      prerequisiteNumbers.length > 0 ? [`先完成第 ${prerequisiteNumbers.join('、')} 项`] : [],
+    );
+  const actionId = step.id || `step-${index}`;
+  const progress = completedActionIds instanceof Set
+    ? `[${completedActionIds.has(actionId) ? '已完成' : '待完成'}] `
+    : '';
+  return `${index + 1}. ${progress}${step.action}${details.length > 0 ? `（${details.join('；')}）` : ''}`;
 }
 
 function formatMaterial(material) {
@@ -135,7 +150,10 @@ function collectRetrievalReceipts(brief) {
     .map((receipt) => [`${receipt.url}:${receipt.retrievedAt || ''}`, receipt])).values()];
 }
 
-export function composeActionChecklistText(brief, { additionalWarnings = [] } = {}) {
+export function composeActionChecklistText(brief, {
+  additionalWarnings = [],
+  completedActionIds = null,
+} = {}) {
   if (isTranslationOnlyBrief(brief)) {
     const warnings = collectWarningMessages(brief, additionalWarnings);
     return [
@@ -147,11 +165,17 @@ export function composeActionChecklistText(brief, { additionalWarnings = [] } = 
   const deadlines = Array.isArray(brief?.deadlines) ? brief.deadlines : [];
   const materials = Array.isArray(brief?.materials) ? brief.materials : [];
   const nextSteps = Array.isArray(brief?.nextSteps) ? brief.nextSteps : [];
+  const stepNumberById = new Map(nextSteps.map((step, index) => [step?.id, index + 1]));
+  const completedActionIdSet = Array.isArray(completedActionIds)
+    ? new Set(completedActionIds)
+    : null;
   const warnings = collectWarningMessages(brief, additionalWarnings);
   const sections = [];
 
   if (nextSteps.length > 0) {
-    sections.push(`行动清单\n${nextSteps.map((step, index) => formatStep(step, index, deadlines)).join('\n')}`);
+    sections.push(`行动清单\n${nextSteps.map((step, index) => (
+      formatStep(step, index, deadlines, completedActionIdSet, stepNumberById)
+    )).join('\n')}`);
   }
   if (materials.length > 0) {
     sections.push(`材料清单\n${materials.map(formatMaterial).join('\n')}`);
@@ -222,28 +246,20 @@ function firstEvidenceQuote(item) {
   return evidence.find((entry) => typeof entry?.quote === 'string' && entry.quote.trim())?.quote.trim() || null;
 }
 
-function positiveReplyStep(brief) {
-  const steps = Array.isArray(brief?.nextSteps) ? brief.nextSteps : [];
-  return steps.find((step) => (
-    step?.actor === 'user'
-    && step?.mandatory === true
-    && POSITIVE_REPLY_PATTERN.test(step?.action || '')
-    && !NEGATIVE_REPLY_PATTERN.test(step?.action || '')
-  )) || null;
-}
-
 export function shouldOfferReply(brief) {
-  return Boolean(positiveReplyStep(brief));
+  return Boolean(findPositiveReplyStep(brief));
 }
 
 export function buildReplyDraft(brief) {
-  const replyStep = positiveReplyStep(brief);
+  const replyStep = findPositiveReplyStep(brief);
   if (!replyStep || isTranslationOnlyBrief(brief)) {
     return {
       mode: 'unavailable',
       title: '无法可靠生成回复',
       text: '',
       facts: [],
+      replyStepId: null,
+      requiredCompletionActionIds: [],
       safetyNote: '原文没有可确认的回复要求。',
     };
   }
@@ -255,41 +271,91 @@ export function buildReplyDraft(brief) {
   const deadlines = Array.isArray(brief?.deadlines) ? brief.deadlines : [];
   const nonReplySteps = (Array.isArray(brief?.nextSteps) ? brief.nextSteps : [])
     .filter((step) => step !== replyStep);
+  const requiredCompletionActionIds = getReplyRequiredCompletionActionIds(brief, replyStep);
+  const deadlineEvidence = new Map(deadlines.map((deadline) => [
+    deadline.id,
+    firstEvidenceQuote(deadline),
+  ]));
   const facts = [];
 
   materials.forEach((material) => {
-    facts.push({ label: 'Requested item', value: firstEvidenceQuote(material) || material.name });
+    facts.push({ label: 'material', value: firstEvidenceQuote(material) || material.name });
   });
   nonReplySteps.forEach((step) => {
     const value = firstEvidenceQuote(step) || step.action;
-    if (!facts.some((fact) => fact.value === value)) facts.push({ label: 'Requested action', value });
+    if (step.deadlineId && deadlineEvidence.get(step.deadlineId) === value) return;
+    if (!facts.some((fact) => fact.value === value)) facts.push({ label: 'action', value });
   });
   deadlines.forEach((deadline) => {
-    facts.push({ label: 'Deadline noted', value: formatDeadline(deadline) });
+    const readableDeadline = [deadline.whenText, deadline.condition].filter(Boolean).join(' · ');
+    facts.push({ label: 'deadline', value: readableDeadline });
   });
-  facts.push({ label: 'Reply requested', value: firstEvidenceQuote(replyStep) || replyStep.action });
+  facts.push({ label: 'reply', value: firstEvidenceQuote(replyStep) || replyStep.action });
 
-  const preparationNotes = facts.map((fact) => `[${fact.label}: ${fact.value}]`).join('\n');
-  const text = [
+  return {
+    mode: 'guided',
+    title: '先确认事实，再准备英文回复',
+    text: '',
+    facts,
     salutation,
+    hasMaterials: materials.length > 0,
+    replyStepId: typeof replyStep.id === 'string' ? replyStep.id : null,
+    requiredCompletionActionIds: [...new Set(requiredCompletionActionIds)],
+    safetyNote: 'Slipstream 不知道你现实中是否已经完成这些事项。请选择真实状态后，才会生成可复制的草稿。',
+  };
+}
+
+export function getActionCompletionState(actionGroups = [], completedActionIds = [], replyStepId = null) {
+  const validActionIds = new Set((Array.isArray(actionGroups) ? actionGroups : [])
+    .map((group) => group?.id)
+    .filter((id) => typeof id === 'string' && id.trim()));
+  const requestedCompletedIds = completedActionIds instanceof Set
+    ? completedActionIds
+    : new Set(Array.isArray(completedActionIds) ? completedActionIds : []);
+  const completedActionIdSet = new Set([...requestedCompletedIds]
+    .filter((id) => validActionIds.has(id)));
+  const totalCount = validActionIds.size;
+  const completedCount = completedActionIdSet.size;
+  return {
+    completedActionIdSet,
+    totalCount,
+    completedCount,
+    allActionsComplete: totalCount > 0 && completedCount === totalCount,
+    replyActionCompleted: typeof replyStepId === 'string'
+      && validActionIds.has(replyStepId)
+      && completedActionIdSet.has(replyStepId),
+  };
+}
+
+export function composeReplyDraft(model, { completionStatus } = {}) {
+  if (!model || model.mode !== 'guided') return '';
+  if (!['completed', 'in_progress'].includes(completionStatus)) return '';
+
+  const statusLine = completionStatus === 'completed'
+    ? model.hasMaterials
+      ? 'I confirm that I have completed the requested steps and provided the requested materials.'
+      : 'I confirm that I have completed the requested steps.'
+    : 'I have not completed the requested steps yet. I will reply again once they are complete.';
+
+  return [
+    model.salutation || 'Dear Sir or Madam,',
     '',
     'Thank you for your email.',
     '',
-    preparationNotes,
+    statusLine,
     '',
-    '[Write only what is true about what you have completed. Do not say that anything was submitted, attached, or completed unless you have verified it.]',
+    'Please let me know if you need any additional information.',
     '',
     'Best regards,',
     '[Your name]',
   ].join('\n');
+}
 
-  return {
-    mode: 'template',
-    title: '需按实际情况填写的回复模板',
-    text,
-    facts,
-    safetyNote: '系统不知道你实际完成了哪些事项，因此只提供基于原文要求的可编辑模板，不会代你声明已提交或已附上材料。',
-  };
+const REPLY_PLACEHOLDER_PATTERN = /\[(?:your|enter|insert|add|write)[^\]\r\n]{0,72}\]/gi;
+
+export function getReplyDraftPlaceholders(text) {
+  const matches = String(text || '').match(REPLY_PLACEHOLDER_PATTERN) || [];
+  return [...new Set(matches.map((match) => match.trim()))];
 }
 
 const EVIDENCE_TARGET_LABELS = {
@@ -433,8 +499,12 @@ export function getEvidenceResultRoute(highlight, brief, actionGroups) {
 
 export function buildActionGroups(brief, catalog) {
   if (brief.nextSteps.length > 0) {
+    const stepNumberById = new Map(brief.nextSteps.map((step, index) => [step.id, index + 1]));
     return brief.nextSteps.map((step, index) => {
       const linkedDeadline = brief.deadlines.find((deadline) => deadline.id === step.deadlineId);
+      const prerequisiteStepIds = (Array.isArray(step.prerequisiteStepIds)
+        ? step.prerequisiteStepIds
+        : []).filter((stepId) => stepNumberById.has(stepId));
       return {
         id: step.id || `step-${index}`,
         title: step.action,
@@ -443,6 +513,8 @@ export function buildActionGroups(brief, catalog) {
           : (step.mandatory === true ? '原文明示为必需操作' : step.provenance?.note),
         provenance: step.provenance,
         evidence: catalogEntriesFor(step, catalog),
+        prerequisiteStepIds,
+        prerequisiteStepNumbers: prerequisiteStepIds.map((stepId) => stepNumberById.get(stepId)),
       };
     });
   }
@@ -482,11 +554,53 @@ export function hasExactGrounding(item, sourceText) {
   ));
 }
 
+export function selectPrimaryDeadline(brief, sourceText) {
+  const deadlines = (Array.isArray(brief?.deadlines) ? brief.deadlines : [])
+    .filter((deadline) => hasExactGrounding(deadline, sourceText));
+  if (deadlines.length === 0) {
+    return { deadline: null, totalCount: 0, selectionMode: 'none' };
+  }
+
+  const groundedSteps = (Array.isArray(brief?.nextSteps) ? brief.nextSteps : [])
+    .filter((step) => hasExactGrounding(step, sourceText));
+  const ranked = deadlines.map((deadline, index) => {
+    const linkedSteps = groundedSteps.filter((step) => step.deadlineId === deadline.id);
+    const priority = linkedSteps.some((step) => step.actor === 'user' && step.mandatory === true)
+      ? 0
+      : linkedSteps.some((step) => step.actor === 'user')
+        ? 1
+        : linkedSteps.length > 0 ? 2 : 3;
+    return {
+      deadline,
+      index,
+      priority,
+      ordinal: getDeadlineDateOrdinal(deadline),
+    };
+  });
+
+  const bestPriority = Math.min(...ranked.map((item) => item.priority));
+  const candidates = ranked.filter((item) => item.priority === bestPriority);
+  const allComparable = candidates.every((item) => item.ordinal !== null);
+  const selected = allComparable
+    ? [...candidates].sort((left, right) => left.ordinal - right.ordinal || left.index - right.index)[0]
+    : candidates[0];
+
+  return {
+    deadline: selected.deadline,
+    totalCount: deadlines.length,
+    selectionMode: deadlines.length === 1
+      ? 'only'
+      : candidates.length === 1
+        ? 'action_priority'
+        : allComparable ? 'earliest' : 'source_order',
+  };
+}
+
 export function getHeadline(brief, sourceText) {
   if (isTranslationOnlyBrief(brief)) return '完整翻译已生成';
 
   const groundedSteps = brief.nextSteps.filter((step) => hasExactGrounding(step, sourceText));
-  const groundedDeadline = brief.deadlines.find((deadline) => hasExactGrounding(deadline, sourceText));
+  const groundedDeadline = selectPrimaryDeadline(brief, sourceText).deadline;
 
   if (groundedDeadline?.id) {
     const linkedSteps = groundedSteps.filter((step) => step.deadlineId === groundedDeadline.id);

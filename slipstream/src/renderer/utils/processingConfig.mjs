@@ -1,5 +1,6 @@
 export const PROCESSING_CONFIG_CHANGED_WARNING = '分析或核验设置已更新；原文已保留，请重新处理。';
 export const PRESERVED_RESULT_CONFIG_CHANGED_WARNING = '分析或核验设置已更新；当前显示的是上次结果，请重新处理。';
+export const SETUP_INCOMPLETE_WARNING = '完整分析配置尚未完成；当前基础翻译和原文已保留。完成验证并启用后再重新处理。';
 
 export function appendUniqueWarning(current = '', message = '') {
   if (!message || current.includes(message)) return current;
@@ -23,12 +24,17 @@ export function getProcessingConfigSignature(settings) {
   ].join('\u0000');
 }
 
-export function resolveSnapshotWarning(snapshot, currentSignature, message = '') {
+export function resolveSnapshotWarning(
+  snapshot,
+  currentSignature,
+  message = '',
+  configChangedWarning = PRESERVED_RESULT_CONFIG_CHANGED_WARNING,
+) {
   const snapshotWarning = snapshot?.processingConfigSignature === currentSignature
     ? snapshot?.warning || ''
     : appendUniqueWarning(
       snapshot?.warning || '',
-      PRESERVED_RESULT_CONFIG_CHANGED_WARNING,
+      configChangedWarning,
     );
   return message ? appendUniqueWarning(snapshotWarning, message) : snapshotWarning;
 }

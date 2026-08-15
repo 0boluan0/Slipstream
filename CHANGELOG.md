@@ -1,30 +1,37 @@
 # Changelog
 
-All notable changes to Slipstream are documented here.
+## 1.0.0 — 2026-08-15
 
-## Unreleased
+Slipstream's first public macOS release.
 
-### Added
+### Understand the task
 
-- Source-backed `ActionBriefV1` output for actions, deadlines, materials, ordinary words, professional terms, and unfamiliar processes.
-- Side-by-side original-to-action evidence mapping.
-- Structured “what it is / why it matters / what to do” process explanations.
-- Separate pending, retrieved, and explicitly verified provenance.
-- Ask-first, local-only, and official-auto verification policies.
-- Privacy-minimized GOV.UK discovery and bounded official-page retrieval receipts.
-- Minimal-retention saved terms and legacy secret migration.
+- Capture an English screen region, read copied text, or paste text manually.
+- Turn the source into an ordered Chinese action path with materials, deadlines, reply requirements, and a complete translation.
+- Explain everyday language, professional terminology, and unfamiliar cultural or administrative processes separately.
+- Choose between action-first and translation-first result layouts.
 
-### Changed
+### See where every answer came from
 
-- Repositioned the product from a floating translator to an action-oriented English assistant.
-- Passive clipboard monitoring remains off by default.
-- Free translation now fails closed to a clearly labeled translation-only result.
-- Original case history is no longer retained by the supported V1 flow.
-- macOS releases now build and sign in an isolated temporary staging directory, then publish the complete dual-architecture artifact set through staged replacement.
+- Connect actions and explanations to exact source passages with matching numbers and colours.
+- Keep outside explanations visually separate from what the original explicitly states.
+- Treat retrieved official pages as sources to review, not automatic proof.
 
-### Security
+### Move forward without losing control
 
-- Added safe official-source fetching constraints and validated external-link IPC.
-- Added one-time, source-bound verification approvals, cancellation propagation, DNS/SSRF checks, and neutral retrieval semantics.
-- Removed ad-hoc re-signing fallback from the signed release path.
-- Separated local ad-hoc and Developer ID entitlements so the local Electron workaround cannot leak into public artifacts.
+- Track personal progress without presenting it as verified real-world completion.
+- Prepare an editable English reply only when the source requires one.
+- Preserve drafts and results through safe navigation, recover recent accidental clears, and warn before abandoning active work.
+- Keep clipboard monitoring optional and off by default.
+
+### Privacy and processing choices
+
+- Run screenshot OCR locally with Apple Vision.
+- Use local Ollama, Anthropic, OpenAI, DeepSeek, or a compatible configured service for full analysis.
+- Use no-setup basic translation through Google Translate with MyMemory as a fallback.
+- Collect no telemetry and retain no history of original cases.
+
+### macOS release
+
+- Support macOS 12 or later on Apple silicon and Intel Macs.
+- Ship Developer ID signed and Apple-notarized DMG installers for both architectures.

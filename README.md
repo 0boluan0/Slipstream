@@ -1,90 +1,94 @@
-# Slipstream
+<p align="right">
+  <strong>English</strong> · <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
-**看懂英文，办对事情。**
+<div align="center">
+  <img src="./slipstream/build/icon.png" width="96" alt="Slipstream app icon">
+  <h1>Slipstream</h1>
+  <p><strong>Understand the English. Know exactly what to do next.</strong></p>
+  <p>Capture or copy an English email, letter, form, or portal.<br>Slipstream turns it into a Chinese action plan—and links every step back to the words that support it.</p>
+  <p>
+    <a href="https://github.com/0boluan0/Slipstream/releases/latest"><img alt="Download Slipstream" src="https://img.shields.io/badge/Download_for_macOS-Latest_release-087F6D?style=for-the-badge&logo=apple"></a>
+  </p>
+  <p>
+    <img alt="macOS 12 or later" src="https://img.shields.io/badge/macOS-12%2B-222222?logo=apple">
+    <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-2F6FEB"></a>
+    <img alt="No telemetry" src="https://img.shields.io/badge/Telemetry-None-087F6D">
+  </p>
+</div>
 
-Slipstream is an open-source, privacy-first macOS assistant for Chinese-speaking people handling consequential English in study, work, and daily life. Copy text or capture a screen region, then get a Chinese action brief whose deadlines, materials, and next steps point back to the exact original wording.
+![Slipstream connects every action to its source evidence](./docs/images/slipstream-action-brief.jpg)
 
-![Slipstream evidence-first action brief](docs/images/slipstream-action-brief.jpg)
+## English should not leave you guessing
 
-## Why it is different
+A translation tells you what the words mean. Slipstream also helps you understand the task behind them:
 
-- **Action before abstraction** — see what to do, in order, instead of receiving only a translation.
-- **Evidence beside every claim** — numbered highlights connect each action to the source quote that supports it.
-- **Three different kinds of “I don't understand”** — ordinary words get plain-language meanings, professional terms get in-context explanations, and unfamiliar cultural or administrative processes get a separate “what it is / why it exists / what to do next” explanation.
-- **Every explanation starts at the source** — terms and process triggers point to the exact words that caused them, while outside knowledge is visibly separated from what the original said.
-- **Honest verification states** — retrieving an official page produces a neutral receipt, not a green “verified” claim. Unsupported explanations remain pending until an explicit support assessment exists.
-- **Local-first capture** — Apple Vision OCR runs on the Mac. Clipboard monitoring and telemetry are off by default.
+- **What to do, in order** — actions, materials, deadlines, and reply requirements become one clear path.
+- **Why you should trust it** — numbered, colour-matched evidence connects each action to the exact original wording.
+- **What unfamiliar language means here** — everyday phrases, professional terms, and unfamiliar social or administrative processes are explained separately.
+- **How to move forward** — when the source asks for a reply, Slipstream can prepare an editable English draft. It never sends or submits anything for you.
 
-## How it resolves “I don't understand this”
+## From source to next step
 
-| Understanding gap | Slipstream shows | Trust boundary |
+| 1. Capture | 2. Understand | 3. Act |
 | --- | --- | --- |
-| Ordinary word or phrase | Plain Chinese meaning in this sentence | Points to the exact occurrence in the source |
-| Professional term, form, institution, or portal | What the term means in this task and whether it changes what to do | Source occurrence stays separate from any outside explanation |
-| Cultural, social, or institutional process | “What it is / why it matters / what to do” | Original trigger, model explanation, retrieved page, and verified claim remain distinct states |
+| Select part of the screen with `Option+Shift+S`, read copied text with `Option+C`, or paste text manually. | Review the Chinese conclusion and ordered action path beside the complete original. Every important claim points back to its evidence. | Check materials and dates, understand terms or process background, mark your progress, and prepare a reply when one is required. |
 
-## Supported V1 workflow
+You can choose **Action first** when you need the next step immediately, or **Translation first** when you want to read the full translation before the action plan.
 
-1. Press `F2` and select a screen region, press `Option+C` for copied text, or paste text manually.
-2. Watch the short capture → recognition → analysis → verification progress.
-3. Review the original and action path side by side.
-4. Open the full translation, ordinary-word help, professional terminology, and clearly separated process background.
-5. Copy the result, generate a reply draft, or recapture. Slipstream never sends or submits on the user's behalf.
+## Three kinds of “I don't understand”
 
-V1 officially supports macOS and English-to-Chinese. It is not a general chat app.
+| The problem | What Slipstream shows |
+| --- | --- |
+| An unfamiliar word or phrase | A plain Chinese meaning for this sentence |
+| A professional term, form, institution, or portal | What it means in this task and whether it changes what you need to do |
+| An unfamiliar cultural or administrative process | What it is, why it exists, and the practical next step |
 
-## Privacy at a glance
+Outside knowledge is kept visually separate from what the original source actually says.
 
-| Operation | Where it runs | Default |
-| --- | --- | --- |
-| Screenshot OCR | Local Apple Vision | Local |
-| Clipboard monitoring | Local app | Off |
-| Model analysis | Selected Ollama or cloud provider | User-selected |
-| Official-source lookup | Minimal query/candidate URL only | Ask first |
-| Original case history | — | Not retained |
-| Telemetry | — | None |
+## Choose how much help you need
 
-The free translation backend sends submitted text to third-party translation endpoints and can only produce a translation-only result. Use Ollama for local analysis, or configure a supported cloud model for the full action brief. See [Privacy and data flow](docs/PRIVACY.md).
+| Full analysis | Basic translation |
+| --- | --- |
+| Translation, actions, materials, dates, terminology, process background, source evidence, and reply help | Translation only |
+| Use local Ollama, Anthropic, OpenAI, DeepSeek, or a compatible service you configure | No setup required |
+| The app shows the destination before you submit | Text is sent to Google Translate and, only if needed, MyMemory |
 
-## Run from source
+## Download and install
 
-Requirements: macOS 12 or later, Node.js 22.12 or later, and Xcode Command Line Tools.
+Slipstream supports **macOS 12 or later**.
 
-```bash
-cd slipstream
-npm ci
-npm run dev
-```
+| Your Mac | Download |
+| --- | --- |
+| Apple silicon — M1, M2, M3, M4, and later | [Slipstream 1.0.0 for arm64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.0/Slipstream-1.0.0-arm64.dmg) |
+| Intel processor | [Slipstream 1.0.0 for x64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.0/Slipstream-1.0.0-x64.dmg) |
 
-The first full analysis requires either a running Ollama model or an API key for a configured provider. API keys are encrypted with macOS `safeStorage` and are never exposed to the renderer.
+1. Open the downloaded DMG.
+2. Drag **Slipstream** into **Applications**.
+3. Launch it normally. The app is signed with an Apple Developer ID and notarized by Apple.
+4. Allow Screen Recording when macOS asks if you want to capture text from the screen. Pasting and copied-text capture do not need that permission.
 
-## Verify changes
+Not sure which Mac you have? Open ** → About This Mac**. Choose `arm64` for an Apple M-series chip and `x64` for Intel.
 
-```bash
-cd slipstream
-npm test
-npm run lint
-npm run build:renderer
-```
+## Privacy you can see
 
-## Distribution
+- Screenshot text recognition uses Apple Vision and runs on your Mac.
+- Slipstream keeps no history of your original cases and collects no telemetry.
+- The destination of a full analysis is shown before submission; local Ollama can keep the source on your Mac.
+- Official-source lookup asks before sending a minimized query or opening a candidate page. Finding a page is not presented as proof by itself.
+- Clipboard monitoring is off by default. Clipboard monitoring requires a destination-specific confirmation. When enabled, the main task surface and macOS menu keep the destination and a direct off action visible.
 
-Unsigned, ad-hoc artifacts are only for local smoke testing:
+Read the complete [privacy and data-flow explanation](./docs/PRIVACY.md).
 
-```bash
-cd slipstream
-npm run release:unsigned
-```
+## Clear limits
 
-Public artifacts must be built from a clean commit with a Developer ID Application certificate and Apple notarization credentials. See the [release checklist](docs/RELEASE.md).
+- Version 1 officially supports English-to-Chinese on macOS.
+- Slipstream helps you understand and prepare; it does not send emails, upload documents, submit forms, or complete real-world tasks on your behalf.
+- AI-generated analysis can be wrong. For consequential tasks, compare the action with its highlighted source and check the relevant official service.
+- Basic translation does not include action extraction, terminology, process explanations, or source-linked evidence.
 
-## Project docs
+## Open source, free to use
 
-- [Product specification](SPEC.md)
-- [Architecture and trust boundaries](docs/ARCHITECTURE.md)
-- [Privacy and data flow](docs/PRIVACY.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
-- [Changelog](CHANGELOG.md)
+Slipstream is a non-commercial portfolio project released under the [MIT License](./LICENSE). It is built for people who live, study, or work with English-speaking systems without English being their first language.
 
-Slipstream is non-commercial and released under the [MIT License](LICENSE).
+Questions or problems? [Open an issue](https://github.com/0boluan0/Slipstream/issues).

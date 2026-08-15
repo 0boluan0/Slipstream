@@ -2,6 +2,12 @@ const { execFileSync } = require('node:child_process');
 const path = require('node:path');
 const fs = require('node:fs');
 const { Arch } = require('builder-util');
+const { listPackage } = require('@electron/asar');
+const {
+  findFileProviderConflictCopies,
+  findFileProviderConflictCopiesInEntries,
+  formatConflictCopies,
+} = require('./file-provider-conflicts');
 
 const UNUSED_PRIVACY_KEYS = [
   'NSBluetoothAlwaysUsageDescription',
@@ -15,10 +21,20 @@ exports.default = async function afterPack(context) {
 
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
   const plistPath = path.join(appPath, 'Contents', 'Info.plist');
+  const asarPath = path.join(appPath, 'Contents', 'Resources', 'app.asar');
   const runtimeScripts = path.join(appPath, 'Contents', 'Resources', 'scripts');
   const swiftSource = path.join(runtimeScripts, 'VisionOCR.swift');
   const ocrBinary = path.join(runtimeScripts, 'slipstream-ocr');
   const archName = Arch[context.arch] === 'arm64' ? 'arm64' : 'x86_64';
+  const bundleConflictCopies = findFileProviderConflictCopies(appPath);
+  const conflictCopies = findFileProviderConflictCopiesInEntries(listPackage(asarPath, { isPack: false }));
+
+  if (bundleConflictCopies.length) {
+    throw new Error(`File Provider conflict copies present in packaged app bundle: ${formatConflictCopies(bundleConflictCopies)}`);
+  }
+  if (conflictCopies.length) {
+    throw new Error(`File Provider conflict copies present in packaged ASAR: ${formatConflictCopies(conflictCopies)}`);
+  }
 
   execFileSync('/usr/bin/xcrun', [
     '--sdk', 'macosx', 'swiftc', '-O',

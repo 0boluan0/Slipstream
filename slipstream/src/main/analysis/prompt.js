@@ -58,12 +58,22 @@ function buildActionBriefPrompt(sourceText) {
     },
     terms: [
       {
-        surface: 'term exactly as written',
-        kind: TERM_KINDS[2],
-        explanation: '面向中文用户的必要解释',
+        surface: 'ordinary word or phrase exactly as written',
+        kind: 'general_term',
+        explanation: '这个普通词在当前句子和任务里的中文含义',
         verificationIndex: null,
         provenance: 'inference',
-        evidenceQuotes: ['term exactly as written'],
+        evidenceQuotes: ['ordinary word or phrase exactly as written'],
+        citationIds: [],
+        confidence: 0.9,
+      },
+      {
+        surface: 'form name exactly as written',
+        kind: 'form',
+        explanation: '这个表格在当前任务里的必要中文解释',
+        verificationIndex: null,
+        provenance: 'inference',
+        evidenceQuotes: ['form name exactly as written'],
         citationIds: [],
         confidence: 0.9,
       },
@@ -86,6 +96,7 @@ function buildActionBriefPrompt(sourceText) {
     deadlines: [
       {
         whenText: 'deadline exactly as written',
+        calendarDate: null,
         normalizedAt: null,
         timezone: null,
         condition: null,
@@ -113,6 +124,7 @@ function buildActionBriefPrompt(sourceText) {
         urgency: STEP_URGENCIES[1],
         mandatory: true,
         deadlineIndex: 0,
+        prerequisiteStepIndices: [],
         provenance: 'inference',
         evidenceQuotes: ['exact source quote requiring the action'],
         citationIds: [],
@@ -148,15 +160,31 @@ Allowed step actors: ${STEP_ACTORS.join(', ')}.
 Allowed step urgencies: ${STEP_URGENCIES.join(', ')}.
 
 Important normalization rules:
+- calendarDate may be YYYY-MM-DD only when the source supplies an unambiguous full calendar date; otherwise null. Never guess a year, month, or day.
 - normalizedAt may be a full ISO-8601 instant only when the source supplies enough date, time, and timezone information; otherwise null.
 - deadlineIndex is a zero-based reference to the candidate deadlines array, or null.
+- prerequisiteStepIndices is an array of zero-based references to direct prerequisite entries in candidate nextSteps. Use [] when the step has no prerequisite.
+- Write nextSteps in an executable order, not merely source-sentence order. If one step creates, obtains, or prepares something that another step submits, confirms, or uses, place the producer first and link it as a prerequisite.
+- Keep exact named form and portal identifiers in any nextStep that uses them; translate the surrounding action, not the identifier.
+- Do not bundle an item into a broad “prepare materials” step when another nextStep separately creates or obtains that same item. Keep the independent preparation work and the prerequisite-producing work distinct so the order cannot contradict itself.
+- Use prerequisiteStepIndices only for dependencies supported by the source or logically necessary to perform the cited actions. Do not invent optional workflow steps.
 - Do not turn a suggestion into a mandatory action.
 - Do not infer that a reply is required when the text does not say so.
 - Select only unfamiliar words, noun phrases, names, abbreviations, professional terms, institutions, forms, policies, courses, or portals that materially affect understanding or action. Use general_term for an ordinary word or phrase whose meaning may block a Chinese reader.
+- If the source explicitly identifies an action-relevant phrase as ordinary, include that exact phrase as general_term.
+- When the source contains both an action-relevant ordinary word and professional language, include needed examples from both groups; a form, portal, institution, or domain term must not crowd out a useful general_term.
+- Use form for a named form and portal for a named submission portal; reserve specialist_term for domain language that has no more specific allowed kind.
 - For each term, explain “what it means here” in plain Chinese. If its operational meaning depends on an external rule, mark the term pending and create a matching pending verification entry.
 - Use contexts only for necessary cultural/social/institutional process explanations, never generic background.
 - For each context, set whatItIs, whyItMatters, and whatToDo to a concise Chinese string or null. Also provide a short explanation summary for compatibility. Do not repeat the full translation.
+- Keep exact process, form, and portal identifiers in the context fields where they matter so the guidance cannot become ambiguous.
+- Copy named process, form, and portal identifiers character-for-character; do not translate, shorten, or replace the identifier itself.
+- Use one context entry for one named process. Keep that process's whatItIs, whyItMatters, whatToDo, and supporting evidence together instead of splitting its form, portal, receipt, or record into competing process entries.
+- A process context's evidenceQuotes must include enough exact source wording to name the process and support whatItIs, whyItMatters, and whatToDo; citing only one form or portal name is insufficient.
+- For process context evidence, copy the complete relevant source sentence or contiguous process passage verbatim. Never use an ordinary-status, deadline-only, reply-only, form-only, or portal-only quote as evidence for a process explanation.
+- Before returning JSON, remove any context whose own evidenceQuotes do not name or define that same process and support its stated reason or record. Evidence attached to another context does not count.
 - whatItIs answers “这是什么”; whyItMatters answers “为什么要做”; whatToDo answers “你该怎么做”. whatToDo may clarify an action already required by the source, but cannot create a new action, deadline, document, consequence, or eligibility rule.
+- When the source explicitly says why a receipt, confirmation, or record matters, restate that source-supported purpose in whyItMatters rather than replacing it with generic advice.
 - A context explanation must answer only the process gap needed to act correctly (for example who normally issues a named form, what a named portal is for, or why a stated confirmation step exists). Source-supported explanation may be inference; if any explanation field uses external procedural facts, mark the whole context pending and link it to a matching pending verification entry.
 - verificationIndex is a zero-based reference to the candidate verifications array, or null. Use it for a term or context whose explanation is pending. The linked verification must cite the same triggering source wording in evidenceQuotes.
 - All verification entries remain pending. Do not invent citationIds.

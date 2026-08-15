@@ -1,0 +1,626 @@
+{
+  "schemaVersion": "slipstream.model-quality-benchmark.v1",
+  "metadata": {
+    "title": "Slipstream synthetic administrative quality benchmark",
+    "language": "en",
+    "syntheticOnly": true,
+    "containsPersonalData": false,
+    "notes": "Every institution, portal, form, account, appointment, and notice in this corpus is fictional. Dates are deliberately far-future test values."
+  },
+  "cases": [
+    {
+      "id": "university-course-change",
+      "domain": "university",
+      "tags": ["deadline", "materials", "reply-required"],
+      "source": "At the fictional Northbridge Lantern University, your sample course change is pending. Submit the signed Sparrow-12 Course Change Form in the LanternGate portal by 30 September 2099. Attach the adviser approval note. Reply to this message to confirm receipt of these instructions.",
+      "expected": {
+        "anchors": [
+          { "id": "form", "anyOf": ["Sparrow-12 Course Change Form"] },
+          { "id": "portal", "anyOf": ["LanternGate"] }
+        ],
+        "actions": [
+          {
+            "id": "submit-course-change",
+            "goldenAction": "Submit the signed Sparrow-12 Course Change Form in LanternGate.",
+            "evidenceAny": ["Submit the signed Sparrow-12 Course Change Form in the LanternGate portal by 30 September 2099."],
+            "verbAny": ["submit", "upload", "提交", "递交", "上交", "上传"],
+            "objectAny": ["Sparrow-12 Course Change Form", "LanternGate"],
+            "actor": "user",
+            "mandatory": true,
+            "urgency": "before_deadline",
+            "deadlineRef": "course-change-deadline"
+          },
+          {
+            "id": "confirm-receipt",
+            "goldenAction": "Reply to confirm receipt of the instructions.",
+            "evidenceAny": ["Reply to this message to confirm receipt of these instructions."],
+            "verbAny": ["reply", "respond", "confirm receipt", "回复", "回覆", "回信", "确认收到", "確認收到"],
+            "objectAny": ["receipt", "instructions", "收到", "收悉", "指示", "说明"],
+            "actor": "user",
+            "mandatory": true,
+            "urgency": "now",
+            "deadlineRef": null,
+            "reply": true
+          }
+        ],
+        "deadlines": [
+          {
+            "id": "course-change-deadline",
+            "evidenceAny": ["by 30 September 2099"],
+            "whenAny": ["30 September 2099"],
+            "calendarDate": "2099-09-30",
+            "normalizedAt": null,
+            "conditionRequired": false
+          }
+        ],
+        "materials": [
+          {
+            "id": "signed-form",
+            "goldenName": "signed Sparrow-12 Course Change Form",
+            "nameAny": ["Sparrow-12 Course Change Form"],
+            "evidenceAny": ["Submit the signed Sparrow-12 Course Change Form in the LanternGate portal by 30 September 2099."],
+            "requirement": "required"
+          },
+          {
+            "id": "approval-note",
+            "goldenName": "adviser approval note",
+            "nameAny": ["adviser approval note"],
+            "evidenceAny": ["Attach the adviser approval note."],
+            "requirement": "required"
+          }
+        ],
+        "reply": {
+          "mode": "required",
+          "evidenceAny": ["Reply to this message to confirm receipt of these instructions."]
+        },
+        "prohibitions": [],
+        "noAction": false
+      }
+    },
+    {
+      "id": "tenancy-inspection-pet-note",
+      "domain": "tenancy",
+      "tags": ["conditional-action", "multiple-dates", "reply-not-requested"],
+      "source": "Fictional Cedar Orbit Housing will inspect the empty sample flat on 12 October 2099. If you keep a pet in the sample flat, upload the Pet Care Note before 10 October 2099; otherwise no upload is needed. You do not need to reply.",
+      "expected": {
+        "anchors": [
+          { "id": "housing-provider", "anyOf": ["Cedar Orbit Housing"] },
+          { "id": "pet-note", "anyOf": ["Pet Care Note"] }
+        ],
+        "actions": [
+          {
+            "id": "upload-pet-note",
+            "goldenAction": "If a pet is kept in the sample flat, upload the Pet Care Note.",
+            "evidenceAny": ["If you keep a pet in the sample flat, upload the Pet Care Note before 10 October 2099; otherwise no upload is needed."],
+            "verbAny": ["upload", "submit", "上传", "提交"],
+            "objectAny": ["Pet Care Note"],
+            "actor": "user",
+            "mandatory": false,
+            "urgency": "when_triggered",
+            "deadlineRef": "pet-note-deadline",
+            "conditionRequired": true
+          }
+        ],
+        "deadlines": [
+          {
+            "id": "inspection-date",
+            "evidenceAny": ["on 12 October 2099"],
+            "whenAny": ["12 October 2099"],
+            "calendarDate": "2099-10-12",
+            "normalizedAt": null,
+            "conditionRequired": false
+          },
+          {
+            "id": "pet-note-deadline",
+            "evidenceAny": ["before 10 October 2099"],
+            "whenAny": ["10 October 2099"],
+            "calendarDate": "2099-10-10",
+            "normalizedAt": null,
+            "conditionRequired": true
+          }
+        ],
+        "materials": [
+          {
+            "id": "pet-care-note",
+            "goldenName": "Pet Care Note",
+            "nameAny": ["Pet Care Note"],
+            "evidenceAny": ["If you keep a pet in the sample flat, upload the Pet Care Note before 10 October 2099; otherwise no upload is needed."],
+            "requirement": "conditional"
+          }
+        ],
+        "reply": {
+          "mode": "not_requested",
+          "evidenceAny": ["You do not need to reply."]
+        },
+        "prohibitions": [],
+        "noAction": false
+      }
+    },
+    {
+      "id": "medical-appointment-preparation",
+      "domain": "medical_appointment",
+      "tags": ["appointment", "materials", "conditional-action", "negative-command"],
+      "source": "At the fictional Meridian Kite Clinic, the sample appointment is scheduled for 18 November 2099 at 09:30 UTC. Bring the current medication list and the Bluebird referral letter. If you cannot attend, call the clinic before 16 November 2099; do not cancel by replying to this message.",
+      "expected": {
+        "anchors": [
+          { "id": "clinic", "anyOf": ["Meridian Kite Clinic"] },
+          { "id": "referral", "anyOf": ["Bluebird referral letter"] }
+        ],
+        "actions": [
+          {
+            "id": "bring-appointment-materials",
+            "goldenAction": "Bring the current medication list and Bluebird referral letter to the appointment.",
+            "evidenceAny": ["Bring the current medication list and the Bluebird referral letter."],
+            "verbAny": ["bring", "take", "carry", "携带", "带上", "帶上"],
+            "objectAny": ["medication list", "Bluebird referral letter", "药物清单", "用药清单", "藥物清單", "转诊信", "轉診信"],
+            "actor": "user",
+            "mandatory": true,
+            "urgency": "before_deadline",
+            "deadlineRef": "appointment-time"
+          },
+          {
+            "id": "call-if-unavailable",
+            "goldenAction": "If unable to attend, call the clinic.",
+            "evidenceAny": ["If you cannot attend, call the clinic before 16 November 2099; do not cancel by replying to this message."],
+            "verbAny": ["call", "phone", "telephone", "致电", "致電", "打电话", "打電話", "电话联系", "電話聯繫"],
+            "objectAny": ["clinic", "Meridian Kite Clinic", "诊所", "診所"],
+            "actor": "user",
+            "mandatory": false,
+            "urgency": "when_triggered",
+            "deadlineRef": "cancellation-call-deadline",
+            "conditionRequired": true
+          }
+        ],
+        "deadlines": [
+          {
+            "id": "appointment-time",
+            "evidenceAny": ["18 November 2099 at 09:30 UTC"],
+            "whenAny": ["18 November 2099 at 09:30 UTC"],
+            "calendarDate": "2099-11-18",
+            "normalizedAt": "2099-11-18T09:30:00.000Z",
+            "conditionRequired": false
+          },
+          {
+            "id": "cancellation-call-deadline",
+            "evidenceAny": ["before 16 November 2099"],
+            "whenAny": ["16 November 2099"],
+            "calendarDate": "2099-11-16",
+            "normalizedAt": null,
+            "conditionRequired": true
+          }
+        ],
+        "materials": [
+          {
+            "id": "medication-list",
+            "goldenName": "current medication list",
+            "nameAny": ["medication list"],
+            "evidenceAny": ["Bring the current medication list and the Bluebird referral letter."],
+            "requirement": "required"
+          },
+          {
+            "id": "referral-letter",
+            "goldenName": "Bluebird referral letter",
+            "nameAny": ["Bluebird referral letter"],
+            "evidenceAny": ["Bring the current medication list and the Bluebird referral letter."],
+            "requirement": "required"
+          }
+        ],
+        "reply": {
+          "mode": "prohibited",
+          "evidenceAny": ["do not cancel by replying to this message"]
+        },
+        "prohibitions": [
+          {
+            "id": "no-email-cancellation",
+            "verbAny": ["reply", "respond", "回复", "回覆", "回信"],
+            "objectAny": ["cancel", "cancellation", "取消"],
+            "evidenceAny": ["do not cancel by replying to this message"]
+          }
+        ],
+        "noAction": false
+      }
+    },
+    {
+      "id": "hr-benefits-two-stage",
+      "domain": "hr",
+      "tags": ["multiple-deadlines", "conditional-reply", "negative-command"],
+      "source": "At the fictional Polar Fern Works, complete the Horizon Benefits Form by 5 December 2099. Upload proof of eligibility by 8 December 2099. Send no bank statements. Reply only after both portal receipts appear, confirming completion.",
+      "expected": {
+        "anchors": [
+          { "id": "benefits-form", "anyOf": ["Horizon Benefits Form"] },
+          { "id": "employer", "anyOf": ["Polar Fern Works"] }
+        ],
+        "actions": [
+          {
+            "id": "complete-benefits-form",
+            "goldenAction": "Complete the Horizon Benefits Form.",
+            "evidenceAny": ["complete the Horizon Benefits Form by 5 December 2099."],
+            "verbAny": ["complete", "fill", "填写", "填寫", "完成"],
+            "objectAny": ["Horizon Benefits Form"],
+            "actor": "user",
+            "mandatory": true,
+            "urgency": "before_deadline",
+            "deadlineRef": "benefits-form-deadline"
+          },
+          {
+            "id": "upload-eligibility-proof",
+            "goldenAction": "Upload proof of eligibility.",
+            "evidenceAny": ["Upload proof of eligibility by 8 December 2099."],
+            "verbAny": ["upload", "submit", "上传", "提交"],
+            "objectAny": ["proof of eligibility", "eligibility proof", "资格证明", "資格證明"],
+            "actor": "user",
+            "mandatory": true,
+            "urgency": "before_deadline",
+            "deadlineRef": "eligibility-proof-deadline"
+          },
+          {
+            "id": "confirm-after-receipts",
+            "goldenAction": "After both portal receipts appear, reply to confirm completion.",
+            "evidenceAny": ["Reply only after both portal receipts appear, confirming completion."],
+            "verbAny": ["reply", "respond", "confirm", "回复", "回覆", "回信", "确认", "確認"],
+            "objectAny": ["completion", "portal receipts", "完成", "回执", "回執", "收据", "收據"],
+            "actor": "user",
+            "mandatory": false,
+            "urgency": "when_triggered",
+            "deadlineRef": null,
+            "conditionRequired": true,
+            "reply": true
+          }
+        ],
+        "deadlines": [
+          {
+            "id": "benefits-form-deadline",
+            "evidenceAny": ["by 5 December 2099"],
+            "whenAny": ["5 December 2099"],
+            "calendarDate": "2099-12-05",
+            "normalizedAt": null,
+            "conditionRequired": false
+          },
+          {
+            "id": "eligibility-proof-deadline",
+            "evidenceAny": ["by 8 December 2099"],
+            "whenAny": ["8 December 2099"],
+            "calendarDate": "2099-12-08",
+            "normalizedAt": null,
+            "conditionRequired": false
+          }
+        ],
+        "materials": [
+          {
+            "id": "benefits-form",
+            "goldenName": "Horizon Benefits Form",
+            "nameAny": ["Horizon Benefits Form"],
+            "evidenceAny": ["complete the Horizon Benefits Form by 5 December 2099."],
+            "requirement": "required"
+          },
+          {
+            "id": "eligibility-proof",
+            "goldenName": "proof of eligibility",
+            "nameAny": ["proof of eligibility"],
+            "evidenceAny": ["Upload proof of eligibility by 8 December 2099."],
+            "requirement": "required"
+          }
+        ],
+        "reply": {
+          "mode": "conditional",
+          "evidenceAny": ["Reply only after both portal receipts appear, confirming completion."]
+        },
+        "prohibitions": [
+          {
+            "id": "no-bank-statements",
+            "verbAny": ["send", "upload", "attach", "发送", "上传", "附上"],
+            "objectAny": ["bank statement", "bank statements", "银行对账单", "銀行對賬單"],
+            "evidenceAny": ["Send no bank statements."]
+          }
+        ],
+        "noAction": false
+      }
+    },
+    {
+      "id": "government-closed-status-notice",
+      "domain": "government",
+      "tags": ["no-action", "negative-command", "quoted-date-not-deadline"],
+      "source": "The fictional Eastborough Civic Office confirms that the sample Nimbus Permit request was closed on 7 January 2100. This is a status notice only. No response or action is required. Do not send documents, payment, or a reply.",
+      "expected": {
+        "anchors": [
+          { "id": "permit", "anyOf": ["Nimbus Permit"] },
+          { "id": "office", "anyOf": ["Eastborough Civic Office"] }
+        ],
+        "actions": [],
+        "deadlines": [],
+        "materials": [],
+        "reply": {
+          "mode": "prohibited",
+          "evidenceAny": ["Do not send documents, payment, or a reply."]
+        },
+        "prohibitions": [
+          {
+            "id": "no-documents",
+            "verbAny": ["send", "upload", "attach", "发送", "上传", "附上"],
+            "objectAny": ["document", "documents", "文件", "材料"],
+            "evidenceAny": ["Do not send documents, payment, or a reply."]
+          },
+          {
+            "id": "no-payment",
+            "verbAny": ["pay", "send", "支付", "付款", "发送"],
+            "objectAny": ["payment", "付款", "款项"],
+            "evidenceAny": ["Do not send documents, payment, or a reply."]
+          }
+        ],
+        "noAction": true
+      }
+    },
+    {
+      "id": "billing-conditional-payment",
+      "domain": "billing",
+      "tags": ["conditional-action", "multiple-deadlines", "negative-command"],
+      "source": "Fictional Moonwell Utilities says the sample invoice is due on 20 January 2100. If it was already paid, upload the payment receipt by 15 January 2100 and do not pay again. If it was not paid, pay the invoice by 20 January 2100. No reply is requested.",
+      "expected": {
+        "anchors": [
+          { "id": "utility", "anyOf": ["Moonwell Utilities"] },
+          { "id": "invoice-date", "anyOf": ["20 January 2100"] }
+        ],
+        "actions": [
+          {
+            "id": "upload-receipt-if-paid",
+            "goldenAction": "If the invoice was already paid, upload the payment receipt.",
+            "evidenceAny": ["If it was already paid, upload the payment receipt by 15 January 2100 and do not pay again."],
+            "verbAny": ["upload", "submit", "上传", "提交"],
+            "objectAny": ["payment receipt", "付款收据", "付款收據", "支付凭证", "支付憑證"],
+            "actor": "user",
+            "mandatory": false,
+            "urgency": "when_triggered",
+            "deadlineRef": "receipt-deadline",
+            "conditionRequired": true
+          },
+          {
+            "id": "pay-if-unpaid",
+            "goldenAction": "If the invoice was not paid, pay the invoice.",
+            "evidenceAny": ["If it was not paid, pay the invoice by 20 January 2100."],
+            "verbAny": ["pay", "settle", "支付", "付款", "缴纳", "繳納"],
+            "objectAny": ["invoice", "账单", "賬單", "发票", "發票"],
+            "actor": "user",
+            "mandatory": false,
+            "urgency": "when_triggered",
+            "deadlineRef": "invoice-deadline",
+            "conditionRequired": true
+          }
+        ],
+        "deadlines": [
+          {
+            "id": "receipt-deadline",
+            "evidenceAny": ["by 15 January 2100"],
+            "whenAny": ["15 January 2100"],
+            "calendarDate": "2100-01-15",
+            "normalizedAt": null,
+            "conditionRequired": true
+          },
+          {
+            "id": "invoice-deadline",
+            "evidenceAny": ["due on 20 January 2100", "by 20 January 2100"],
+            "whenAny": ["20 January 2100"],
+            "calendarDate": "2100-01-20",
+            "normalizedAt": null,
+            "conditionRequired": true
+          }
+        ],
+        "materials": [
+          {
+            "id": "payment-receipt",
+            "goldenName": "payment receipt",
+            "nameAny": ["payment receipt"],
+            "evidenceAny": ["If it was already paid, upload the payment receipt by 15 January 2100 and do not pay again."],
+            "requirement": "conditional"
+          }
+        ],
+        "reply": {
+          "mode": "not_requested",
+          "evidenceAny": ["No reply is requested."]
+        },
+        "prohibitions": [
+          {
+            "id": "no-double-payment",
+            "verbAny": ["pay again", "repeat payment", "再次付款", "重复支付", "重複支付"],
+            "objectAny": ["invoice", "payment", "账单", "賬單", "付款"],
+            "evidenceAny": ["do not pay again"]
+          }
+        ],
+        "noAction": false
+      }
+    },
+    {
+      "id": "forwarded-quoted-request",
+      "domain": "university",
+      "tags": ["quoted-forwarding", "no-action", "negative-command"],
+      "source": "Forwarded for information only by the fictional Atlas Department. The quoted message below concerns another team. Do not carry out its request and do not reply.\n\n> \"Please upload the Comet-4 Roster by 14 February 2100 and send confirmation.\"",
+      "expected": {
+        "anchors": [
+          { "id": "department", "anyOf": ["Atlas Department"] },
+          { "id": "quoted-roster", "anyOf": ["Comet-4 Roster"] }
+        ],
+        "actions": [],
+        "deadlines": [],
+        "materials": [],
+        "reply": {
+          "mode": "prohibited",
+          "evidenceAny": ["Do not carry out its request and do not reply."]
+        },
+        "prohibitions": [
+          {
+            "id": "ignore-quoted-upload",
+            "verbAny": ["upload", "submit", "上传", "提交"],
+            "objectAny": ["Comet-4 Roster"],
+            "evidenceAny": ["Please upload the Comet-4 Roster by 14 February 2100 and send confirmation."]
+          }
+        ],
+        "noAction": true,
+        "quotedForwarding": true
+      }
+    },
+    {
+      "id": "tenancy-ambiguous-next-friday",
+      "domain": "tenancy",
+      "tags": ["ambiguous-date", "materials", "reply-not-requested"],
+      "source": "At the fictional Willow Arch Residences, report the test intercom fault in the OrbitDesk portal by next Friday. The notice gives no calendar date or year, so keep the deadline as 'next Friday' and do not invent a date. Attach one photo of the fault. No reply is needed.",
+      "expected": {
+        "anchors": [
+          { "id": "portal", "anyOf": ["OrbitDesk"] },
+          { "id": "deadline-language", "anyOf": ["next Friday"] }
+        ],
+        "actions": [
+          {
+            "id": "report-intercom-fault",
+            "goldenAction": "Report the test intercom fault in OrbitDesk.",
+            "evidenceAny": ["report the test intercom fault in the OrbitDesk portal by next Friday."],
+            "verbAny": ["report", "submit", "报告", "報告", "报修", "報修", "提交"],
+            "objectAny": ["intercom fault", "OrbitDesk", "对讲机故障", "對講機故障", "门禁对讲故障", "門禁對講故障"],
+            "actor": "user",
+            "mandatory": true,
+            "urgency": "before_deadline",
+            "deadlineRef": "ambiguous-friday-deadline"
+          }
+        ],
+        "deadlines": [
+          {
+            "id": "ambiguous-friday-deadline",
+            "evidenceAny": ["by next Friday"],
+            "whenAny": ["next Friday"],
+            "calendarDate": null,
+            "normalizedAt": null,
+            "conditionRequired": false,
+            "mustRemainUnnormalized": true
+          }
+        ],
+        "materials": [
+          {
+            "id": "fault-photo",
+            "goldenName": "one photo of the fault",
+            "nameAny": ["photo of the fault", "one photo"],
+            "evidenceAny": ["Attach one photo of the fault."],
+            "requirement": "required"
+          }
+        ],
+        "reply": {
+          "mode": "not_requested",
+          "evidenceAny": ["No reply is needed."]
+        },
+        "prohibitions": [],
+        "noAction": false
+      }
+    },
+    {
+      "id": "hr-portal-acknowledgement",
+      "domain": "hr",
+      "tags": ["negative-command", "deadline", "no-materials"],
+      "source": "Fictional Acorn Vector Labs has approved the sample leave request. Do not reply to this email. Instead, acknowledge the leave policy in the PeopleDock portal by 22 February 2100. No document upload is required.",
+      "expected": {
+        "anchors": [
+          { "id": "portal", "anyOf": ["PeopleDock"] },
+          { "id": "employer", "anyOf": ["Acorn Vector Labs"] }
+        ],
+        "actions": [
+          {
+            "id": "acknowledge-policy",
+            "goldenAction": "Acknowledge the leave policy in PeopleDock.",
+            "evidenceAny": ["acknowledge the leave policy in the PeopleDock portal by 22 February 2100."],
+            "verbAny": ["acknowledge", "confirm", "确认", "確認", "知悉", "阅读并确认", "閱讀並確認"],
+            "objectAny": ["leave policy", "PeopleDock", "休假政策", "请假政策", "請假政策"],
+            "actor": "user",
+            "mandatory": true,
+            "urgency": "before_deadline",
+            "deadlineRef": "policy-acknowledgement-deadline"
+          }
+        ],
+        "deadlines": [
+          {
+            "id": "policy-acknowledgement-deadline",
+            "evidenceAny": ["by 22 February 2100"],
+            "whenAny": ["22 February 2100"],
+            "calendarDate": "2100-02-22",
+            "normalizedAt": null,
+            "conditionRequired": false
+          }
+        ],
+        "materials": [],
+        "reply": {
+          "mode": "prohibited",
+          "evidenceAny": ["Do not reply to this email."]
+        },
+        "prohibitions": [
+          {
+            "id": "no-document-upload",
+            "verbAny": ["upload", "attach", "上传", "附上"],
+            "objectAny": ["document", "documents", "文件", "材料"],
+            "evidenceAny": ["No document upload is required."]
+          }
+        ],
+        "noAction": false
+      }
+    },
+    {
+      "id": "government-conditional-address-update",
+      "domain": "government",
+      "tags": ["conditional-action", "materials", "negative-command"],
+      "source": "The fictional Westmere Licensing Bureau says: if the sample office address changed, submit the Address Update Sheet and a lease extract in CivicNest by 3 March 2100. If the address is unchanged, take no action. Do not email documents.",
+      "expected": {
+        "anchors": [
+          { "id": "form", "anyOf": ["Address Update Sheet"] },
+          { "id": "portal", "anyOf": ["CivicNest"] }
+        ],
+        "actions": [
+          {
+            "id": "submit-address-update",
+            "goldenAction": "If the sample office address changed, submit the Address Update Sheet and lease extract in CivicNest.",
+            "evidenceAny": ["if the sample office address changed, submit the Address Update Sheet and a lease extract in CivicNest by 3 March 2100."],
+            "verbAny": ["submit", "upload", "提交", "递交", "上交", "上传"],
+            "objectAny": ["Address Update Sheet", "CivicNest"],
+            "actor": "user",
+            "mandatory": false,
+            "urgency": "when_triggered",
+            "deadlineRef": "address-update-deadline",
+            "conditionRequired": true
+          }
+        ],
+        "deadlines": [
+          {
+            "id": "address-update-deadline",
+            "evidenceAny": ["by 3 March 2100"],
+            "whenAny": ["3 March 2100"],
+            "calendarDate": "2100-03-03",
+            "normalizedAt": null,
+            "conditionRequired": true
+          }
+        ],
+        "materials": [
+          {
+            "id": "address-update-sheet",
+            "goldenName": "Address Update Sheet",
+            "nameAny": ["Address Update Sheet"],
+            "evidenceAny": ["if the sample office address changed, submit the Address Update Sheet and a lease extract in CivicNest by 3 March 2100."],
+            "requirement": "conditional"
+          },
+          {
+            "id": "lease-extract",
+            "goldenName": "lease extract",
+            "nameAny": ["lease extract"],
+            "evidenceAny": ["if the sample office address changed, submit the Address Update Sheet and a lease extract in CivicNest by 3 March 2100."],
+            "requirement": "conditional"
+          }
+        ],
+        "reply": {
+          "mode": "not_requested",
+          "evidenceAny": []
+        },
+        "prohibitions": [
+          {
+            "id": "no-email-documents",
+            "verbAny": ["email", "send by email", "邮件发送", "電郵發送", "发送邮件"],
+            "objectAny": ["document", "documents", "文件", "材料"],
+            "evidenceAny": ["Do not email documents."]
+          }
+        ],
+        "noAction": false
+      }
+    }
+  ]
+}

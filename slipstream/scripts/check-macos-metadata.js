@@ -2,6 +2,7 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { createPackage } = require('@electron/asar');
 const { Arch } = require('builder-util');
 const afterPack = require('./after-pack.js').default;
 
@@ -27,6 +28,8 @@ async function main() {
   const appPath = path.join(tmpdir, 'Fixture.app');
   const contentsPath = path.join(appPath, 'Contents');
   const scriptsPath = path.join(contentsPath, 'Resources', 'scripts');
+  const asarSourcePath = path.join(tmpdir, 'asar-source');
+  const asarPath = path.join(contentsPath, 'Resources', 'app.asar');
   const helperPath = path.join(contentsPath, 'Frameworks', 'Fixture Helper (GPU).app');
   const helperContentsPath = path.join(helperPath, 'Contents');
   const helperBinary = path.join(helperContentsPath, 'MacOS', 'Fixture Helper (GPU)');
@@ -38,6 +41,9 @@ async function main() {
     fs.writeFileSync(path.join(contentsPath, 'Info.plist'), appPlist);
     fs.writeFileSync(path.join(helperContentsPath, 'Info.plist'), helperPlist);
     fs.writeFileSync(path.join(scriptsPath, 'VisionOCR.swift'), 'print("metadata fixture")\n');
+    fs.mkdirSync(asarSourcePath);
+    fs.writeFileSync(path.join(asarSourcePath, 'package.json'), '{"name":"metadata-fixture"}\n');
+    await createPackage(asarSourcePath, asarPath);
     fs.copyFileSync('/usr/bin/true', helperBinary);
     fs.chmodSync(helperBinary, 0o755);
     execFileSync('/usr/bin/xattr', ['-w', 'com.apple.ResourceFork', 'detritus', helperBinary]);

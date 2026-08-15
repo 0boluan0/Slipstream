@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Circle, WarningCircle } from '@phosphor-icons/react';
+import { Circle, WarningCircle } from '../phosphorIcons';
 import constants from '../../shared/constants';
 
 const { STATUS } = constants;

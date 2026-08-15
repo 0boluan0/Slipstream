@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, LockSimple } from '@phosphor-icons/react';
+import { ArrowRight, LockSimple } from '../phosphorIcons';
 
 export default function LanguageToggle() {
   return (

@@ -45,7 +45,23 @@ assert.doesNotMatch(
   /error\s*:\s*(?:error|err|exception)(?:\?\.)?\.message/,
   'main process must never return an exception message to the renderer',
 );
-assert.match(mainSource, /console\.error\('\[LLMProcess\] Error:', error\);/);
+assert.doesNotMatch(
+  mainSource,
+  /console\.error\('\[LLMProcess\][^']*',\s*error\)/,
+  'LLM failures must not send raw SDK errors through console inspection',
+);
+assert.match(
+  mainSource,
+  /console\.error\('\[LLMProcess\] Failed:', processingErrorDiagnostic\(error, requestBackend\)\);/,
+);
+const structuredFailureLog = mainSource.match(
+  /console\.error\('\[LLMProcess\] Structured output validation failed:',\s*\{([\s\S]*?)\}\);/,
+);
+assert.ok(structuredFailureLog, 'structured-output failures need a bounded diagnostic');
+assert.match(structuredFailureLog[1], /backend:\s*safeProcessingBackend\(settings\.activeBackend\)/);
+assert.match(structuredFailureLog[1], /errorCode:\s*USER_ERRORS\.PROCESSING_INVALID\.code/);
+assert.doesNotMatch(structuredFailureLog[1], /model|raw|settings\s*:/i,
+  'structured-output diagnostics must not include the arbitrary model or settings payload');
 assert.match(mainSource, /console\.error\('\[VerificationRun\] Error:', error\);/);
 assert.match(mainSource, /console\.error\('\[ScreenshotCapture\] Error:', error\);/);
 
@@ -60,8 +76,11 @@ assert.match(
 );
 assert.match(rendererSource, /catch \{\s*response = null;\s*\}/, 'LLM IPC failures need a stable renderer fallback');
 assert.match(rendererSource, /catch \{[\s\S]*restoreLastGood\(SCREENSHOT_FAILURE_MESSAGE\)/, 'screenshot IPC failures need a stable renderer fallback');
-assert.match(rendererSource, /catch \{[\s\S]*appendUniqueWarning\(current, VERIFICATION_FAILURE_MESSAGE\)/,
-  'verification IPC failures need a stable renderer fallback');
+assert.match(
+  rendererSource,
+  /catch \{[\s\S]*verificationRunRef\.current\.cancelRequested \? VERIFICATION_CANCELLED_NOTICE : VERIFICATION_FAILURE_MESSAGE/,
+  'verification IPC failures need a stable renderer fallback while explicit cancellation keeps accurate copy',
+);
 
 const rendererHelpersSource = rendererSource.slice(
   rendererSource.indexOf('const USER_ERROR_MESSAGES'),
@@ -96,7 +115,7 @@ const mainHelpersSource = mainSource.slice(
 );
 const mainContext = {};
 vm.runInNewContext(
-  `${mainHelpersSource}\nglobalThis.helpers = { classifyProcessingError, classifyScreenshotError };`,
+  `${mainHelpersSource}\nglobalThis.helpers = { classifyProcessingError, processingErrorDiagnostic, safeProcessingBackend, requiresKnownEndpointLocation, classifyScreenshotError, isScreenRecordingAccessDenied };`,
   mainContext,
 );
 assert.equal(mainContext.helpers.classifyProcessingError(new Error('需要先添加 API key'), 'openai').code, 'processing-key-missing');
@@ -109,8 +128,37 @@ assert.equal(mainContext.helpers.classifyProcessingError({ status: 429, message:
 assert.equal(mainContext.helpers.classifyProcessingError({ status: 503, message: providerSecret }, 'deepseek').code, 'processing-service-unavailable');
 assert.equal(mainContext.helpers.classifyProcessingError({ code: 'ENOTFOUND', message: providerSecret }, 'openai').code, 'processing-unreachable');
 assert.equal(mainContext.helpers.classifyProcessingError(new Error(providerSecret), 'openai').code, 'processing-failed');
+const maliciousSdkError = {
+  name: 'BadRequestError',
+  message: `400 ${providerSecret} PRIVATE_RESPONSE_BODY`,
+  status: 400,
+  code: 'PRIVATE_RESPONSE_BODY',
+  error: { message: providerSecret },
+  headers: { authorization: providerSecret },
+};
+const safeDiagnostic = mainContext.helpers.processingErrorDiagnostic(maliciousSdkError, 'custom');
+assert.deepEqual(JSON.parse(JSON.stringify(safeDiagnostic)), {
+  backend: 'custom',
+  errorCode: 'processing-failed',
+  status: 400,
+});
+assert.equal(JSON.stringify(safeDiagnostic).includes(providerSecret), false);
+assert.equal(JSON.stringify(safeDiagnostic).includes('PRIVATE_RESPONSE_BODY'), false);
+assert.equal(mainContext.helpers.safeProcessingBackend('PRIVATE_MODEL_MARKER'), 'unknown');
+assert.equal(mainContext.helpers.requiresKnownEndpointLocation('custom'), true);
+assert.equal(mainContext.helpers.requiresKnownEndpointLocation('ollama'), true);
+assert.equal(mainContext.helpers.requiresKnownEndpointLocation('openai'), false);
+assert.match(
+  mainSource,
+  /requiresKnownEndpointLocation\(settings\.activeBackend\)[\s\S]{0,160}PROCESSING_LOCATION_KINDS\.UNKNOWN[\s\S]{0,160}USER_ERRORS\.PROCESSING_LOCATION_UNKNOWN/,
+  'formal analysis must fail before transport when a custom or Ollama endpoint location is unknown',
+);
 assert.equal(mainContext.helpers.classifyScreenshotError(new Error('permission denied'), 'selection').code, 'screenshot-permission-denied');
 assert.equal(mainContext.helpers.classifyScreenshotError(new Error(providerSecret), 'ocr').code, 'screenshot-ocr-failed');
 assert.equal(mainContext.helpers.classifyScreenshotError(new Error(providerSecret), 'selection').code, 'screenshot-failed');
+assert.equal(mainContext.helpers.isScreenRecordingAccessDenied('denied'), true);
+assert.equal(mainContext.helpers.isScreenRecordingAccessDenied('restricted'), true);
+assert.equal(mainContext.helpers.isScreenRecordingAccessDenied('granted'), false);
+assert.equal(mainContext.helpers.isScreenRecordingAccessDenied('not-determined'), false);
 
 console.log('user-facing error redaction checks passed');
