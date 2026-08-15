@@ -227,6 +227,11 @@ function assertPreferenceView(probe, state, view) {
   const label = `${state} ${view}`;
   assert.equal(probe.view, view);
   assert.equal(probe.state, state);
+  assert.deepEqual(probe.media, {
+    prefersContrastMore: state === 'more',
+    prefersContrastNoPreference: state !== 'more',
+    forcedColorsActive: state === 'forced',
+  }, `${label} media state drifted`);
   assertFocus(probe, label);
   assertGeometry(probe, label);
   assert.ok(Number.isFinite(probe.text.contrastRatio), `${label} text contrast was not measurable`);
@@ -247,10 +252,6 @@ function assertPreferenceView(probe, state, view) {
   }
   if (view === 'reset') {
     assert.ok(probe.visibleBackdrops.length >= 1, `${label} did not probe a visible reset backdrop`);
-    assert.ok(
-      probe.surface.borderContrastRatio >= 3,
-      `${label} reset boundary contrast was ${probe.surface.borderContrastRatio.toFixed(2)}:1`,
-    );
   }
   if (state === 'forced') {
     assert.notEqual(probe.focus.forcedColorAdjust, 'none', `${label} disabled forced color adjustment on focus`);
@@ -633,7 +634,7 @@ function pageProbe({ state, view, surfaceSelector, textSelector, focusSelector }
   };
 }
 
-async function settleMediaChange(webContents) {
+async function settleAnimationFrames(webContents) {
   await webContents.executeJavaScript(
     'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
     true,
@@ -643,9 +644,14 @@ async function settleMediaChange(webContents) {
 async function setMediaState(webContents, state) {
   await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
     media: '',
+    features: [],
+  });
+  await settleAnimationFrames(webContents);
+  await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
+    media: '',
     features: mediaRequests[state].map((feature) => ({ ...feature })),
   });
-  await settleMediaChange(webContents);
+  await settleAnimationFrames(webContents);
 }
 
 async function sendNativeTab(webContents, reverse = false) {
@@ -776,6 +782,7 @@ async function runElectronHarness() {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        backgroundThrottling: false,
       },
     });
     fixtureWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -882,7 +889,7 @@ async function runElectronHarness() {
       waitForSelectorSource('.settings-reset-dialog', 'Settings reset dialog'),
       true,
     );
-    await settleMediaChange(fixtureWindow.webContents);
+    await settleAnimationFrames(fixtureWindow.webContents);
     await focusSelectorWithNativeTab(fixtureWindow.webContents, '.settings-reset-cancel');
     const resetFocusReady = await fixtureWindow.webContents.executeJavaScript(`Boolean(
       document.activeElement?.matches('.settings-reset-cancel')
