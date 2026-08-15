@@ -39,14 +39,17 @@ const timeoutMs = 40_000;
 
 const mediaRequests = Object.freeze({
   normal: Object.freeze([
+    Object.freeze({ name: 'prefers-color-scheme', value: 'light' }),
     Object.freeze({ name: 'prefers-contrast', value: 'no-preference' }),
     Object.freeze({ name: 'forced-colors', value: 'none' }),
   ]),
   more: Object.freeze([
+    Object.freeze({ name: 'prefers-color-scheme', value: 'light' }),
     Object.freeze({ name: 'prefers-contrast', value: 'more' }),
     Object.freeze({ name: 'forced-colors', value: 'none' }),
   ]),
   forced: Object.freeze([
+    Object.freeze({ name: 'prefers-color-scheme', value: 'light' }),
     Object.freeze({ name: 'prefers-contrast', value: 'no-preference' }),
     Object.freeze({ name: 'forced-colors', value: 'active' }),
   ]),
@@ -247,6 +250,10 @@ function assertPreferenceView(probe, state, view) {
   }
   if (view === 'reset') {
     assert.ok(probe.visibleBackdrops.length >= 1, `${label} did not probe a visible reset backdrop`);
+    assert.ok(
+      probe.surface.borderContrastRatio >= 3,
+      `${label} reset boundary contrast was ${probe.surface.borderContrastRatio.toFixed(2)}:1`,
+    );
   }
   if (state === 'forced') {
     assert.notEqual(probe.focus.forcedColorAdjust, 'none', `${label} disabled forced color adjustment on focus`);
