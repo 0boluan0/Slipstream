@@ -1,6 +1,7 @@
 const { execFile } = require('child_process');
 const { app } = require('electron');
 const path = require('path');
+const { createOcrEnvironment } = require('./ocr-environment');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const OCR_SCRIPT = app.isPackaged
@@ -50,9 +51,16 @@ function performOCR(imagePath, { signal } = {}) {
       onAbort();
       return;
     }
+    let environment;
+    try {
+      environment = createOcrEnvironment(cacheDir);
+    } catch (error) {
+      finish(reject, error);
+      return;
+    }
     child = execFile('/bin/bash', [OCR_SCRIPT, imagePath], {
       timeout: 15000,
-      env: { ...process.env, SLIPSTREAM_OCR_CACHE: cacheDir },
+      env: environment,
     }, (error, stdout, stderr) => {
       if (error) {
         if (signal?.aborted) {

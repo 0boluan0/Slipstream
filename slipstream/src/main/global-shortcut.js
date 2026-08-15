@@ -1,5 +1,6 @@
 const { clipboard, globalShortcut } = require('electron');
 const { DEFAULTS, IPC_CHANNELS } = require('../shared/constants.cjs');
+const { analyzeShortcutAccelerator } = require('../shared/shortcut-accelerator.cjs');
 
 function createClipboardPayload(value) {
   const sourceText = typeof value === 'string' ? value : '';
@@ -11,39 +12,81 @@ function createClipboardPayload(value) {
   return { text, truncated, originalLength };
 }
 
+function createShortcutRegistrationStatus(settings = {}, registration = {}) {
+  const clipboardShortcut = (settings.clipboardShortcut || DEFAULTS.CLIPBOARD_SHORTCUT).trim();
+  const screenshotShortcut = (settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT).trim();
+  const clipboardRegistered = registration.clipboardRegistered === true;
+  const screenshotRegistered = registration.screenshotRegistered === true;
+  const clipboardReason = clipboardRegistered
+    ? null
+    : ['conflict', 'invalid', 'reserved'].includes(registration.clipboardReason)
+      ? registration.clipboardReason
+      : null;
+  const screenshotReason = screenshotRegistered
+    ? null
+    : ['conflict', 'invalid', 'reserved'].includes(registration.screenshotReason)
+      ? registration.screenshotReason
+      : null;
+  return {
+    allRegistered: clipboardRegistered && screenshotRegistered,
+    clipboard: {
+      accelerator: clipboardShortcut,
+      registered: clipboardRegistered,
+      reason: clipboardReason,
+    },
+    screenshot: {
+      accelerator: screenshotShortcut,
+      registered: screenshotRegistered,
+      reason: screenshotReason,
+    },
+  };
+}
+
+function tryRegister(accelerator, callback) {
+  const analysis = analyzeShortcutAccelerator(accelerator);
+  if (!analysis.ok) {
+    return {
+      registered: false,
+      reason: analysis.reason === 'reserved-app-quit' ? 'reserved' : 'invalid',
+    };
+  }
+  try {
+    const registered = globalShortcut.register(analysis.accelerator, callback) === true;
+    return { registered, reason: registered ? null : 'conflict' };
+  } catch {
+    return { registered: false, reason: 'invalid' };
+  }
+}
+
 /**
  * Register the application's global keyboard shortcuts.
- * @param {BrowserWindow} mainWindow - The main BrowserWindow to control.
+ * @param {function(object): void} dispatchCapture - Main-owned capture dispatcher.
  * @param {object} settings - User settings containing shortcut accelerators.
  */
-function registerShortcuts(mainWindow, settings = {}) {
-  const clipboardShortcut = (settings.clipboardShortcut || 'Alt+C').trim();
-  const screenshotShortcut = (settings.screenshotShortcut || 'F2').trim();
+function registerShortcuts(dispatchCapture, settings = {}) {
+  if (typeof dispatchCapture !== 'function') {
+    throw new TypeError('Capture dispatcher is required to register global shortcuts');
+  }
+  const clipboardShortcut = (settings.clipboardShortcut || DEFAULTS.CLIPBOARD_SHORTCUT).trim();
+  const screenshotShortcut = (settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT).trim();
 
-  const sendShortcutError = (shortcut) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.webContents.send(IPC_CHANNELS.OCR_ERROR, {
-      error: `快捷键冲突：${shortcut}，请在设置里修改`,
+  const sendText = (text, source, extra = {}) => {
+    dispatchCapture({
+      channel: IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED,
+      payload: { text, source, ...extra },
     });
   };
 
-  const sendText = (text, source, extra = {}) => {
-    mainWindow.show();
-    mainWindow.focus();
-    mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, { text, source, ...extra });
-  };
-
-  const clipboardRegistered = globalShortcut.register(clipboardShortcut, () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-
+  const clipboardRegistration = tryRegister(clipboardShortcut, () => {
     const payload = createClipboardPayload(clipboard.readText());
     if (!payload.text.trim()) {
-      mainWindow.show();
-      mainWindow.focus();
-      mainWindow.webContents.send(IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED, {
-        text: '',
-        source: 'shortcut',
-        error: '剪贴板里没有可解释的文本',
+      dispatchCapture({
+        channel: IPC_CHANNELS.CLIPBOARD_TEXT_CHANGED,
+        payload: {
+          text: '',
+          source: 'shortcut',
+          error: '剪贴板里没有可解释的文本',
+        },
       });
       return;
     }
@@ -54,25 +97,38 @@ function registerShortcuts(mainWindow, settings = {}) {
     });
   });
 
-  if (!clipboardRegistered) {
-    console.warn(`[GlobalShortcut] Failed to register ${clipboardShortcut} shortcut (may be taken by another app).`);
-    sendShortcutError(clipboardShortcut);
+  if (!clipboardRegistration.registered) {
+    const reason = clipboardRegistration.reason === 'reserved'
+      ? 'reserved for safe application quit'
+      : clipboardRegistration.reason === 'invalid'
+        ? 'invalid accelerator'
+        : 'may be taken by another app';
+    console.warn(`[GlobalShortcut] Failed to register ${clipboardShortcut} shortcut (${reason}).`);
   }
 
-  // Delegate to the renderer so F2 and the visible button share one guarded IPC task.
-  const screenshotRegistered = globalShortcut.register(screenshotShortcut, () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    mainWindow.show();
-    mainWindow.focus();
-    mainWindow.webContents.send(IPC_CHANNELS.SCREENSHOT_REQUESTED, { source: 'shortcut' });
+  // Delegate to the renderer so the global shortcut and visible button share one guarded IPC task.
+  const screenshotRegistration = tryRegister(screenshotShortcut, () => {
+    dispatchCapture({
+      channel: IPC_CHANNELS.SCREENSHOT_REQUESTED,
+      payload: { source: 'shortcut' },
+    });
   });
 
-  if (!screenshotRegistered) {
-    console.warn(`[GlobalShortcut] Failed to register ${screenshotShortcut} shortcut (may be taken by another app).`);
-    sendShortcutError(screenshotShortcut);
+  if (!screenshotRegistration.registered) {
+    const reason = screenshotRegistration.reason === 'reserved'
+      ? 'reserved for safe application quit'
+      : screenshotRegistration.reason === 'invalid'
+        ? 'invalid accelerator'
+        : 'may be taken by another app';
+    console.warn(`[GlobalShortcut] Failed to register ${screenshotShortcut} shortcut (${reason}).`);
   }
 
-  return clipboardRegistered && screenshotRegistered;
+  return createShortcutRegistrationStatus(settings, {
+    clipboardRegistered: clipboardRegistration.registered,
+    clipboardReason: clipboardRegistration.reason,
+    screenshotRegistered: screenshotRegistration.registered,
+    screenshotReason: screenshotRegistration.reason,
+  });
 }
 
 /**
@@ -84,6 +140,7 @@ function unregisterAll() {
 
 module.exports = {
   createClipboardPayload,
+  createShortcutRegistrationStatus,
   registerShortcuts,
   unregisterAll,
 };

@@ -1,16 +1,7 @@
-const PREVIEW_SOURCE_TEXT = `Dear Student,
+import { createTranslationOnlyPreview } from './translationOnlyPreview.mjs';
+import { SAFE_SAMPLE_SOURCE_TEXT } from './safeSampleSource';
 
-Please submit copies of the following identity documents to verify your record:
-
-1. A clear scan of your passport information page.
-2. A clear scan of your eVisa share code.
-
-Please reply to this email to confirm that you have submitted the required documents.
-
-All items must be received by 28 July 2026.
-
-Best regards,
-University Services`;
+const PREVIEW_SOURCE_TEXT = SAFE_SAMPLE_SOURCE_TEXT;
 
 function evidenceFor(quote, occurrence = 0) {
   let start = -1;
@@ -73,21 +64,23 @@ const PREVIEW_ACTION_BRIEF = {
   },
   targetLanguage: 'zh',
   translation: {
-    text: '亲爱的同学：\n\n请提交以下身份证明文件的副本，以核验你的记录：\n1. 护照个人信息页的清晰扫描件。\n2. eVisa share code 的清晰扫描件。\n\n请回复此邮件，确认你已经提交所需文件。\n\n所有材料必须在 2026 年 7 月 28 日前送达。\n\n此致\nUniversity Services',
+    text: '亲爱的同学：\n\n请提交以下身份证明文件的副本，以核验你的记录：\n1. 护照个人信息页的清晰扫描件。\n2. eVisa share code 的清晰扫描件。\n\n请回复此邮件，确认你已经提交所需文件。\n\n请在收到邮件后一天内生成 eVisa share code，以便提交。\n\n所有材料必须在收到邮件后两天内送达。\n\n此致\nUniversity Services',
     provenance: originalProvenance(
       'Please submit copies of the following identity documents to verify your record:',
       'A clear scan of your passport information page.',
       'A clear scan of your eVisa share code.',
       'Please reply to this email to confirm that you have submitted the required documents.',
-      'All items must be received by 28 July 2026.',
+      'Please generate the eVisa share code within one day of this email so it is ready for submission.',
+      'All items must be received within two days of this email.',
     ),
   },
   explanation: {
-    text: '这是一封身份材料核验邮件。你需要准备两项材料，在截止日期前提交，并回复邮件确认。',
+    text: '这是一封身份材料核验邮件。你需要先生成 eVisa share code，再按后一个截止日期提交两项材料并回复确认。',
     provenance: originalProvenance(
       'Please submit copies of the following identity documents to verify your record:',
       'Please reply to this email to confirm that you have submitted the required documents.',
-      'All items must be received by 28 July 2026.',
+      'Please generate the eVisa share code within one day of this email so it is ready for submission.',
+      'All items must be received within two days of this email.',
     ),
   },
   terms: [
@@ -111,9 +104,9 @@ const PREVIEW_ACTION_BRIEF = {
       id: 'term-received',
       surface: 'received',
       kind: 'general_term',
-      explanation: '这里不是“你发出去”就算完成，而是材料最晚必须在该日期前被对方收到。',
+      explanation: '这里不是“你发出去”就算完成，而是材料必须在所述期限内被对方收到。',
       verificationId: null,
-      provenance: inferenceProvenance('All items must be received by 28 July 2026.'),
+      provenance: inferenceProvenance('All items must be received within two days of this email.'),
     },
     {
       id: 'term-university-services',
@@ -129,25 +122,37 @@ const PREVIEW_ACTION_BRIEF = {
       id: 'context-identity-check',
       label: '身份材料核验流程',
       kind: 'institutional_process',
-      explanation: '学校要求通过两项身份证明材料核对学生记录；你要提交材料，再回复邮件确认已经提交。',
+      explanation: '学校要求通过两项身份证明材料核对学生记录；你要先生成 eVisa share code，再提交材料并回复确认。',
       whatItIs: '学校要求你提交两项身份证明材料，用来核对学生记录。',
       whyItMatters: '这是邮件明确要求的记录核验步骤；原文没有说明不完成会有什么后果。',
-      whatToDo: '准备两项清晰材料，在截止日期前提交，然后回复邮件确认已经提交。',
+      whatToDo: '在收到邮件后一天内生成 eVisa share code，再在收到邮件后两天内提交两项材料，然后回复确认。',
       verificationId: null,
       provenance: inferenceProvenance(
         'Please submit copies of the following identity documents to verify your record:',
+        'Please generate the eVisa share code within one day of this email so it is ready for submission.',
+        'All items must be received within two days of this email.',
         'Please reply to this email to confirm that you have submitted the required documents.',
       ),
     },
   ],
   deadlines: [
     {
-      id: 'deadline-july-28',
-      whenText: '2026 年 7 月 28 日',
-      normalizedAt: '2026-07-28T23:59:59.000Z',
+      id: 'deadline-within-one-day',
+      whenText: '收到邮件后一天内',
+      calendarDate: null,
+      normalizedAt: null,
       timezone: null,
-      condition: '所有材料必须在该日期前送达。',
-      provenance: originalProvenance('All items must be received by 28 July 2026.'),
+      condition: '需要在该期限内生成 eVisa share code，以便提交。',
+      provenance: originalProvenance('Please generate the eVisa share code within one day of this email so it is ready for submission.'),
+    },
+    {
+      id: 'deadline-within-two-days',
+      whenText: '收到邮件后两天内',
+      calendarDate: null,
+      normalizedAt: null,
+      timezone: null,
+      condition: '所有材料必须在该期限内送达。',
+      provenance: originalProvenance('All items must be received within two days of this email.'),
     },
   ],
   materials: [
@@ -168,26 +173,34 @@ const PREVIEW_ACTION_BRIEF = {
   ],
   nextSteps: [
     {
-      id: 'step-prepare',
-      action: '准备护照个人信息页与 eVisa share code',
-      actor: 'user',
-      urgency: 'now',
-      mandatory: true,
-      deadlineId: 'deadline-july-28',
-      provenance: originalProvenance(
-        'Please submit copies of the following identity documents to verify your record:',
-        'A clear scan of your passport information page.',
-        'A clear scan of your eVisa share code.',
-      ),
-    },
-    {
-      id: 'step-submit',
-      action: '在 2026 年 7 月 28 日前提交材料',
+      id: 'step-generate-share-code',
+      action: '在收到邮件后一天内生成 eVisa share code',
       actor: 'user',
       urgency: 'before_deadline',
       mandatory: true,
-      deadlineId: 'deadline-july-28',
-      provenance: originalProvenance('All items must be received by 28 July 2026.'),
+      deadlineId: 'deadline-within-one-day',
+      prerequisiteStepIds: [],
+      provenance: originalProvenance('Please generate the eVisa share code within one day of this email so it is ready for submission.'),
+    },
+    {
+      id: 'step-prepare-passport',
+      action: '准备护照个人信息页清晰扫描件',
+      actor: 'user',
+      urgency: 'now',
+      mandatory: true,
+      deadlineId: 'deadline-within-two-days',
+      prerequisiteStepIds: [],
+      provenance: originalProvenance('A clear scan of your passport information page.'),
+    },
+    {
+      id: 'step-submit',
+      action: '在收到邮件后两天内提交材料',
+      actor: 'user',
+      urgency: 'before_deadline',
+      mandatory: true,
+      deadlineId: 'deadline-within-two-days',
+      prerequisiteStepIds: ['step-generate-share-code', 'step-prepare-passport'],
+      provenance: originalProvenance('All items must be received within two days of this email.'),
     },
     {
       id: 'step-reply',
@@ -196,6 +209,7 @@ const PREVIEW_ACTION_BRIEF = {
       urgency: 'when_triggered',
       mandatory: true,
       deadlineId: null,
+      prerequisiteStepIds: ['step-submit'],
       provenance: originalProvenance('Please reply to this email to confirm that you have submitted the required documents.'),
     },
   ],
@@ -220,16 +234,29 @@ const PREVIEW_ACTION_BRIEF = {
     provider: 'ollama',
     model: 'action-brief-preview',
     processingTimeMs: null,
-    promptVersion: 'action-brief.prompt.v1',
+    processingLocation: 'local',
+    promptVersion: 'action-brief.prompt.v2',
     generatedAt: '2026-07-23T08:00:00.000Z',
   },
 };
+
+const PREVIEW_TRANSLATION_BRIEF = createTranslationOnlyPreview({
+  sourceText: PREVIEW_SOURCE_TEXT,
+  translation: PREVIEW_ACTION_BRIEF.translation.text,
+  sourceId: 'preview-university-services-email',
+  generatedAt: '2026-07-27T08:00:00.000Z',
+});
 
 const PREVIEW_CAPTURE = {
   confidence: 0.98,
   blocks: PREVIEW_SOURCE_TEXT.split('\n')
     .filter(Boolean)
-    .map((text, index) => ({ id: `preview-block-${index + 1}`, text })),
+    .map((text, index) => ({ id: `preview-block-${index + 1}`, text, confidence: 0.98 })),
 };
 
-export { PREVIEW_ACTION_BRIEF, PREVIEW_CAPTURE, PREVIEW_SOURCE_TEXT };
+export {
+  PREVIEW_ACTION_BRIEF,
+  PREVIEW_CAPTURE,
+  PREVIEW_SOURCE_TEXT,
+  PREVIEW_TRANSLATION_BRIEF,
+};

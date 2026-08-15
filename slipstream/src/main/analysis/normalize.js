@@ -266,6 +266,13 @@ function normalizeDeadlines(value, context) {
       context.warnings.add('UNSUPPORTED_DEADLINE_DROPPED', `截止日期“${whenText}”没有可追溯依据，已丢弃。`);
       return;
     }
+    const calendarDate = normalizeIsoCalendarDate(candidate?.calendarDate);
+    if (candidate?.calendarDate && !calendarDate) {
+      context.warnings.add(
+        'UNSAFE_CALENDAR_DEADLINE_DROPPED',
+        `无法安全识别截止日期“${whenText}”的日历日期，已保留原文并清空结构化日期。`,
+      );
+    }
     const normalizedAt = normalizeIsoInstant(candidate?.normalizedAt);
     if (candidate?.normalizedAt && !normalizedAt) {
       context.warnings.add(
@@ -278,6 +285,7 @@ function normalizeDeadlines(value, context) {
     items.push({
       id,
       whenText,
+      calendarDate,
       normalizedAt,
       timezone: nullableBoundedString(candidate?.timezone, 100),
       condition: nullableBoundedString(candidate?.condition, 1000),
@@ -327,7 +335,7 @@ function normalizeMaterials(value, context) {
 function normalizeNextSteps(value, context) {
   const items = [];
   const seen = new Set();
-  forEachCandidate(value, 'nextSteps', context.warnings, (candidate) => {
+  forEachCandidate(value, 'nextSteps', context.warnings, (candidate, candidateIndex) => {
     const action = boundedString(candidate?.action, 2000);
     if (!action) {
       context.warnings.add('INVALID_NEXT_STEP_DROPPED', '缺少动作说明的下一步已丢弃。');
@@ -355,6 +363,25 @@ function normalizeNextSteps(value, context) {
     if (deadlineIndex !== null && !deadlineId) {
       context.warnings.add('INVALID_DEADLINE_REFERENCE', `下一步“${action}”引用了无效的截止日期。`);
     }
+    let prerequisiteStepIndices = [];
+    if (candidate?.prerequisiteStepIndices !== undefined) {
+      if (!Array.isArray(candidate.prerequisiteStepIndices)) {
+        context.warnings.add(
+          'INVALID_STEP_DEPENDENCIES',
+          `下一步“${action}”的前置步骤不是数组，已忽略。`,
+        );
+      } else {
+        prerequisiteStepIndices = [...new Set(candidate.prerequisiteStepIndices.filter((index) => (
+          Number.isSafeInteger(index) && index >= 0
+        )))];
+        if (prerequisiteStepIndices.length !== candidate.prerequisiteStepIndices.length) {
+          context.warnings.add(
+            'INVALID_STEP_DEPENDENCIES',
+            `下一步“${action}”包含无效或重复的前置步骤，已忽略这些引用。`,
+          );
+        }
+      }
+    }
     seen.add(key);
     items.push({
       id: `step-${items.length + 1}`,
@@ -364,9 +391,80 @@ function normalizeNextSteps(value, context) {
       mandatory: typeof candidate?.mandatory === 'boolean' ? candidate.mandatory : null,
       deadlineId,
       provenance,
+      candidateIndex,
+      prerequisiteStepIndices,
     });
   });
-  return items;
+
+  const stepIdByCandidateIndex = new Map(items.map((step) => [step.candidateIndex, step.id]));
+  const normalized = items.map((step) => {
+    const prerequisiteStepIds = [];
+    for (const prerequisiteIndex of step.prerequisiteStepIndices) {
+      const prerequisiteStepId = stepIdByCandidateIndex.get(prerequisiteIndex);
+      if (!prerequisiteStepId || prerequisiteStepId === step.id) {
+        context.warnings.add(
+          'INVALID_STEP_DEPENDENCY_REFERENCE',
+          `下一步“${step.action}”引用了不存在或自身的前置步骤，已忽略。`,
+        );
+        continue;
+      }
+      prerequisiteStepIds.push(prerequisiteStepId);
+    }
+    return {
+      id: step.id,
+      action: step.action,
+      actor: step.actor,
+      urgency: step.urgency,
+      mandatory: step.mandatory,
+      deadlineId: step.deadlineId,
+      provenance: step.provenance,
+      prerequisiteStepIds,
+    };
+  });
+
+  return sortNextStepsByDependencies(normalized, context.warnings);
+}
+
+function sortNextStepsByDependencies(items, warnings) {
+  if (items.length < 2 || items.every((item) => item.prerequisiteStepIds.length === 0)) {
+    return items;
+  }
+
+  const originalPosition = new Map(items.map((item, index) => [item.id, index]));
+  const indegree = new Map(items.map((item) => [item.id, item.prerequisiteStepIds.length]));
+  const dependents = new Map(items.map((item) => [item.id, []]));
+  for (const item of items) {
+    for (const prerequisiteStepId of item.prerequisiteStepIds) {
+      dependents.get(prerequisiteStepId)?.push(item.id);
+    }
+  }
+
+  const ready = items
+    .filter((item) => indegree.get(item.id) === 0)
+    .sort((left, right) => originalPosition.get(left.id) - originalPosition.get(right.id));
+  const ordered = [];
+  while (ready.length > 0) {
+    const current = ready.shift();
+    ordered.push(current);
+    for (const dependentId of dependents.get(current.id) || []) {
+      const remaining = indegree.get(dependentId) - 1;
+      indegree.set(dependentId, remaining);
+      if (remaining === 0) {
+        ready.push(items.find((item) => item.id === dependentId));
+        ready.sort((left, right) => originalPosition.get(left.id) - originalPosition.get(right.id));
+      }
+    }
+  }
+
+  if (ordered.length !== items.length) {
+    warnings.add(
+      'CYCLIC_STEP_DEPENDENCIES_DROPPED',
+      '行动路径包含循环前置关系；为避免制造错误顺序，Slipstream 已保留原顺序并移除这些关系。',
+    );
+    return items.map((item) => ({ ...item, prerequisiteStepIds: [] }));
+  }
+
+  return ordered;
 }
 
 function normalizeVerifications(value, context) {
@@ -691,6 +789,20 @@ function normalizeIsoInstant(value) {
     return null;
   }
   return Number.isNaN(Date.parse(trimmed)) ? null : new Date(trimmed).toISOString();
+}
+
+function normalizeIsoCalendarDate(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const [year, month, day] = trimmed.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day
+  ) return null;
+  return trimmed;
 }
 
 function normalizeConfidence(value) {

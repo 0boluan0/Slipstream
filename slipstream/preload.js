@@ -4,9 +4,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 const ALLOWED_INVOKE_CHANNELS = [
   'settings:get',
   'settings:set',
+  'settings:recovery-reset',
+  'shortcut:status-get',
+  'support:diagnostics-get',
   'terms:get',
   'terms:save',
   'terms:delete',
+  'terms:export',
+  'terms:import-preview',
+  'terms:import-commit',
+  'user-data-reset:prepare',
+  'user-data-reset:abort',
   'user-data:clear',
   'clipboard:write',
   'clipboard:read',
@@ -15,9 +23,19 @@ const ALLOWED_INVOKE_CHANNELS = [
   'provider:connection-test',
   'provider:connection-cancel',
   'verification:run',
+  'app:quit-listener-ready',
+  'app:quit-decision',
+  'app:settings-listener-ready',
+  'app:settings-request-handled',
+  'app:session-risk-update',
+  'clipboard:pending-status',
+  'app:renderer-recovery-status-get',
+  'app:clipboard-residue-risk-ack',
+  'capture:listener-ready',
   'screenshot:capture',
   'window:set-mode',
   'window:hide',
+  'system:open-screen-recording-settings',
   'external:open',
 ];
 
@@ -26,6 +44,9 @@ const ALLOWED_ON_CHANNELS = [
   'ocr:error',
   'screenshot:requested',
   'settings:loaded',
+  'shortcut:status-changed',
+  'app:quit-requested',
+  'app:settings-requested',
 ];
 
 contextBridge.exposeInMainWorld('api', {

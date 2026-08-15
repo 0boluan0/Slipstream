@@ -4,7 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const constants = require('../src/shared/constants.cjs');
-const { splitTextIntoChunks, splitTextByUtf8Bytes, mergeChunkResults } = require('../src/main/llm-service');
+const {
+  FREE_TRANSLATE_TASK_TIMEOUT_MS,
+  mergeChunkResults,
+  processFreeTranslate,
+  resolveFreeTranslateLanguages,
+  splitTextByUtf8Bytes,
+  splitTextIntoChunks,
+} = require('../src/main/llm-service');
 
 const failures = [];
 
@@ -33,6 +40,10 @@ function hasLoneSurrogate(text) {
 }
 
 async function main() {
+  assert.equal(constants.DEFAULTS.CLIPBOARD_SHORTCUT, 'Alt+C');
+  assert.equal(constants.DEFAULTS.SCREENSHOT_SHORTCUT, 'Alt+Shift+S');
+  assert.doesNotMatch(constants.DEFAULTS.SCREENSHOT_SHORTCUT, /^F(?:[1-9]|1\d|2[0-4])$/);
+
   await check('IPC validation rejects unsafe settings and oversized requests', () => {
     const {
       validateSetting,
@@ -51,6 +62,7 @@ async function main() {
       ['customEndpointUrl', 'http://127.0.0.1:8000/v1']
     );
     assert.equal(validateProcessOptions({ text: 'hello', source: 'manual' }).text, 'hello');
+    assert.equal(validateProcessOptions({ text: 'hello', source: 'sample' }).source, 'sample');
     assert.deepEqual(
       validateProcessOptions({ text: 'hello', source: 'manual', truncated: true, originalLength: 12 }),
       { text: 'hello', source: 'manual', capture: null, truncated: true, originalLength: 12, verificationApproved: false },
@@ -71,8 +83,13 @@ async function main() {
     assert.equal(isTrustedRendererUrl('http://localhost:5173/', true), true);
     assert.equal(isTrustedRendererUrl('http://localhost:5174/', true), false);
     assert.equal(isTrustedRendererUrl('https://example.com/', false), false);
-    assert.equal(validateShortcut(' CommandOrControl + Shift + X '), 'CommandOrControl + Shift + X');
+    assert.equal(validateShortcut(' CommandOrControl + Shift + X '), 'Command+Shift+X');
+    assert.equal(validateShortcut(' Option + C '), 'Alt+C');
+    assert.equal(validateShortcut('F24'), 'F24');
     assert.throws(() => validateShortcut('+'));
+    assert.throws(() => validateShortcut('Option'), /shortcut-invalid:modifier-only/);
+    assert.throws(() => validateShortcut('C'), /shortcut-invalid:unsafe-unmodified/);
+    assert.throws(() => validateShortcut('F25'), /shortcut-invalid:unsupported-key/);
     assert.equal(validateExternalUrl('https://www.gov.uk/view-prove-immigration-status'), 'https://www.gov.uk/view-prove-immigration-status');
     assert.throws(() => validateExternalUrl('http://example.com'));
     assert.throws(() => validateExternalUrl('https://127.0.0.1/private'));
@@ -87,7 +104,7 @@ async function main() {
       source: 'ocr',
       capture: { confidence: 2, blocks: [{ text: 'A clear scan', boundingBox: { x: 0.1, y: 0.2, w: 0.3, h: 0.4 } }] },
     }).capture;
-    assert.equal(capture.confidence, 1);
+    assert.equal(capture.confidence, null);
     assert.deepEqual(capture.blocks[0].bbox, [0.1, 0.2, 0.3, 0.4]);
   });
 
@@ -124,7 +141,9 @@ async function main() {
 
   await check('only the compact capture window stays above other apps', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'src/main/main.js'), 'utf8');
-    assert.match(source, /alwaysOnTop:\s*!needsSetup/);
+    assert.match(source, /alwaysOnTop:\s*uiFixtureMode\.enabled \|\| !storageReady \? false : !needsSetup/);
+    assert.match(source, /skipTaskbar:\s*!uiFixtureMode\.enabled && storageReady/,
+      'a storage-recovery window must remain discoverable without a tray');
     assert.match(source, /mainWindow\.setAlwaysOnTop\(mode === 'capture'\)/);
   });
 
@@ -176,6 +195,166 @@ async function main() {
     assert.ok(chunks.length > 1);
     assert.equal(chunks.some((chunk) => Buffer.byteLength(chunk, 'utf8') > 450), false);
     assert.equal(chunks.some(hasLoneSurrogate), false);
+  });
+
+  await check('free translation fallback uses a concrete MyMemory language pair', async () => {
+    assert.deepEqual(resolveFreeTranslateLanguages('Please reply by Friday.', 'auto'), {
+      googleSourceLang: 'auto',
+      fallbackSourceLang: 'en',
+      targetLang: 'zh-CN',
+    });
+    assert.deepEqual(resolveFreeTranslateLanguages('请在星期五之前回复。', 'auto'), {
+      googleSourceLang: 'auto',
+      fallbackSourceLang: 'zh-CN',
+      targetLang: 'en',
+    });
+
+    const originalFetch = global.fetch;
+    const requestUrls = [];
+    try {
+      global.fetch = async (url) => {
+        requestUrls.push(url);
+        if (url.startsWith('https://translate.googleapis.com/')) {
+          return { ok: false, status: 503 };
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            responseStatus: 200,
+            responseData: { translatedText: '请在星期五之前回复。' },
+          }),
+        };
+      };
+
+      const translated = await processFreeTranslate('Please reply by Friday.', 'auto');
+      assert.match(translated, /^请在星期五之前回复。/);
+      assert.equal(requestUrls.length, 2);
+      const fallbackUrl = new URL(requestUrls[1]);
+      assert.equal(fallbackUrl.hostname, 'api.mymemory.translated.net');
+      assert.equal(fallbackUrl.searchParams.get('langpair'), 'en|zh-CN');
+      assert.notEqual(fallbackUrl.searchParams.get('langpair'), 'auto|zh-CN');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  await check('free translation has one bounded whole-task deadline', async () => {
+    const originalFetch = global.fetch;
+    const originalSetTimeout = global.setTimeout;
+    const requestUrls = [];
+    let resolveHungFetch;
+    let hungFetchSignal;
+
+    try {
+      global.setTimeout = (callback, delay, ...args) => originalSetTimeout(
+        callback,
+        delay === FREE_TRANSLATE_TASK_TIMEOUT_MS ? 20 : delay,
+        ...args,
+      );
+      global.fetch = async (url, options = {}) => {
+        requestUrls.push(url);
+        if (requestUrls.length === 1) {
+          return {
+            ok: true,
+            json: async () => [[['first chunk']]],
+          };
+        }
+
+        hungFetchSignal = options.signal;
+        return new Promise((resolve) => {
+          resolveHungFetch = resolve;
+        });
+      };
+
+      const startedAt = Date.now();
+      await assert.rejects(
+        processFreeTranslate('a'.repeat(901), 'en'),
+        (error) => {
+          assert.equal(error.message, '模型响应超时');
+          return true;
+        },
+      );
+      assert.ok(Date.now() - startedAt < 500, 'the whole-task deadline must settle promptly');
+      assert.equal(requestUrls.length, 2, 'translation must stop before starting a later chunk');
+      assert.equal(hungFetchSignal?.aborted, true, 'the active provider request must be aborted');
+
+      resolveHungFetch?.({
+        ok: true,
+        json: async () => [[['late chunk']]],
+      });
+      await new Promise((resolve) => originalSetTimeout(resolve, 10));
+      assert.equal(requestUrls.length, 2, 'a late provider result must not resume chunk processing');
+    } finally {
+      global.fetch = originalFetch;
+      global.setTimeout = originalSetTimeout;
+    }
+  });
+
+  await check('free translation preserves cancellation and cleans parent listeners', async () => {
+    const originalFetch = global.fetch;
+    try {
+      let fetchCount = 0;
+      global.fetch = async () => {
+        fetchCount += 1;
+        return {
+          ok: true,
+          json: async () => [[['translated']]],
+        };
+      };
+
+      const alreadyCancelled = new AbortController();
+      alreadyCancelled.abort();
+      await assert.rejects(
+        processFreeTranslate('cancelled before start', 'en', alreadyCancelled.signal),
+        (error) => {
+          assert.equal(error.name, 'AbortError');
+          return true;
+        },
+      );
+      assert.equal(fetchCount, 0, 'an already-cancelled task must not contact a provider');
+
+      let addedListener;
+      let addCount = 0;
+      let removeCount = 0;
+      const observableParentSignal = {
+        aborted: false,
+        reason: undefined,
+        addEventListener(eventName, listener) {
+          assert.equal(eventName, 'abort');
+          addCount += 1;
+          addedListener = listener;
+        },
+        removeEventListener(eventName, listener) {
+          assert.equal(eventName, 'abort');
+          assert.equal(listener, addedListener);
+          removeCount += 1;
+        },
+      };
+      await processFreeTranslate('listener cleanup', 'en', observableParentSignal);
+      assert.equal(addCount, 1);
+      assert.equal(removeCount, 1, 'the parent listener must be removed after success');
+
+      const activeCancellation = new AbortController();
+      let activeFetchSignal;
+      global.fetch = async (url, options = {}) => new Promise((resolve, reject) => {
+        activeFetchSignal = options.signal;
+        const abortError = new Error('provider request aborted');
+        abortError.name = 'AbortError';
+        options.signal.addEventListener('abort', () => reject(abortError), { once: true });
+      });
+
+      const activeTask = processFreeTranslate('cancel while active', 'en', activeCancellation.signal);
+      await new Promise((resolve) => setImmediate(resolve));
+      activeCancellation.abort();
+      await assert.rejects(activeTask, (error) => {
+        assert.equal(error.name, 'AbortError');
+        return true;
+      });
+      assert.equal(activeFetchSignal?.aborted, true);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 
   await check('auto-direction merge can emit English headings', () => {

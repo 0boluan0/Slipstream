@@ -21,6 +21,7 @@ async function createActionBrief({
   backend,
   model,
   processingTimeMs,
+  processingLocation = 'unknown',
   captureEnvelope,
   verificationPolicy,
   verificationApproved = false,
@@ -46,6 +47,9 @@ async function createActionBrief({
       processingTimeMs,
       sourceId,
     });
+  if (brief?.analysisProvenance) {
+    brief.analysisProvenance.processingLocation = processingLocation;
+  }
   preserveCaptureWarnings(brief, captureEnvelope, sourceText);
 
   return applyVerificationToBrief({

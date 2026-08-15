@@ -1,6 +1,11 @@
 const ACTION_BRIEF_SCHEMA_VERSION = 'action-brief.v1';
 const ACTION_BRIEF_CANDIDATE_VERSION = 'action-brief.candidate.v1';
-const ACTION_BRIEF_PROMPT_VERSION = 'action-brief.prompt.v1';
+const { PROCESSING_LOCATION_KINDS } = require('./endpoint-location.cjs');
+const ACTION_BRIEF_PROMPT_VERSION = 'action-brief.prompt.v2';
+const ACTION_BRIEF_PROMPT_VERSIONS = Object.freeze([
+  'action-brief.prompt.v1',
+  ACTION_BRIEF_PROMPT_VERSION,
+]);
 
 const ACTION_BRIEF_STATUSES = Object.freeze([
   'complete',
@@ -61,6 +66,7 @@ function createEmptyActionBrief({
   provider = null,
   model = null,
   processingTimeMs = null,
+  processingLocation = PROCESSING_LOCATION_KINDS.UNKNOWN,
   generatedAt = new Date().toISOString(),
 } = {}) {
   return {
@@ -88,6 +94,9 @@ function createEmptyActionBrief({
       provider,
       model,
       processingTimeMs,
+      processingLocation: Object.values(PROCESSING_LOCATION_KINDS).includes(processingLocation)
+        ? processingLocation
+        : PROCESSING_LOCATION_KINDS.UNKNOWN,
       promptVersion: ACTION_BRIEF_PROMPT_VERSION,
       generatedAt,
     },
@@ -144,6 +153,7 @@ function validateActionBrief(brief, { sourceText } = {}) {
   validateArray(errors, brief.deadlines, 'deadlines', (item, path) => {
     expectNonEmptyString(errors, item?.id, `${path}.id`);
     expectNonEmptyString(errors, item?.whenText, `${path}.whenText`);
+    expectOptionalIsoCalendarDate(errors, item?.calendarDate, `${path}.calendarDate`);
     expectNullableString(errors, item?.normalizedAt, `${path}.normalizedAt`);
     expectNullableString(errors, item?.timezone, `${path}.timezone`);
     expectNullableString(errors, item?.condition, `${path}.condition`);
@@ -167,6 +177,11 @@ function validateActionBrief(brief, { sourceText } = {}) {
       errors.push(`${path}.mandatory must be true, false, or null`);
     }
     expectNullableString(errors, item?.deadlineId, `${path}.deadlineId`);
+    if (item?.prerequisiteStepIds !== undefined) {
+      validateArray(errors, item.prerequisiteStepIds, `${path}.prerequisiteStepIds`, (stepId, stepPath) => {
+        expectNonEmptyString(errors, stepId, stepPath);
+      });
+    }
     validateProvenance(errors, item?.provenance, `${path}.provenance`, sourceText);
   });
 
@@ -215,6 +230,7 @@ function validateActionBrief(brief, { sourceText } = {}) {
   });
 
   validateKnowledgeVerificationLinks(errors, brief);
+  validateNextStepDependencies(errors, brief);
 
   if (!isPlainObject(brief.analysisProvenance)) {
     errors.push('analysisProvenance must be an object');
@@ -222,6 +238,12 @@ function validateActionBrief(brief, { sourceText } = {}) {
     expectNonEmptyString(errors, brief.analysisProvenance.responseKind, 'analysisProvenance.responseKind');
     expectNullableString(errors, brief.analysisProvenance.provider, 'analysisProvenance.provider');
     expectNullableString(errors, brief.analysisProvenance.model, 'analysisProvenance.model');
+    expectEnum(
+      errors,
+      brief.analysisProvenance.processingLocation ?? PROCESSING_LOCATION_KINDS.UNKNOWN,
+      Object.values(PROCESSING_LOCATION_KINDS),
+      'analysisProvenance.processingLocation',
+    );
     if (brief.analysisProvenance.processingTimeMs !== null && (
       typeof brief.analysisProvenance.processingTimeMs !== 'number' ||
       !Number.isFinite(brief.analysisProvenance.processingTimeMs) ||
@@ -229,10 +251,10 @@ function validateActionBrief(brief, { sourceText } = {}) {
     )) {
       errors.push('analysisProvenance.processingTimeMs must be a non-negative number or null');
     }
-    expectEqual(
+    expectEnum(
       errors,
       brief.analysisProvenance.promptVersion,
-      ACTION_BRIEF_PROMPT_VERSION,
+      ACTION_BRIEF_PROMPT_VERSIONS,
       'analysisProvenance.promptVersion',
     );
     expectIsoDate(errors, brief.analysisProvenance.generatedAt, 'analysisProvenance.generatedAt');
@@ -249,6 +271,60 @@ function validateActionBrief(brief, { sourceText } = {}) {
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+function validateNextStepDependencies(errors, brief) {
+  if (!Array.isArray(brief?.nextSteps)) return;
+
+  const stepIds = new Set();
+  brief.nextSteps.forEach((step, index) => {
+    const stepId = step?.id;
+    if (typeof stepId !== 'string' || !stepId.trim()) return;
+    if (stepIds.has(stepId)) errors.push(`nextSteps[${index}].id must be unique`);
+    stepIds.add(stepId);
+  });
+  const dependenciesById = new Map();
+
+  brief.nextSteps.forEach((step, index) => {
+    const stepId = step?.id;
+    const dependencies = step?.prerequisiteStepIds;
+    if (!Array.isArray(dependencies) || typeof stepId !== 'string') return;
+
+    const seen = new Set();
+    dependencies.forEach((dependencyId, dependencyIndex) => {
+      const path = `nextSteps[${index}].prerequisiteStepIds[${dependencyIndex}]`;
+      if (typeof dependencyId !== 'string' || !dependencyId.trim()) return;
+      if (!stepIds.has(dependencyId)) {
+        errors.push(`${path} must reference an existing next step`);
+      }
+      if (dependencyId === stepId) {
+        errors.push(`${path} cannot reference the same next step`);
+      }
+      if (seen.has(dependencyId)) {
+        errors.push(`${path} must not repeat a prerequisite`);
+      }
+      seen.add(dependencyId);
+    });
+    dependenciesById.set(stepId, [...seen].filter((dependencyId) => stepIds.has(dependencyId)));
+  });
+
+  const visiting = new Set();
+  const visited = new Set();
+  const hasCycle = (stepId) => {
+    if (visiting.has(stepId)) return true;
+    if (visited.has(stepId)) return false;
+    visiting.add(stepId);
+    for (const dependencyId of dependenciesById.get(stepId) || []) {
+      if (hasCycle(dependencyId)) return true;
+    }
+    visiting.delete(stepId);
+    visited.add(stepId);
+    return false;
+  };
+
+  if ([...stepIds].some(hasCycle)) {
+    errors.push('nextSteps prerequisite relationships must not contain a cycle');
+  }
 }
 
 function assertActionBrief(brief, options) {
@@ -459,6 +535,23 @@ function expectOptionalNullableString(errors, value, path) {
   }
 }
 
+function expectOptionalIsoCalendarDate(errors, value, path) {
+  if (value === undefined || value === null) return;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    errors.push(`${path} must be a YYYY-MM-DD string, null, or omitted`);
+    return;
+  }
+  const [year, month, day] = value.split('-').map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day
+  ) {
+    errors.push(`${path} must be a valid calendar date`);
+  }
+}
+
 function expectOptionalBoundedNullableString(errors, value, maxLength, path) {
   expectOptionalNullableString(errors, value, path);
   if (typeof value === 'string' && value.length > maxLength) {
@@ -508,6 +601,7 @@ function isPlainObject(value) {
 module.exports = {
   ACTION_BRIEF_CANDIDATE_VERSION,
   ACTION_BRIEF_PROMPT_VERSION,
+  ACTION_BRIEF_PROMPT_VERSIONS,
   ACTION_BRIEF_SCHEMA_VERSION,
   ACTION_BRIEF_STATUSES,
   CONTEXT_KINDS,

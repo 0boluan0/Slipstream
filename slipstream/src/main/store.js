@@ -1,6 +1,12 @@
-const { safeStorage } = require('electron');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { app, safeStorage } = require('electron');
 const { SECRET_SETTING_KEYS } = require('./safe-settings');
-const { MODEL_IDS } = require('../shared/constants.cjs');
+const { mergePortableTerms } = require('./term-transfer');
+const { DEFAULTS, MODEL_IDS } = require('../shared/constants.cjs');
+const { PROVENANCE_KINDS, TERM_KINDS } = require('../shared/action-brief.cjs');
+const { isHttpLoopbackEndpoint } = require('../shared/endpoint-location.cjs');
 
 /**
  * @typedef {Object} UserSettings
@@ -67,21 +73,43 @@ const schema = {
   privacyVersion: { type: 'number', default: 0 },
   privacyStorageVersion: { type: 'number', default: 0 },
   privacyNoticeSeen: { type: 'boolean', default: false },
-  clipboardShortcut: { type: 'string', default: 'Alt+C' },
-  screenshotShortcut: { type: 'string', default: 'F2' },
+  clipboardShortcut: { type: 'string', default: DEFAULTS.CLIPBOARD_SHORTCUT },
+  screenshotShortcut: { type: 'string', default: DEFAULTS.SCREENSHOT_SHORTCUT },
   savedTerms: { type: 'array', default: [] },
   explanationHistory: { type: 'array', default: [] },
 };
 
 const SECRET_KEYS = SECRET_SETTING_KEYS;
-const PRIVACY_STORAGE_VERSION = 2;
+const PRIVACY_STORAGE_VERSION = 3;
 const INITIAL_SETUP_MIGRATION_VERSION = 1;
 const PRODUCT_READINESS_VERSION = 2;
 const LEGACY_DEEPSEEK_MODELS = new Set(['deepseek-chat', 'deepseek-reasoner']);
 const MAX_EVIDENCE_CHARS = 180;
 const MAX_TERM_EXPLANATION_CHARS = 400;
+const SAVED_TERM_KINDS = new Set(TERM_KINDS);
+const SAVED_TERM_PROVENANCE_KINDS = new Set([...PROVENANCE_KINDS, 'unknown']);
+const STORE_NAME = 'slipstream-settings';
+const STORE_FILE_NAME = `${STORE_NAME}.json`;
+const RECOVERY_ARCHIVE_PATTERN = /^slipstream-settings\.recovery-\d{8}T\d{6}\.\d{3}Z-[a-f0-9]{16}\.json$/;
+const FILESYSTEM_ERROR_CODES = new Set([
+  'EACCES',
+  'EBUSY',
+  'EDQUOT',
+  'EEXIST',
+  'EFBIG',
+  'EIO',
+  'EISDIR',
+  'ELOOP',
+  'EMFILE',
+  'ENFILE',
+  'ENOSPC',
+  'ENOTDIR',
+  'EPERM',
+  'EROFS',
+]);
 
 let storeInstance = null;
+let storeInitializationStatus = { state: 'uninitialized', reason: null };
 
 function normalizeRetainedText(value) {
   return typeof value === 'string'
@@ -94,6 +122,10 @@ function normalizeRetainedText(value) {
         .replace(/\s+/g, ' ')
         .trim()
     : '';
+}
+
+function normalizeSavedTermKey(value) {
+  return normalizeRetainedText(value).normalize('NFKC').toLocaleLowerCase();
 }
 
 function redactIncidentalIdentifiers(value) {
@@ -133,7 +165,7 @@ function shortestRelevantSegment(value, needle, maxChars, { requireNeedle = true
   return clipAroundNeedle(redactIncidentalIdentifiers(shortest), normalizedNeedle, maxChars);
 }
 
-function minimizeSavedTerm(term) {
+function minimizeSavedTerm(term, { fallbackId = Date.now(), fallbackCreatedAt = new Date().toISOString() } = {}) {
   const label = normalizeRetainedText(term?.term);
   if (!label || label.length > 200) return null;
   const explicitEvidence = normalizeRetainedText(term?.evidence);
@@ -146,9 +178,19 @@ function minimizeSavedTerm(term) {
     : shortestRelevantSegment(term?.explanation, label, MAX_TERM_EXPLANATION_CHARS);
 
   return {
-    id: term?.id ?? Date.now(),
-    createdAt: typeof term?.createdAt === 'string' ? term.createdAt : new Date().toISOString(),
+    id: Number.isSafeInteger(term?.id) && term.id > 0 ? term.id : fallbackId,
+    createdAt: typeof term?.createdAt === 'string' && Number.isFinite(Date.parse(term.createdAt))
+      ? term.createdAt
+      : fallbackCreatedAt,
     term: label,
+    termKind: SAVED_TERM_KINDS.has(term?.termKind ?? term?.kind)
+      ? (term.termKind ?? term.kind)
+      : 'other',
+    provenanceKind: SAVED_TERM_PROVENANCE_KINDS.has(
+      term?.provenanceKind ?? term?.provenance?.kind,
+    )
+      ? (term.provenanceKind ?? term.provenance.kind)
+      : 'unknown',
     evidence,
     explanation,
   };
@@ -156,7 +198,21 @@ function minimizeSavedTerm(term) {
 
 function minimizeSavedTermsInStore(store) {
   const current = store.get('savedTerms');
-  const minimized = (Array.isArray(current) ? current : []).map(minimizeSavedTerm).filter(Boolean).slice(0, 50);
+  const usedIds = new Set();
+  let nextGeneratedId = Date.now();
+  const minimized = [];
+  for (const value of (Array.isArray(current) ? current : []).slice(0, 50)) {
+    while (usedIds.has(nextGeneratedId)) nextGeneratedId += 1;
+    const term = minimizeSavedTerm(value, { fallbackId: nextGeneratedId });
+    if (!term) continue;
+    if (usedIds.has(term.id)) {
+      while (usedIds.has(nextGeneratedId)) nextGeneratedId += 1;
+      term.id = nextGeneratedId;
+    }
+    usedIds.add(term.id);
+    nextGeneratedId += 1;
+    minimized.push(term);
+  }
   const changed = JSON.stringify(current || []) !== JSON.stringify(minimized);
   if (changed) store.set('savedTerms', minimized);
   return { changed, count: minimized.length };
@@ -230,9 +286,17 @@ function backendIsConfigured(store) {
   if (backend === 'anthropic') return secretIsUsable('anthropicApiKey');
   if (backend === 'openai') return secretIsUsable('openaiApiKey');
   if (backend === 'deepseek') return secretIsUsable('deepseekApiKey');
-  if (backend === 'ollama') return Boolean(normalizeRetainedText(store.get('ollamaBaseUrl')));
+  if (backend === 'ollama') return isHttpLoopbackEndpoint(store.get('ollamaBaseUrl'));
   if (backend === 'custom') return Boolean(normalizeRetainedText(store.get('customEndpointUrl')));
   return false;
+}
+
+function migrateUnsafeOllamaEndpointInStore(store) {
+  const current = store.get('ollamaBaseUrl');
+  if (isHttpLoopbackEndpoint(current)) return { cleared: false };
+  const hadUnsafeValue = typeof current === 'string' && Boolean(current.trim());
+  if (hadUnsafeValue) store.set('ollamaBaseUrl', '');
+  return { cleared: hadUnsafeValue };
 }
 
 function migrateProductReadinessInStore(store) {
@@ -281,9 +345,22 @@ function migrateProductReadinessInStore(store) {
   };
 }
 
+function migrateClipboardPrivacyInStore(store) {
+  const previousVersion = Number(store.get('privacyVersion')) || 0;
+  if (previousVersion >= 1) {
+    return { migrated: false, clipboardMonitoringDisabled: false };
+  }
+
+  store.set('clipboardMonitoring', false);
+  store.set('privacyVersion', 1);
+  return { migrated: true, clipboardMonitoringDisabled: true };
+}
+
 function runPrivacyMigrations(store) {
+  const privacy = migrateClipboardPrivacyInStore(store);
   const secrets = migrateLegacySecretsInStore(store);
   const terms = minimizeSavedTermsInStore(store);
+  const ollamaEndpoint = migrateUnsafeOllamaEndpointInStore(store);
   const readiness = migrateProductReadinessInStore(store);
   const legacyHistoryCount = Array.isArray(store.get('explanationHistory'))
     ? store.get('explanationHistory').length
@@ -294,17 +371,217 @@ function runPrivacyMigrations(store) {
   if ((store.get('privacyStorageVersion') || 0) < PRIVACY_STORAGE_VERSION) {
     store.set('privacyStorageVersion', PRIVACY_STORAGE_VERSION);
   }
-  return { secrets, terms, readiness, history: { cleared: legacyHistoryCount } };
+  return {
+    privacy,
+    secrets,
+    terms,
+    ollamaEndpoint,
+    readiness,
+    history: { cleared: legacyHistoryCount },
+  };
+}
+
+class StoreInitializationError extends Error {
+  constructor(reason) {
+    super('Persistent settings could not be initialized');
+    this.name = 'StoreInitializationError';
+    this.reason = reason;
+  }
+}
+
+function isFilesystemError(error) {
+  return typeof error?.code === 'string' && (
+    FILESYSTEM_ERROR_CODES.has(error.code)
+    || error.code === 'UNKNOWN'
+    || /^E[A-Z0-9]+$/.test(error.code)
+  );
+}
+
+function classifyStoreError(error, { migration = false } = {}) {
+  if (error instanceof StoreInitializationError) return error.reason;
+  if (error?.name === 'SyntaxError') return 'corrupt-json';
+  if (typeof error?.message === 'string' && error.message.startsWith('Config schema violation:')) {
+    return 'schema-invalid';
+  }
+  if (isFilesystemError(error)) return 'unavailable';
+  return migration ? 'migration-failed' : 'unavailable';
+}
+
+function storeOptionsForPath(storePath) {
+  return {
+    name: path.basename(storePath, '.json'),
+    cwd: path.dirname(storePath),
+    schema,
+    clearInvalidConfig: false,
+    configFileMode: 0o600,
+  };
+}
+
+function getStorePath() {
+  const userDataPath = app?.getPath?.('userData');
+  if (typeof userDataPath !== 'string' || !userDataPath) {
+    throw new StoreInitializationError('unavailable');
+  }
+  return path.join(path.resolve(userDataPath), STORE_FILE_NAME);
+}
+
+function getFilePresence(filePath) {
+  try {
+    const stats = fs.statSync(filePath);
+    if (!stats.isFile()) throw new StoreInitializationError('unavailable');
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function createUniqueSiblingPath(storePath, kind) {
+  const directory = path.dirname(storePath);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const suffix = crypto.randomBytes(8).toString('hex');
+    const candidate = path.join(directory, `.${STORE_NAME}.${kind}-${process.pid}-${suffix}.json`);
+    if (!fs.existsSync(candidate)) return candidate;
+  }
+  throw new StoreInitializationError('unavailable');
+}
+
+function writeExclusivePrivateFile(filePath, contents) {
+  let descriptor;
+  try {
+    descriptor = fs.openSync(filePath, 'wx', 0o600);
+    fs.writeFileSync(descriptor, contents);
+    fs.fchmodSync(descriptor, 0o600);
+    fs.fsyncSync(descriptor);
+  } finally {
+    if (descriptor !== undefined) fs.closeSync(descriptor);
+  }
+}
+
+function removeFileIfPresent(filePath) {
+  try {
+    fs.unlinkSync(filePath);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
+function discardCandidate(filePath) {
+  if (!filePath) return;
+  try {
+    removeFileIfPresent(filePath);
+  } catch {
+    // A failed best-effort cleanup must never replace the sanitized startup reason.
+  }
+}
+
+function openStore(storePath) {
+  try {
+    return new Store(storeOptionsForPath(storePath));
+  } catch (error) {
+    throw new StoreInitializationError(classifyStoreError(error));
+  }
+}
+
+function migrateStore(store) {
+  try {
+    return runPrivacyMigrations(store);
+  } catch (error) {
+    throw new StoreInitializationError(classifyStoreError(error, { migration: true }));
+  }
+}
+
+function makeStorePrivate(storePath) {
+  try {
+    fs.chmodSync(storePath, 0o600);
+  } catch (error) {
+    throw new StoreInitializationError(classifyStoreError(error));
+  }
+}
+
+function initializeFreshStore(storePath) {
+  const store = openStore(storePath);
+  migrateStore(store);
+  makeStorePrivate(storePath);
+  return store;
+}
+
+function initializeExistingStore(storePath) {
+  let candidatePath;
+  try {
+    const originalBytes = fs.readFileSync(storePath);
+    candidatePath = createUniqueSiblingPath(storePath, 'startup');
+    writeExclusivePrivateFile(candidatePath, originalBytes);
+
+    const candidateStore = openStore(candidatePath);
+    migrateStore(candidateStore);
+    makeStorePrivate(candidatePath);
+
+    const currentOriginalBytes = fs.readFileSync(storePath);
+    if (!currentOriginalBytes.equals(originalBytes)) {
+      throw new StoreInitializationError('unavailable');
+    }
+
+    candidateStore.path = storePath;
+    if (candidateStore.path !== storePath) {
+      throw new StoreInitializationError('unavailable');
+    }
+    fs.renameSync(candidatePath, storePath);
+    candidatePath = null;
+    return candidateStore;
+  } catch (error) {
+    throw new StoreInitializationError(classifyStoreError(error));
+  } finally {
+    discardCandidate(candidatePath);
+  }
+}
+
+function attemptStoreInitialization() {
+  storeInstance = null;
+  try {
+    const storePath = getStorePath();
+    storeInstance = getFilePresence(storePath)
+      ? initializeExistingStore(storePath)
+      : initializeFreshStore(storePath);
+    storeInitializationStatus = { state: 'ready', reason: null };
+  } catch (error) {
+    storeInstance = null;
+    storeInitializationStatus = {
+      state: 'blocked',
+      reason: classifyStoreError(error),
+    };
+  }
+  return getStoreInitializationStatus();
+}
+
+function initializeStore() {
+  if (storeInitializationStatus.state !== 'uninitialized') {
+    return getStoreInitializationStatus();
+  }
+  return attemptStoreInitialization();
+}
+
+function retryStoreInitialization() {
+  if (storeInitializationStatus.state === 'ready') {
+    return getStoreInitializationStatus();
+  }
+  return attemptStoreInitialization();
+}
+
+function isStoreReady() {
+  return storeInitializationStatus.state === 'ready' && storeInstance !== null;
+}
+
+function getStoreInitializationStatus() {
+  return { ...storeInitializationStatus };
 }
 
 function getStore() {
-  if (!storeInstance) {
-    storeInstance = new Store({
-      name: 'slipstream-settings',
-      schema,
-      clearInvalidConfig: true,
-    });
-    runPrivacyMigrations(storeInstance);
+  if (!isStoreReady()) {
+    const error = new Error('Persistent settings are not ready');
+    error.code = 'STORE_NOT_READY';
+    error.reason = storeInitializationStatus.reason;
+    throw error;
   }
   return storeInstance;
 }
@@ -369,6 +646,50 @@ function setSetting(key, value) {
 }
 
 /**
+ * Move the custom provider to a new trust boundary without ever persisting the
+ * new URL beside a credential that belonged to the previous origin.
+ * electron-store accepts an object form and commits it with one store write.
+ * @param {string} customEndpointUrl
+ */
+function setCustomEndpointBoundary(customEndpointUrl) {
+  if (typeof customEndpointUrl !== 'string') {
+    throw new TypeError('Custom endpoint URL must be a string');
+  }
+  getStore().set({
+    customEndpointUrl,
+    customEndpointApiKey: '',
+  });
+}
+
+/**
+ * Persist a custom endpoint URL while treating an origin change as a secret
+ * trust-boundary transition. Same-origin path edits leave the saved key alone.
+ * @param {string} customEndpointUrl
+ * @returns {{customEndpointApiKeyCleared: boolean}}
+ */
+function setCustomEndpointUrl(customEndpointUrl) {
+  if (typeof customEndpointUrl !== 'string') {
+    throw new TypeError('Custom endpoint URL must be a string');
+  }
+  const store = getStore();
+  const previousUrl = store.get('customEndpointUrl');
+  let previousOrigin = '';
+  try {
+    previousOrigin = previousUrl ? new URL(previousUrl).origin : '';
+  } catch {
+    // A legacy invalid value has no trusted origin and must not retain a key.
+  }
+  const nextOrigin = customEndpointUrl ? new URL(customEndpointUrl).origin : '';
+  const customEndpointApiKeyCleared = previousOrigin !== nextOrigin;
+  if (customEndpointApiKeyCleared) {
+    setCustomEndpointBoundary(customEndpointUrl);
+  } else {
+    store.set('customEndpointUrl', customEndpointUrl);
+  }
+  return { customEndpointApiKeyCleared };
+}
+
+/**
  * Get all settings as a plain object (with decrypted secrets).
  * @returns {UserSettings}
  */
@@ -387,6 +708,10 @@ function getAllSettings() {
       raw[key] = '';
     }
   }
+  if (!isHttpLoopbackEndpoint(raw.ollamaBaseUrl)) {
+    raw.ollamaBaseUrl = '';
+    if (raw.activeBackend === 'ollama') raw.setupMode = 'unconfigured';
+  }
   return raw;
 }
 
@@ -395,16 +720,37 @@ function getSavedTerms() {
 }
 
 function addSavedTerm(term) {
-  const savedTerm = minimizeSavedTerm(term);
+  let savedTerm = minimizeSavedTerm(term);
   if (!savedTerm) throw new Error('Term is required');
   const terms = getSavedTerms();
-  getStore().set('savedTerms', [savedTerm, ...terms].slice(0, 50));
+  const key = normalizeSavedTermKey(savedTerm.term);
+  const existing = terms.find((item) => normalizeSavedTermKey(item?.term) === key);
+  if (existing && term?.id == null) {
+    savedTerm = {
+      ...savedTerm,
+      id: existing.id,
+      createdAt: existing.createdAt,
+    };
+  }
+  getStore().set('savedTerms', [
+    savedTerm,
+    ...terms.filter((item) => (
+      item?.id !== savedTerm.id
+      && normalizeSavedTermKey(item?.term) !== key
+    )),
+  ].slice(0, 50));
   return savedTerm;
 }
 
 function deleteSavedTerm(id) {
   const terms = getSavedTerms();
   getStore().set('savedTerms', terms.filter((term) => term.id !== id));
+}
+
+function mergeSavedTerms(terms) {
+  const merged = mergePortableTerms(getSavedTerms(), terms, { limit: 50 });
+  getStore().set('savedTerms', merged.terms);
+  return merged;
 }
 
 function clearSavedTerms() {
@@ -453,13 +799,100 @@ function clearUserData() {
   clearRetainedContent();
 }
 
+function createRecoveryArchivePath(storePath) {
+  const timestamp = new Date().toISOString().replace(/[-:]/g, '');
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const suffix = crypto.randomBytes(8).toString('hex');
+    const fileName = `${STORE_NAME}.recovery-${timestamp}-${suffix}.json`;
+    const archivePath = path.join(path.dirname(storePath), fileName);
+    if (!fs.existsSync(archivePath)) return archivePath;
+  }
+  throw new StoreInitializationError('unavailable');
+}
+
+function restoreArchivedStore(archivePath, storePath) {
+  try {
+    fs.renameSync(archivePath, storePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function recoveryResetStore() {
+  if (storeInitializationStatus.state !== 'blocked') {
+    return { status: 'failed', reason: 'unavailable' };
+  }
+
+  let storePath;
+  let archivePath = null;
+  let originalWasArchived = false;
+  try {
+    storePath = getStorePath();
+    if (getFilePresence(storePath)) {
+      archivePath = createRecoveryArchivePath(storePath);
+      makeStorePrivate(storePath);
+      fs.renameSync(storePath, archivePath);
+      originalWasArchived = true;
+    }
+
+    const freshStore = initializeFreshStore(storePath);
+    storeInstance = freshStore;
+    storeInitializationStatus = { state: 'ready', reason: null };
+    return {
+      status: 'recovered',
+      backupCreated: originalWasArchived,
+      backupFileName: originalWasArchived ? path.basename(archivePath) : null,
+    };
+  } catch (error) {
+    let reason = classifyStoreError(error);
+    storeInstance = null;
+    if (originalWasArchived && !restoreArchivedStore(archivePath, storePath)) {
+      reason = 'unavailable';
+    } else if (!originalWasArchived && storePath) {
+      discardCandidate(storePath);
+    }
+    storeInitializationStatus = { state: 'blocked', reason };
+    return { status: 'failed', reason };
+  }
+}
+
+function removeRecoveryArchives(storePath) {
+  if (typeof storePath !== 'string' || !storePath) return;
+  const directory = path.dirname(storePath);
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!RECOVERY_ARCHIVE_PATTERN.test(entry.name)) continue;
+    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+    fs.unlinkSync(path.join(directory, entry.name));
+  }
+}
+
+function resetUserDataAndSettings() {
+  const store = getStore();
+  // electron-store restores schema defaults during clear(), so credentials,
+  // retained terms and preferences are replaced in one authoritative write
+  // instead of a long renderer-driven series that can stop halfway through.
+  store.clear();
+  runPrivacyMigrations(store);
+  removeRecoveryArchives(store.path);
+  return getAllSettings();
+}
+
 module.exports = {
+  initializeStore,
+  retryStoreInitialization,
+  isStoreReady,
+  getStoreInitializationStatus,
+  recoveryResetStore,
   getSettings,
   setSetting,
+  setCustomEndpointUrl,
   getAllSettings,
   getSavedTerms,
   addSavedTerm,
   deleteSavedTerm,
+  mergeSavedTerms,
   clearSavedTerms,
   getExplanationHistory,
   addExplanationHistory,
@@ -468,9 +901,12 @@ module.exports = {
   clearSecrets,
   clearRetainedContent,
   clearUserData,
+  resetUserDataAndSettings,
   minimizeSavedTerm,
   minimizeSavedTermsInStore,
   migrateLegacySecretsInStore,
+  migrateUnsafeOllamaEndpointInStore,
   migrateProductReadinessInStore,
+  migrateClipboardPrivacyInStore,
   runPrivacyMigrations,
 };

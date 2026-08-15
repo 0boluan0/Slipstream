@@ -5,9 +5,18 @@ const IPC_CHANNELS = {
   SETTINGS_LOADED: 'settings:loaded',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  SETTINGS_RECOVERY_RESET: 'settings:recovery-reset',
+  SHORTCUT_STATUS_GET: 'shortcut:status-get',
+  SHORTCUT_STATUS_CHANGED: 'shortcut:status-changed',
+  SUPPORT_DIAGNOSTICS_GET: 'support:diagnostics-get',
   TERMS_GET: 'terms:get',
   TERMS_SAVE: 'terms:save',
   TERMS_DELETE: 'terms:delete',
+  TERMS_EXPORT: 'terms:export',
+  TERMS_IMPORT_PREVIEW: 'terms:import-preview',
+  TERMS_IMPORT_COMMIT: 'terms:import-commit',
+  USER_DATA_RESET_PREPARE: 'user-data-reset:prepare',
+  USER_DATA_RESET_ABORT: 'user-data-reset:abort',
   USER_DATA_CLEAR: 'user-data:clear',
   CLIPBOARD_WRITE: 'clipboard:write',
   CLIPBOARD_READ: 'clipboard:read',
@@ -16,15 +25,31 @@ const IPC_CHANNELS = {
   PROVIDER_CONNECTION_TEST: 'provider:connection-test',
   PROVIDER_CONNECTION_CANCEL: 'provider:connection-cancel',
   VERIFICATION_RUN: 'verification:run',
+  APP_QUIT_REQUESTED: 'app:quit-requested',
+  APP_QUIT_LISTENER_READY: 'app:quit-listener-ready',
+  APP_QUIT_DECISION: 'app:quit-decision',
+  APP_SETTINGS_REQUESTED: 'app:settings-requested',
+  APP_SETTINGS_LISTENER_READY: 'app:settings-listener-ready',
+  APP_SETTINGS_REQUEST_HANDLED: 'app:settings-request-handled',
+  APP_SESSION_RISK_UPDATE: 'app:session-risk-update',
+  CLIPBOARD_PENDING_STATUS: 'clipboard:pending-status',
+  APP_RENDERER_RECOVERY_STATUS_GET: 'app:renderer-recovery-status-get',
+  APP_CLIPBOARD_RESIDUE_RISK_ACK: 'app:clipboard-residue-risk-ack',
+  CAPTURE_INGRESS_LISTENER_READY: 'capture:listener-ready',
   SCREENSHOT_CAPTURE: 'screenshot:capture',
   SCREENSHOT_REQUESTED: 'screenshot:requested',
   WINDOW_SET_MODE: 'window:set-mode',
   WINDOW_HIDE: 'window:hide',
+  SYSTEM_OPEN_SCREEN_RECORDING_SETTINGS: 'system:open-screen-recording-settings',
   EXTERNAL_OPEN: 'external:open',
 };
 
 // LLM backend identifiers
 const LLM_BACKENDS = { FREE_TRANSLATE: 'free_translate', ANTHROPIC: 'anthropic', OPENAI: 'openai', DEEPSEEK: 'deepseek', OLLAMA: 'ollama', CUSTOM: 'custom' };
+
+// Apple Vision confidence is normalized to 0...1. Results below this boundary
+// must be reviewed explicitly before any processing service receives the text.
+const OCR_REVIEW_CONFIDENCE_THRESHOLD = 0.5;
 
 // Model IDs per backend
 const MODEL_IDS = {
@@ -49,6 +74,8 @@ const DEFAULTS = {
   RESULT_WINDOW_HEIGHT: 820,
   CLIPBOARD_POLL_INTERVAL: 1000, // ms
   CLIPBOARD_MONITORING: false,
+  CLIPBOARD_SHORTCUT: 'Alt+C',
+  SCREENSHOT_SHORTCUT: 'Alt+Shift+S',
   MAX_TEXT_LENGTH: 10000,
   VERIFICATION_POLICY: 'ask',
   RESULT_ORDER: 'action-first',
@@ -137,4 +164,5 @@ module.exports = {
   DEFAULT_USER_PROMPT,
   DEFAULT_PROMPTS,
   LANGUAGES,
+  OCR_REVIEW_CONFIDENCE_THRESHOLD,
 };

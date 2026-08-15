@@ -7,6 +7,12 @@ app.setPath('userData', userData);
 
 app.whenReady().then(() => {
   const store = require('../src/main/store');
+  const status = store.initializeStore();
+  if (status.state !== 'ready') {
+    console.error(JSON.stringify(status));
+    app.exit(1);
+    return;
+  }
 
   if (phase === 'write') {
     store.addExplanationHistory({

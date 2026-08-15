@@ -1,13 +1,3 @@
-.result-a11y-live {
-  position: fixed;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 .insight-column--translation-only {
   background: var(--surface-soft);
 }
@@ -87,14 +77,22 @@
 }
 
 .reply-grounding {
+  margin: 12px 0;
   padding: 12px;
   border: 1px solid var(--border-primary);
   border-radius: 10px;
   background: var(--surface-soft);
 }
 
-.reply-grounding > strong {
+.reply-grounding summary {
+  cursor: pointer;
+  color: var(--text-secondary);
   font-size: 13px;
+  font-weight: 700;
+}
+
+.reply-grounding[open] summary {
+  margin-bottom: 8px;
 }
 
 .reply-grounding ul {
@@ -122,6 +120,147 @@
   word-break: break-word;
 }
 
+.reply-status-picker {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 14px 0 0;
+  border: 0;
+}
+
+.reply-status-picker legend {
+  grid-column: 1 / -1;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.reply-status-picker label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  padding: 11px;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  cursor: pointer;
+}
+
+.reply-status-picker label:hover,
+.reply-status-picker label.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border-primary));
+  background: color-mix(in srgb, var(--accent-light) 62%, var(--surface-raised));
+}
+
+.reply-status-picker label:has(input:focus-visible) {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.reply-status-picker input {
+  width: 16px;
+  height: 16px;
+  align-self: start;
+  justify-self: start;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.reply-status-picker input[type="radio"]:focus,
+.reply-status-picker input[type="radio"]:focus-visible {
+  outline: none !important;
+}
+
+.reply-status-picker span {
+  display: grid;
+  gap: 3px;
+}
+
+.reply-status-picker strong {
+  font-size: 12px;
+}
+
+.reply-status-picker small {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.reply-progress-mismatch {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--warning) 46%, var(--border-primary));
+  border-radius: 10px;
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.reply-progress-mismatch > svg {
+  margin-top: 1px;
+}
+
+.reply-progress-mismatch > div {
+  display: grid;
+  gap: 5px;
+}
+
+.reply-progress-mismatch > div > strong {
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.reply-progress-mismatch p {
+  color: var(--text-secondary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.reply-progress-mismatch label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  margin-top: 3px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--warning) 34%, var(--border-primary));
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.reply-progress-mismatch label:focus-within {
+  outline: 3px solid color-mix(in srgb, var(--warning) 34%, transparent);
+  outline-offset: 1px;
+}
+
+.reply-progress-mismatch label input {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  accent-color: var(--warning);
+}
+
+.reply-progress-mismatch label span {
+  display: grid;
+  gap: 2px;
+}
+
+.reply-progress-mismatch label strong {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.reply-progress-mismatch label small {
+  color: var(--text-secondary);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
 @media (max-width: 760px) {
   .result-capability-boundary {
     display: grid;
@@ -134,5 +273,25 @@
   .reply-grounding li {
     grid-template-columns: 1fr;
     gap: 2px;
+  }
+
+  .reply-status-picker {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px), (max-height: 430px) {
+  .reply-status-picker label:has(input:focus-visible) {
+    outline-offset: -3px;
+  }
+}
+
+@media (forced-colors: active) {
+  .reply-status-picker label:has(input:focus-visible) {
+    outline-color: CanvasText !important;
+  }
+
+  .reply-status-picker label.is-selected:has(input:focus-visible) {
+    outline-color: HighlightText !important;
   }
 }

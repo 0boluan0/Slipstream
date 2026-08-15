@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { useIpc } from './useIpc';
+import { useIpc } from '@renderer-ipc';
 import constants from '../../shared/constants';
 import { normalizeClipboardPayload } from './clipboardPayload.mjs';
 

@@ -1,6 +1,16 @@
 const { DEFAULTS, LANGUAGES, LLM_BACKENDS } = require('../shared/constants.cjs');
 const net = require('net');
 const { assertSafeHostname } = require('./verification/url-safety');
+const { analyzeShortcutAccelerator } = require('../shared/shortcut-accelerator.cjs');
+const {
+  OCR_REVIEW_BLOCKS_TRUNCATED_PROPERTY,
+  isSourceSha256,
+} = require('./ocr-review');
+const {
+  ENDPOINT_LOCATION_KINDS,
+  classifyEndpointLocation,
+  isHttpLoopbackEndpoint,
+} = require('../shared/endpoint-location.cjs');
 
 const BACKENDS = new Set(Object.values(LLM_BACKENDS));
 const LANGUAGE_HINTS = new Set(Object.values(LANGUAGES));
@@ -14,11 +24,9 @@ const RESULT_ORDERS = new Set(['action-first', 'translation-first']);
 const SETUP_MODES = new Set(['unconfigured', 'full', 'translation-only']);
 
 function validateShortcut(value) {
-  const shortcut = value.trim();
-  if (!shortcut || shortcut.length > 100 || /(^|\+)\s*($|\+)/.test(shortcut)) {
-    throw new Error('请输入有效的快捷键');
-  }
-  return shortcut;
+  const result = analyzeShortcutAccelerator(value);
+  if (!result.ok) throw new Error(`shortcut-invalid:${result.reason}`);
+  return result.accelerator;
 }
 
 function validateEndpointUrl(value) {
@@ -36,10 +44,11 @@ function validateEndpointUrl(value) {
   }
 
   const hostname = parsed.hostname.toLowerCase();
-  const isLoopback = ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+  const isLoopback = classifyEndpointLocation(parsed.href)
+    === ENDPOINT_LOCATION_KINDS.LOCAL_LOOPBACK;
   if (parsed.protocol === 'http:') {
     if (!isLoopback) throw new Error('远程服务地址必须使用 HTTPS');
-    if (hostname === 'localhost') parsed.hostname = '127.0.0.1';
+    if (hostname === 'localhost' || hostname === 'localhost.') parsed.hostname = '127.0.0.1';
   } else if (parsed.protocol === 'https:') {
     if (parsed.port || net.isIP(hostname.replace(/^\[|\]$/g, ''))) {
       throw new Error('HTTPS 服务必须使用公开域名和默认端口');
@@ -62,6 +71,19 @@ function validateEndpointUrl(value) {
   return `${parsed.origin}${pathname}`;
 }
 
+function validateOllamaEndpointUrl(value) {
+  let validated;
+  try {
+    validated = validateEndpointUrl(value);
+  } catch {
+    throw new Error('Ollama 服务必须使用这台 Mac 的 HTTP 回环地址');
+  }
+  if (!validated || !isHttpLoopbackEndpoint(validated)) {
+    throw new Error('Ollama 服务必须使用这台 Mac 的 HTTP 回环地址');
+  }
+  return validated;
+}
+
 function validateProviderConnectionTestOptions(options) {
   if (options === undefined) return {};
   if (!options || typeof options !== 'object' || Array.isArray(options) || Object.keys(options).length) {
@@ -77,7 +99,10 @@ function validateSetting(key, value) {
     if (typeof value !== 'string' || value.length > 20000) throw new Error('凭据格式错误');
   } else if (URL_SETTINGS.has(key)) {
     if (typeof value !== 'string' || value.length > 2048) throw new Error('服务地址格式错误');
-    value = validateEndpointUrl(value.trim());
+    const candidate = value.trim();
+    value = key === 'ollamaBaseUrl' && candidate
+      ? validateOllamaEndpointUrl(candidate)
+      : validateEndpointUrl(candidate);
   } else if (TEXT_SETTINGS.has(key)) {
     if (typeof value !== 'string' || value.length > 20000) throw new Error('设置文本过长');
     if (key === 'clipboardShortcut' || key === 'screenshotShortcut') value = validateShortcut(value);
@@ -106,8 +131,14 @@ function validateProcessOptions(options) {
   if (options.text.length > DEFAULTS.MAX_TEXT_LENGTH) {
     throw new Error(`文本不能超过 ${DEFAULTS.MAX_TEXT_LENGTH} 个字符`);
   }
-  const source = ['manual', 'monitor', 'shortcut', 'ocr'].includes(options.source) ? options.source : 'manual';
+  const source = ['manual', 'monitor', 'shortcut', 'ocr', 'sample'].includes(options.source) ? options.source : 'manual';
+  if (source !== 'ocr' && options.capture !== undefined && options.capture !== null) {
+    throw new Error('只有截图 OCR 请求可以携带识别元数据');
+  }
   const capture = normalizeCaptureMetadata(options.capture);
+  const ocrReview = Object.prototype.hasOwnProperty.call(options, 'ocrReview')
+    ? validateOcrReviewConfirmation(options.ocrReview, source)
+    : null;
   const verificationApproved = options.verificationApproved === true;
   const truncated = options.truncated === true;
   const requestedOriginalLength = Number.isSafeInteger(options.originalLength)
@@ -117,7 +148,43 @@ function validateProcessOptions(options) {
   if (truncated && originalLength <= options.text.length) {
     throw new Error('截断文本必须提供大于保留长度的原始长度');
   }
-  return { text: options.text, source, capture, truncated, originalLength, verificationApproved };
+  return {
+    text: options.text,
+    source,
+    capture,
+    ...(ocrReview ? { ocrReview } : {}),
+    truncated,
+    originalLength,
+    verificationApproved,
+  };
+}
+
+function validateOcrReviewConfirmation(value, source = 'ocr') {
+  if (
+    source !== 'ocr'
+    || !value
+    || typeof value !== 'object'
+    || Array.isArray(value)
+  ) {
+    throw new Error('OCR 核对确认格式无效');
+  }
+  const keys = Object.keys(value).sort();
+  if (
+    keys.length !== 3
+    || keys[0] !== 'confirmed'
+    || keys[1] !== 'destinationSha256'
+    || keys[2] !== 'sourceSha256'
+    || value.confirmed !== true
+    || !isSourceSha256(value.sourceSha256)
+    || !isSourceSha256(value.destinationSha256)
+  ) {
+    throw new Error('OCR 核对确认格式无效');
+  }
+  return Object.freeze({
+    confirmed: true,
+    sourceSha256: value.sourceSha256,
+    destinationSha256: value.destinationSha256,
+  });
 }
 
 function validateVerificationOptions(options) {
@@ -150,11 +217,14 @@ function validateVerificationOptions(options) {
 }
 
 function normalizeCaptureMetadata(capture) {
-  if (!capture || typeof capture !== 'object') return null;
+  if (!capture || typeof capture !== 'object' || Array.isArray(capture)) return null;
   const confidence = Number.isFinite(capture.confidence)
-    ? Math.min(Math.max(capture.confidence, 0), 1)
+    && capture.confidence >= 0
+    && capture.confidence <= 1
+    ? capture.confidence
     : null;
-  const blocks = Array.isArray(capture.blocks)
+  const sourceBlocks = Array.isArray(capture.blocks) ? capture.blocks : [];
+  const blocks = sourceBlocks.length
     ? capture.blocks.slice(0, 500).map((block, index) => {
       const text = typeof block?.text === 'string' ? block.text.slice(0, 2000) : '';
       const rawBox = block?.boundingBox || block?.bbox;
@@ -164,12 +234,21 @@ function normalizeCaptureMetadata(capture) {
           ? ['x', 'y', 'w', 'h'].map((key) => Number.isFinite(rawBox[key]) ? rawBox[key] : 0)
           : null;
       const blockConfidence = Number.isFinite(block?.confidence)
-        ? Math.min(Math.max(block.confidence, 0), 1)
+        && block.confidence >= 0
+        && block.confidence <= 1
+        ? block.confidence
         : null;
       return { id: `ocr-${index + 1}`, text, bbox, confidence: blockConfidence };
     }).filter((block) => block.text)
     : [];
-  return { confidence, blocks };
+  const normalized = { confidence, blocks };
+  Object.defineProperty(normalized, OCR_REVIEW_BLOCKS_TRUNCATED_PROPERTY, {
+    value: sourceBlocks.length > 500,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return normalized;
 }
 
 function isPrivateHostname(hostname) {
@@ -227,6 +306,8 @@ function isTrustedRendererUrl(url, isDev) {
 module.exports = {
   isTrustedRendererUrl,
   validateEndpointUrl,
+  validateOllamaEndpointUrl,
+  validateOcrReviewConfirmation,
   validateProcessOptions,
   validateProviderConnectionTestOptions,
   validateVerificationOptions,

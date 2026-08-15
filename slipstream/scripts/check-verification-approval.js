@@ -391,7 +391,7 @@ function checkMainAuthorityWiring() {
     [
       'verificationApprovalRegistry.revokeSender(event.sender.id)',
       'verificationAbortController?.abort()',
-      'store.clearUserData()',
+      'store.resetUserDataAndSettings()',
     ],
     'clearing user data must revoke verification authority before aborting and clearing storage',
   );
@@ -535,12 +535,61 @@ function checkRendererDiscardWiring() {
   );
 }
 
+function checkRendererVerificationUx() {
+  const resultSource = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'components', 'ResultDisplay.jsx'),
+    'utf8',
+  );
+  const panelSource = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'components', 'FloatingPanel.jsx'),
+    'utf8',
+  );
+  const demoSource = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'hooks', 'useIpc.js'),
+    'utf8',
+  );
+  const styleSource = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'App.css'),
+    'utf8',
+  );
+
+  assert.match(resultSource, /\$\{verificationPlanCount\} 项可查找 · 需你批准/);
+  assert.match(resultSource, /查看并批准官方核验/);
+  assert.match(resultSource, /setOpenSections\(\(current\) => \(\{ \.\.\.current, sources: true \}\)\)/);
+  assert.match(resultSource, /verificationApprovalRef\.current \|\| officialSourcesTriggerRef\.current/);
+  assert.match(resultSource, /target\?\.scrollIntoView[\s\S]*?target\?\.focus/);
+  assert.match(resultSource, /onCancelVerification/);
+  assert.match(resultSource, /取消查找/);
+  assert.match(resultSource, /verificationCancellationFocusRef\.current = true/);
+  assert.match(resultSource, /verificationApprovalRef\.current\?\.focus/);
+  assert.match(resultSource, /这份核验批准已失效/);
+  assert.match(resultSource, /重新分析并生成核验方案/);
+
+  assert.match(panelSource, /const \[isCancellingVerification, setIsCancellingVerification\] = useState\(false\)/);
+  assert.match(panelSource, /cancelRequested: true/);
+  assert.match(panelSource, /VERIFICATION_CANCELLED_NOTICE/);
+  assert.match(panelSource, /lastGoodRef\.current = withVerificationApproval\(lastGoodRef\.current, nextApprovalId\)/);
+  assert.match(panelSource, /onCancelVerification=\{cancelOfficialVerification\}/);
+  assert.match(panelSource, /isCancellingVerification=\{isCancellingVerification\}/);
+
+  assert.match(demoSource, /get\('verification'\)/);
+  assert.match(demoSource, /demoVerificationCode === 'slow' \? 30000 : 500/);
+  assert.match(demoSource, /errorCode: 'verification-cancelled'/);
+  assert.match(demoSource, /retryApprovalId: 'a'\.repeat\(64\)/);
+  assert.match(styleSource, /\.verification-plan-link/);
+  assert.match(styleSource, /\.verification-cancel-button/);
+  assert.match(styleSource, /\.verification-recovery/);
+  assert.match(styleSource, /\.completion-button \{ max-width: calc\(100% - 116px\); \}/);
+  assert.match(styleSource, /\.completion-button__detail-label \{ display: none; \}/);
+}
+
 async function main() {
   checkRegistryUnitContract();
   checkAuthorityEpochRaceContract();
   await checkDiscardCancellationInterleavingContract();
   checkMainAuthorityWiring();
   checkRendererDiscardWiring();
+  checkRendererVerificationUx();
   await checkApprovalExecutionContract();
   console.log('Verification approval registry and IPC contract checks passed.');
 }

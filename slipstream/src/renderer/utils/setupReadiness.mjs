@@ -1,8 +1,20 @@
+import {
+  PROCESSING_LOCATION_KINDS,
+  processingLocationForSettings,
+} from '../../shared/endpoint-location.mjs';
+
 export const SETUP_MODES = Object.freeze({
   UNCONFIGURED: 'unconfigured',
   FULL: 'full',
   TRANSLATION_ONLY: 'translation-only',
 });
+
+export const ANALYSIS_LOCATIONS = Object.freeze({
+  LOCAL: 'local',
+  ONLINE: 'online',
+});
+
+const ONLINE_ANALYSIS_BACKENDS = new Set(['anthropic', 'openai', 'deepseek']);
 
 const API_KEY_FLAGS = Object.freeze({
   anthropic: 'hasAnthropicApiKey',
@@ -43,9 +55,40 @@ export function isBackendReadyForFullAnalysis(settings = {}) {
 
   const savedFlag = API_KEY_FLAGS[activeBackend];
   if (savedFlag) return settings[savedFlag] === true;
-  if (activeBackend === 'ollama') return Boolean(String(settings.ollamaBaseUrl || '').trim());
-  if (activeBackend === 'custom') return Boolean(String(settings.customEndpointUrl || '').trim());
+  if (activeBackend === 'ollama') {
+    return processingLocationForSettings(settings) === PROCESSING_LOCATION_KINDS.LOCAL;
+  }
+  if (activeBackend === 'custom') {
+    return processingLocationForSettings(settings) !== PROCESSING_LOCATION_KINDS.UNKNOWN;
+  }
   return false;
+}
+
+export function analysisLocationForBackend(backend, settings = {}) {
+  if (backend === 'ollama') {
+    return processingLocationForSettings({ ...settings, activeBackend: backend })
+      === PROCESSING_LOCATION_KINDS.LOCAL
+      ? ANALYSIS_LOCATIONS.LOCAL
+      : null;
+  }
+  if (ONLINE_ANALYSIS_BACKENDS.has(backend)) return ANALYSIS_LOCATIONS.ONLINE;
+  if (backend === 'custom') {
+    const processingLocation = processingLocationForSettings({
+      ...settings,
+      activeBackend: backend,
+    });
+    if (processingLocation === PROCESSING_LOCATION_KINDS.LOCAL_LOOPBACK) {
+      return ANALYSIS_LOCATIONS.LOCAL;
+    }
+    if (processingLocation === PROCESSING_LOCATION_KINDS.ONLINE) {
+      return ANALYSIS_LOCATIONS.ONLINE;
+    }
+  }
+  return null;
+}
+
+export function analysisLocationForSettings(settings = {}) {
+  return analysisLocationForBackend(settings.activeBackend, settings);
 }
 
 export function modeLabel(setupMode) {

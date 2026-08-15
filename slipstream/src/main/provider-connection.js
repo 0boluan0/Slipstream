@@ -3,7 +3,14 @@ const https = require('node:https');
 const net = require('node:net');
 
 const { LLM_BACKENDS } = require('../shared/constants.cjs');
-const { validateEndpointUrl } = require('./validation');
+const {
+  ENDPOINT_LOCATION_KINDS,
+  classifyEndpointLocation,
+} = require('../shared/endpoint-location.cjs');
+const {
+  validateEndpointUrl,
+  validateOllamaEndpointUrl,
+} = require('./validation');
 const {
   UnsafeUrlError,
   createPinnedLookup,
@@ -34,8 +41,11 @@ const CONNECTION_CODES = Object.freeze({
   REDIRECT_REJECTED: 'redirect-rejected',
   RATE_LIMITED: 'rate-limited',
   HTTP_ERROR: 'http-error',
+  STRUCTURED_OUTPUT_INVALID: 'structured-output-invalid',
+  GENERATION_FAILED: 'generation-failed',
   BUSY: 'busy',
   CANCELLED: 'cancelled',
+  CANCELLED_BY_USER: 'cancelled-by-user',
   SETTINGS_SAVE_FAILED: 'settings-save-failed',
 });
 
@@ -120,7 +130,13 @@ function createProviderRequest(settings) {
   }
 
   if (backend === LLM_BACKENDS.OLLAMA) {
-    const baseUrl = validateEndpointUrl(requireText(settings.ollamaBaseUrl));
+    const configuredUrl = requireText(settings.ollamaBaseUrl);
+    let baseUrl;
+    try {
+      baseUrl = validateOllamaEndpointUrl(configuredUrl);
+    } catch {
+      throw new ConnectionTestError(CONNECTION_CODES.UNSAFE_ENDPOINT);
+    }
     return {
       backend,
       model,
@@ -226,7 +242,7 @@ function requestJson(requestSpec, {
         pinnedLookup = createPinnedLookup(resolved.addresses);
       } else if (
         url.protocol === 'http:' &&
-        (hostname === '127.0.0.1' || hostname === '::1')
+        classifyEndpointLocation(url.href) === ENDPOINT_LOCATION_KINDS.LOCAL_LOOPBACK
       ) {
         requestImpl = httpRequest;
       } else {
