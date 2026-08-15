@@ -39,17 +39,14 @@ const timeoutMs = 40_000;
 
 const mediaRequests = Object.freeze({
   normal: Object.freeze([
-    Object.freeze({ name: 'prefers-color-scheme', value: 'light' }),
     Object.freeze({ name: 'prefers-contrast', value: 'no-preference' }),
     Object.freeze({ name: 'forced-colors', value: 'none' }),
   ]),
   more: Object.freeze([
-    Object.freeze({ name: 'prefers-color-scheme', value: 'light' }),
     Object.freeze({ name: 'prefers-contrast', value: 'more' }),
     Object.freeze({ name: 'forced-colors', value: 'none' }),
   ]),
   forced: Object.freeze([
-    Object.freeze({ name: 'prefers-color-scheme', value: 'light' }),
     Object.freeze({ name: 'prefers-contrast', value: 'no-preference' }),
     Object.freeze({ name: 'forced-colors', value: 'active' }),
   ]),
