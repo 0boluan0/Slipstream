@@ -147,12 +147,12 @@ const CONNECTION_RESULT_COPY = Object.freeze({
   'unsafe-endpoint': ['地址不安全', '只允许公开 HTTPS 地址，或指向本机回环地址的 HTTP 服务。'],
   unauthorized: ['凭据未通过', '服务拒绝了当前凭据，请检查或更换 API Key。'],
   'model-not-found': ['没有找到模型', '服务可访问，但模型列表中没有当前模型 ID。'],
-  unreachable: ['无法连接服务', '请检查网络、服务地址，或确认本机服务已经启动。'],
   timeout: ['测试超时', '服务没有在限定时间内完成连接或完整分析验证，请稍后重试。'],
   'invalid-response': ['响应无法确认', '服务没有返回可识别的 JSON 模型元数据。'],
   'response-too-large': ['响应超出限制', '模型元数据响应过大，Slipstream 已停止读取。'],
   'redirect-rejected': ['拒绝了重定向', '为避免把凭据发送到另一地址，连接测试不会跟随重定向。'],
-  'rate-limited': ['请求受限', '服务暂时限制了请求，请稍后再试。'],
+  'rate-limited': ['请求受限', '服务暂时限制了请求，或账户余额、额度不足。请检查服务商账户后再试。'],
+  'service-unavailable': ['服务暂时不可用', '服务商当前无法完成测试，请稍后重试。'],
   'http-error': ['服务返回错误', '服务已响应，但没有完成这次模型元数据检查。'],
   'structured-output-invalid': ['当前模型能力不兼容', '模型能够响应，但内置虚构文本的翻译、行动、术语或流程背景没有全部通过结构与来源证据校验。'],
   'generation-failed': ['完整分析测试失败', '模型已找到，但没有完成这次内置虚构文本的生成测试。'],
@@ -162,12 +162,21 @@ const CONNECTION_RESULT_COPY = Object.freeze({
   'settings-save-failed': ['设置尚未保存', '连接测试没有使用旧配置；请先修正上方的保存错误。'],
 });
 
-function getConnectionResultCopy(code, backend) {
+function getConnectionResultCopy(code, backend, fullAnalysisEnabled = false) {
+  if (code === 'ok' && fullAnalysisEnabled) {
+    return ['完整分析能力验证通过', '服务与当前模型已通过测试；当前配置已可用，可以继续使用完整分析。'];
+  }
   if (backend === LLM_BACKENDS.OLLAMA && code === 'unreachable') {
     return ['没有连接到本机 Ollama', '没有发送任何原文。下面按顺序检查安装、服务和当前模型。'];
   }
   if (backend === LLM_BACKENDS.OLLAMA && code === 'timeout') {
     return ['本机 Ollama 响应超时', '服务在 7 秒内没有返回模型信息。下面按顺序恢复本地服务。'];
+  }
+  if (backend === LLM_BACKENDS.CUSTOM && code === 'unreachable') {
+    return ['无法连接自定义服务', '请检查已保存的服务地址，并确认对应服务正在运行且可以访问。'];
+  }
+  if (code === 'unreachable') {
+    return ['无法连接在线服务', '请检查这台 Mac 的网络，并确认服务商当前没有中断或维护。'];
   }
   return CONNECTION_RESULT_COPY[code] || CONNECTION_RESULT_COPY['invalid-response'];
 }
@@ -398,7 +407,11 @@ export default function SettingsPanel({
   const connectionStepNumber = 3;
   const testStepNumber = connectionStepNumber + 1;
   const enableStepNumber = connectionStepNumber + 2;
-  const connectionResultCopy = getConnectionResultCopy(connectionTest.code, settings.activeBackend);
+  const connectionResultCopy = getConnectionResultCopy(
+    connectionTest.code,
+    settings.activeBackend,
+    settings.setupMode === SETUP_MODES.FULL,
+  );
   const draftExitCopy = describeSettingsDraftIntent(draftExitIntent, {
     guidedSetup: isGuidedSetup,
     hasConnectionDraft: hasUnsavedConnectionDraft,
@@ -2180,11 +2193,17 @@ export default function SettingsPanel({
             <div style={{ ...sectionTitleStyle, marginTop: 12 }}>{testStepNumber} 测试服务与模型</div>
             <div className="provider-connection-card">
               <strong style={{ display: 'block', marginBottom: 3 }}>
-                {isCurrentConnectionReady ? '必需连接信息已填写，尚未验证' : '继续填写连接信息'}
+                {isCurrentConnectionReady
+                  ? settings.setupMode === SETUP_MODES.FULL
+                    ? '连接信息已保存，可重新验证'
+                    : '必需连接信息已填写，尚未验证'
+                  : '继续填写连接信息'}
               </strong>
               <p>
                 {isCurrentConnectionReady
-                  ? '启用前会检查连接，并确认当前模型能从内置虚构文本生成翻译、行动、术语和流程背景，且每项通过结构与来源证据校验。'
+                  ? settings.setupMode === SETUP_MODES.FULL
+                    ? '重新验证会检查当前连接与模型能力，不会改变已经启用的功能模式。'
+                    : '启用前会检查连接，并确认当前模型能从内置虚构文本生成翻译、行动、术语和流程背景，且每项通过结构与来源证据校验。'
                   : '完成上方必需信息后，才能测试当前服务与模型。'}
               </p>
               <small className="provider-connection-privacy">
@@ -2217,7 +2236,9 @@ export default function SettingsPanel({
                     ? '正在验证完整分析能力…'
                     : connectionTest.status === 'failed' || connectionTest.status === 'inconclusive'
                       ? '重新验证完整分析能力'
-                      : '验证完整分析能力'}
+                      : settings.setupMode === SETUP_MODES.FULL
+                        ? '重新验证完整分析能力'
+                        : '验证完整分析能力'}
               </button>
               {isTestingConnection && (
                 <>

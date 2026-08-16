@@ -59,14 +59,20 @@ export function buildConnectionRecoveryPlan({ code, backend, model } = {}) {
 
   if (!isOllama && (code === 'unreachable' || code === 'timeout')) {
     return {
-      title: code === 'timeout' ? '检查网络后稍等再试' : '先确认网络与服务状态',
-      description: code === 'timeout'
-        ? '服务没有在限定时间内完成连接或内置虚构文本测试；没有发送你的任务原文。'
-        : 'Slipstream 没有完成当前在线服务测试；没有发送你的截图、剪贴板或任务原文。',
+      title: isCustom
+        ? '检查自定义服务与地址'
+        : code === 'timeout' ? '检查网络后稍等再试' : '先确认网络与服务状态',
+      description: isCustom
+        ? 'Slipstream 没有完成当前自定义服务测试；没有发送你的截图、剪贴板或任务原文。'
+        : code === 'timeout'
+          ? '服务没有在限定时间内完成连接或内置虚构文本测试；没有发送你的任务原文。'
+          : 'Slipstream 没有完成当前在线服务测试；没有发送你的截图、剪贴板或任务原文。',
       steps: [
         {
-          title: '确认网络与服务可用',
-          detail: '检查这台 Mac 的网络，并确认服务商当前没有中断或维护。',
+          title: isCustom ? '确认自定义服务可用' : '确认网络与服务可用',
+          detail: isCustom
+            ? '确认自定义服务正在运行，并且这台 Mac 可以访问。'
+            : '检查这台 Mac 的网络，并确认服务商当前没有中断或维护。',
         },
         ...(isCustom ? [{
           title: '核对自定义服务地址',
@@ -142,6 +148,15 @@ export function buildConnectionRecoveryPlan({ code, backend, model } = {}) {
     return {
       title: '服务暂时限制了请求',
       description: '无需反复点击。等待几分钟，并在服务商控制台确认额度后再试。',
+      steps: [],
+      actions: [retryAction('稍后重新测试')],
+    };
+  }
+
+  if (code === 'service-unavailable') {
+    return {
+      title: '服务暂时不可用',
+      description: '服务商当前无法完成测试；当前配置没有改变，请稍后重试。',
       steps: [],
       actions: [retryAction('稍后重新测试')],
     };

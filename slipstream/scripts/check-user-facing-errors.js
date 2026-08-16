@@ -124,8 +124,11 @@ assert.equal(mainContext.helpers.classifyProcessingError(new Error('Ollama 服�
 assert.equal(mainContext.helpers.classifyProcessingError(new Error('Ollama 服务错误：500 Internal Server Error'), 'ollama').code, 'ollama-runtime-failed');
 assert.equal(mainContext.helpers.classifyProcessingError(new Error('模型响应超时'), 'openai').code, 'processing-timeout');
 assert.equal(mainContext.helpers.classifyProcessingError({ status: 401, message: providerSecret }, 'openai').code, 'processing-unauthorized');
+assert.equal(mainContext.helpers.classifyProcessingError({ status: 402, message: providerSecret }, 'openai').code, 'processing-rate-limited');
 assert.equal(mainContext.helpers.classifyProcessingError({ status: 429, message: providerSecret }, 'anthropic').code, 'processing-rate-limited');
+assert.equal(mainContext.helpers.classifyProcessingError({ status: 529, message: providerSecret }, 'anthropic').code, 'processing-service-unavailable');
 assert.equal(mainContext.helpers.classifyProcessingError({ status: 503, message: providerSecret }, 'deepseek').code, 'processing-service-unavailable');
+assert.equal(mainContext.helpers.classifyProcessingError({ status: 404, code: 'custom-provider-http-error', message: providerSecret }, 'custom').code, 'processing-failed');
 assert.equal(mainContext.helpers.classifyProcessingError({ code: 'ENOTFOUND', message: providerSecret }, 'openai').code, 'processing-unreachable');
 assert.equal(mainContext.helpers.classifyProcessingError(new Error(providerSecret), 'openai').code, 'processing-failed');
 const maliciousSdkError = {

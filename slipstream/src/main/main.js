@@ -245,7 +245,8 @@ function classifyProcessingError(error, backend) {
     return USER_ERRORS.PROCESSING_UNAUTHORIZED;
   }
   if (
-    status === 429
+    status === 402
+    || status === 429
     || code.includes('rate_limit')
     || code.includes('insufficient_quota')
   ) {
@@ -282,7 +283,7 @@ function classifyProcessingError(error, backend) {
   if (backend === 'ollama' && /ollama 服务错误：5\d\d/.test(message)) {
     return USER_ERRORS.OLLAMA_RUNTIME_FAILED;
   }
-  if ([500, 502, 503, 504].includes(status)) {
+  if ([500, 502, 503, 504].includes(status) || (backend === 'anthropic' && status === 529)) {
     return USER_ERRORS.PROCESSING_SERVICE_UNAVAILABLE;
   }
   if (

@@ -313,7 +313,7 @@ function isRepresentativeStructuredBrief(brief) {
   return Object.values(getRepresentativeStructuredBriefChecks(brief)).every(Boolean);
 }
 
-function compatibilityErrorCode(error, signal) {
+function compatibilityErrorCode(error, signal, backend) {
   if (signal?.aborted || error?.name === 'AbortError') return CONNECTION_CODES.CANCELLED;
 
   const status = Number(error?.status ?? error?.statusCode ?? 0);
@@ -325,13 +325,21 @@ function compatibilityErrorCode(error, signal) {
   if (status === 401 || status === 403 || code === 'invalid_api_key' || code === 'authentication_error') {
     return CONNECTION_CODES.UNAUTHORIZED;
   }
-  if (status === 429 || code.includes('rate_limit') || code.includes('insufficient_quota')) {
+  if (status === 402 || status === 429 || code.includes('rate_limit') || code.includes('insufficient_quota')) {
     return CONNECTION_CODES.RATE_LIMITED;
+  }
+  if (backend === 'anthropic' && status === 529) {
+    return CONNECTION_CODES.SERVICE_UNAVAILABLE;
+  }
+  if (
+    ['openai', 'anthropic', 'deepseek'].includes(backend)
+    && [500, 502, 503, 504].includes(status)
+  ) {
+    return CONNECTION_CODES.SERVICE_UNAVAILABLE;
   }
   if (
     code === 'model_not_found'
     || /model[^\n]*(not found|does not exist|\u4e0d\u5b58\u5728|\u672a\u627e\u5230)/i.test(message)
-    || status === 404
   ) {
     return CONNECTION_CODES.MODEL_NOT_FOUND;
   }
@@ -392,7 +400,7 @@ async function testFullAnalysisCompatibility(settings, dependencies = {}) {
     }
     return connected();
   } catch (error) {
-    return failed(compatibilityErrorCode(error, signal));
+    return failed(compatibilityErrorCode(error, signal, settings?.activeBackend));
   }
 }
 

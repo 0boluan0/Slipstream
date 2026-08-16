@@ -19,32 +19,54 @@ const TRUNCATION_WARNING = '⚠️ 注意：回复可能被截断，内容可能
 
 /**
  * Retry a function with exponential backoff for transient errors.
- * Retries on: 429, 502, 503, 504 status codes, or timeout/fetch/socket errors.
+ * Retries on: 429, 502, 503, 504, 529 status codes, or timeout/fetch/socket errors.
+ * @param {AbortSignal} signal
  * @param {() => Promise<any>} fn
  * @param {number} retries
  * @returns {Promise<any>}
  */
-async function withRetry(fn, retries = 3) {
+async function withRetry(signal, fn, retries = 3) {
   let lastError;
   for (let i = 0; i < retries; i++) {
+    if (signal?.aborted) throw createParentAbortError(signal);
     try {
       return await fn();
     } catch (err) {
       lastError = err;
+      const causeCode = String(err?.cause?.code || '').toUpperCase();
       const isRetryable =
         err.status === 429 ||
+        err.status === 529 ||
+        err.status === 500 ||
         err.status === 503 ||
         err.status === 502 ||
         err.status === 504 ||
+        ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE']
+          .includes(causeCode) ||
         (err.message && (err.message.includes('timeout') || err.message.includes('fetch failed') || err.message.includes('socket hang up')));
 
       if (!isRetryable || i === retries - 1) break;
 
       const delay = Math.min(1000 * Math.pow(2, i), 8000); // exponential backoff: 1s, 2s, 4s...
-      await new Promise(resolve => setTimeout(resolve, delay));
+      await waitForRetryDelay(delay, signal);
     }
   }
   throw lastError;
+}
+
+function waitForRetryDelay(delay, signal) {
+  if (signal?.aborted) return Promise.reject(createParentAbortError(signal));
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delay);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createParentAbortError(signal));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function stripReasoning(text) {
@@ -518,8 +540,8 @@ async function processAnthropic(settings, model, systemPrompt, userMessage, pare
   }
 
   return withTimeout({
-    fn: async (signal) => withRetry(async () => {
-      const anthropic = new Anthropic({ apiKey });
+    fn: async (signal) => withRetry(signal, async () => {
+      const anthropic = new Anthropic({ apiKey, maxRetries: 0 });
 
       const response = await anthropic.messages.create({
         model: model,
@@ -528,7 +550,17 @@ async function processAnthropic(settings, model, systemPrompt, userMessage, pare
         messages: [{ role: 'user', content: userMessage }],
       }, { signal });
 
-      const result = response.content[0].text;
+      const result = Array.isArray(response.content)
+        ? response.content
+          .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+          .map((block) => block.text)
+          .join('\n')
+        : '';
+      if (!result.trim()) {
+        const error = new Error('Anthropic 返回了无效响应');
+        error.code = 'anthropic-invalid-response';
+        throw error;
+      }
 
       if (response.stop_reason === 'max_tokens') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
@@ -550,8 +582,8 @@ async function processOpenAI(settings, model, systemPrompt, userMessage, parentS
   }
 
   return withTimeout({
-    fn: async (signal) => withRetry(async () => {
-      const openai = new OpenAI({ apiKey });
+    fn: async (signal) => withRetry(signal, async () => {
+      const openai = new OpenAI({ apiKey, maxRetries: 0 });
 
       const response = await openai.chat.completions.create({
         model: model,
@@ -588,10 +620,11 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
   }
 
   return withTimeout({
-    fn: async (signal) => withRetry(async () => {
+    fn: async (signal) => withRetry(signal, async () => {
       const openai = new OpenAI({
         apiKey,
         baseURL: 'https://api.deepseek.com',
+        maxRetries: 0,
       });
 
       const response = await openai.chat.completions.create({
@@ -635,7 +668,7 @@ async function processOllama(settings, model, systemPrompt, userMessage, parentS
   });
 
   return withTimeout({
-    fn: async (signal) => withRetry(async () => {
+    fn: async (signal) => withRetry(signal, async () => {
       let response;
       try {
         response = await endpointFetch(generateUrl, {
@@ -646,6 +679,7 @@ async function processOllama(settings, model, systemPrompt, userMessage, parentS
             system: systemPrompt,
             prompt: userMessage,
             ...(structuredOutput ? { format: 'json' } : {}),
+            ...(structuredOutput && /^deepseek-r1(?::|$)/i.test(model) ? { think: false } : {}),
             // Several current Ollama models advertise 128K+ context by default.
             // Loading that full KV cache can exhaust memory before a modest
             // Slipstream request begins, so use a bounded window that still
@@ -858,7 +892,9 @@ function customProviderHttpError(status) {
  */
 async function processCustom(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false) {
   const configuredBaseURL = settings.customEndpointUrl;
-  const apiKey = settings.customEndpointApiKey;
+  const apiKey = typeof settings.customEndpointApiKey === 'string'
+    ? settings.customEndpointApiKey.trim()
+    : '';
 
   if (!configuredBaseURL) {
     throw new Error('请先配置自定义服务地址');
@@ -876,7 +912,7 @@ async function processCustom(settings, model, systemPrompt, userMessage, parentS
   const endpointFetch = createCustomEndpointFetch(baseURL);
 
   return withTimeout({
-    fn: async (signal) => withRetry(async () => {
+    fn: async (signal) => withRetry(signal, async () => {
       let response;
       try {
         response = await endpointFetch(completionUrl, {
@@ -884,7 +920,7 @@ async function processCustom(settings, model, systemPrompt, userMessage, parentS
           headers: {
             Accept: 'application/json',
             'Accept-Encoding': 'identity',
-            Authorization: `Bearer ${apiKey || 'sk-no-key-required'}`,
+            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -951,7 +987,7 @@ async function processFreeTranslateChunks(text, languageHint, taskSignal) {
   const translatedChunks = [];
   for (const chunk of chunks) {
     translatedChunks.push(await withTimeout({
-      fn: async (signal) => withRetry(async () => {
+      fn: async (signal) => withRetry(signal, async () => {
         throwIfSignalAborted(signal);
         let result;
 

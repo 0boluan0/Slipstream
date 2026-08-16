@@ -40,6 +40,7 @@ const CONNECTION_CODES = Object.freeze({
   RESPONSE_TOO_LARGE: 'response-too-large',
   REDIRECT_REJECTED: 'redirect-rejected',
   RATE_LIMITED: 'rate-limited',
+  SERVICE_UNAVAILABLE: 'service-unavailable',
   HTTP_ERROR: 'http-error',
   STRUCTURED_OUTPUT_INVALID: 'structured-output-invalid',
   GENERATION_FAILED: 'generation-failed',
@@ -180,7 +181,16 @@ function isJsonMediaType(value) {
 function responseCodeForStatus(statusCode, backend) {
   if (statusCode >= 300 && statusCode < 400) return CONNECTION_CODES.REDIRECT_REJECTED;
   if (statusCode === 401 || statusCode === 403) return CONNECTION_CODES.UNAUTHORIZED;
-  if (statusCode === 429) return CONNECTION_CODES.RATE_LIMITED;
+  if (statusCode === 402 || statusCode === 429) return CONNECTION_CODES.RATE_LIMITED;
+  if (backend === LLM_BACKENDS.ANTHROPIC && statusCode === 529) {
+    return CONNECTION_CODES.SERVICE_UNAVAILABLE;
+  }
+  if (
+    [LLM_BACKENDS.OPENAI, LLM_BACKENDS.ANTHROPIC, LLM_BACKENDS.DEEPSEEK].includes(backend)
+    && [500, 502, 503, 504].includes(statusCode)
+  ) {
+    return CONNECTION_CODES.SERVICE_UNAVAILABLE;
+  }
   if (
     backend === LLM_BACKENDS.CUSTOM &&
     (statusCode === 404 || statusCode === 405 || statusCode === 501)
