@@ -601,6 +601,7 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
           { role: 'user', content: userMessage },
         ],
         max_tokens: structuredOutput ? 8192 : 4096,
+        thinking: { type: 'disabled' },
         ...(structuredOutput ? {
           response_format: { type: 'json_object' },
           temperature: 0,

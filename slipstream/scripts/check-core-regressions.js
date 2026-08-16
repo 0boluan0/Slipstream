@@ -8,6 +8,7 @@ const {
   FREE_TRANSLATE_TASK_TIMEOUT_MS,
   mergeChunkResults,
   processFreeTranslate,
+  processText,
   resolveFreeTranslateLanguages,
   splitTextByUtf8Bytes,
   splitTextIntoChunks,
@@ -183,6 +184,48 @@ async function main() {
       constants.MODEL_IDS.ollama.indexOf('deepseek-r1:14b') > constants.MODEL_IDS.ollama.indexOf('qwen2.5'),
       'reasoning-first models must not be the default for structured evidence output',
     );
+  });
+
+  await check('DeepSeek V4 action briefs disable default thinking', async () => {
+    const originalLoad = Module._load;
+    let request;
+    class FakeOpenAI {
+      constructor(options) {
+        assert.equal(options.apiKey, 'fixture-key');
+        assert.equal(options.baseURL, 'https://api.deepseek.com');
+        this.chat = {
+          completions: {
+            create: async (payload) => {
+              request = payload;
+              return { choices: [{ finish_reason: 'stop', message: { content: '{"fixture":true}' } }] };
+            },
+          },
+        };
+      }
+    }
+
+    Module._load = function load(request, parent, isMain) {
+      if (request === 'openai') return FakeOpenAI;
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    try {
+      const result = await processText({
+        text: 'Please submit the fictional form.',
+        backend: 'deepseek',
+        model: 'deepseek-v4-flash',
+        languageHint: 'en',
+        ignoreCustomPrompt: true,
+        settingsSnapshot: { deepseekApiKey: 'fixture-key' },
+      });
+
+      assert.equal(result.result, '{"fixture":true}');
+      assert.equal(request.model, 'deepseek-v4-flash');
+      assert.deepEqual(request.thinking, { type: 'disabled' });
+      assert.deepEqual(request.response_format, { type: 'json_object' });
+      assert.equal(request.temperature, 0);
+    } finally {
+      Module._load = originalLoad;
+    }
   });
 
   await check('long-text chunks never contain lone UTF-16 surrogates', () => {
