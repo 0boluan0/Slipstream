@@ -53,9 +53,24 @@ const mediaRequests = Object.freeze({
 });
 
 const mediaStyleSentinels = Object.freeze({
-  normal: '#d8d3ca',
-  more: '#404644',
-  forced: 'canvastext',
+  normal: Object.freeze({
+    borderPrimary: '#e7e3dc',
+    borderSecondary: '#d8d3ca',
+    surfaceSoft: '#faf9f6',
+    surfaceRaised: '#ffffff',
+  }),
+  more: Object.freeze({
+    borderPrimary: '#626866',
+    borderSecondary: '#404644',
+    surfaceSoft: '#f5f6f5',
+    surfaceRaised: '#ffffff',
+  }),
+  forced: Object.freeze({
+    borderPrimary: 'canvastext',
+    borderSecondary: 'canvastext',
+    surfaceSoft: 'canvas',
+    surfaceRaised: 'canvas',
+  }),
 });
 
 function delay(milliseconds) {
@@ -553,6 +568,19 @@ function pageProbe({ state, view, surfaceSelector, textSelector, focusSelector }
   const textBackground = effectiveBackground(text);
   const textColor = opaqueColor(textStyle.color, textBackground);
   const focusStyle = getComputedStyle(focus);
+  const tokenNames = {
+    borderPrimary: '--border-primary',
+    borderSecondary: '--border-secondary',
+    surfaceSoft: '--surface-soft',
+    surfaceRaised: '--surface-raised',
+  };
+  const readTokens = (style) => Object.fromEntries(Object.entries(tokenNames).map(
+    ([key, name]) => [key, style.getPropertyValue(name).trim().toLowerCase()],
+  ));
+  const cascade = {
+    rootTokens: readTokens(getComputedStyle(document.documentElement)),
+    surfaceTokens: readTokens(surfaceStyle),
+  };
 
   const containerSelectors = [
     '.slipstream-shell',
@@ -598,6 +626,7 @@ function pageProbe({ state, view, surfaceSelector, textSelector, focusSelector }
       prefersContrastNoPreference: matchMedia('(prefers-contrast: no-preference)').matches,
       forcedColorsActive: matchMedia('(forced-colors: active)').matches,
     },
+    cascade,
     completedActionCount,
     focus: {
       selector: focusSelector || `${focus.tagName.toLowerCase()}.${[...focus.classList].join('.')}`,
@@ -647,41 +676,6 @@ async function settleAnimationFrames(webContents) {
   );
 }
 
-async function settleMediaStyle(webContents, state) {
-  const expected = {
-    prefersContrastMore: state === 'more',
-    prefersContrastNoPreference: state !== 'more',
-    forcedColorsActive: state === 'forced',
-    borderSecondary: mediaStyleSentinels[state],
-  };
-  await webContents.executeJavaScript(`new Promise((resolve, reject) => {
-    const expected = ${JSON.stringify(expected)};
-    const deadline = performance.now() + 5000;
-    let stableFrames = 0;
-    const sample = () => {
-      const actual = {
-        prefersContrastMore: matchMedia('(prefers-contrast: more)').matches,
-        prefersContrastNoPreference: matchMedia('(prefers-contrast: no-preference)').matches,
-        forcedColorsActive: matchMedia('(forced-colors: active)').matches,
-        borderSecondary: getComputedStyle(document.documentElement)
-          .getPropertyValue('--border-secondary').trim().toLowerCase(),
-      };
-      const ready = Object.keys(expected).every((key) => actual[key] === expected[key]);
-      stableFrames = ready ? stableFrames + 1 : 0;
-      if (stableFrames >= 2) {
-        resolve(true);
-        return;
-      }
-      if (performance.now() >= deadline) {
-        reject(new Error('Media style did not settle: ' + JSON.stringify({ expected, actual })));
-        return;
-      }
-      requestAnimationFrame(sample);
-    };
-    requestAnimationFrame(sample);
-  })`, true);
-}
-
 async function setMediaState(webContents, state) {
   await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
     media: '',
@@ -692,7 +686,7 @@ async function setMediaState(webContents, state) {
     media: '',
     features: mediaRequests[state].map((feature) => ({ ...feature })),
   });
-  await settleMediaStyle(webContents, state);
+  await settleAnimationFrames(webContents);
 }
 
 async function sendNativeTab(webContents, reverse = false) {
@@ -745,6 +739,49 @@ async function probeView(webContents, state, view, selectors) {
     `(${pageProbe.toString()})(${JSON.stringify({ state, view, ...selectors })})`,
     true,
   );
+}
+
+async function waitForViewCascade(webContents, state, view, selectors) {
+  const expectedMedia = {
+    prefersContrastMore: state === 'more',
+    prefersContrastNoPreference: state !== 'more',
+    forcedColorsActive: state === 'forced',
+  };
+  const same = (first, second) => Object.keys(first).every(
+    (key) => first[key] === second[key],
+  );
+  const deadline = Date.now() + 5_000;
+  let lastFingerprint = null;
+  let lastProbe = null;
+  let stableFrames = 0;
+  while (Date.now() < deadline) {
+    await settleAnimationFrames(webContents);
+    const probe = await probeView(webContents, state, view, selectors);
+    const ready = same(probe.media, expectedMedia)
+      && same(probe.cascade.rootTokens, mediaStyleSentinels[state])
+      && same(probe.cascade.surfaceTokens, probe.cascade.rootTokens)
+      && probe.surface.borderWidth >= 1
+      && (state === 'normal' || probe.surface.borderContrastRatio >= 3);
+    const fingerprint = JSON.stringify({
+      media: probe.media,
+      cascade: probe.cascade,
+      surface: probe.surface,
+    });
+    stableFrames = ready && fingerprint === lastFingerprint ? stableFrames + 1 : ready ? 1 : 0;
+    lastFingerprint = fingerprint;
+    lastProbe = probe;
+    if (stableFrames >= 2) return probe;
+  }
+  throw new Error(`View cascade did not settle: ${JSON.stringify({
+    state,
+    view,
+    expected: { media: expectedMedia, tokens: mediaStyleSentinels[state] },
+    actual: lastProbe && {
+      media: lastProbe.media,
+      cascade: lastProbe.cascade,
+      surface: lastProbe.surface,
+    },
+  })}`);
 }
 
 async function writeHarnessOutcome(app, payload, exitCode) {
@@ -888,7 +925,7 @@ async function runElectronHarness() {
     await focusSelectorWithNativeTab(fixtureWindow.webContents, '.deadline-summary');
     for (const state of Object.keys(mediaRequests)) {
       await setMediaState(fixtureWindow.webContents, state);
-      states[state].result = await probeView(fixtureWindow.webContents, state, 'result', {
+      states[state].result = await waitForViewCascade(fixtureWindow.webContents, state, 'result', {
         surfaceSelector: '.action-progress.is-complete',
         textSelector: '.action-progress.is-complete > span',
         focusSelector: '.deadline-summary',
@@ -911,7 +948,7 @@ async function runElectronHarness() {
     await focusSelectorWithNativeTab(fixtureWindow.webContents, '.settings-return-button');
     for (const state of Object.keys(mediaRequests)) {
       await setMediaState(fixtureWindow.webContents, state);
-      states[state].settings = await probeView(fixtureWindow.webContents, state, 'settings', {
+      states[state].settings = await waitForViewCascade(fixtureWindow.webContents, state, 'settings', {
         surfaceSelector: '.settings-mode-summary',
         textSelector: '.settings-mode-summary__label strong',
         focusSelector: '.settings-return-button',
@@ -939,7 +976,7 @@ async function runElectronHarness() {
     assert.equal(resetFocusReady, true, 'Native Tab did not establish safe reset-dialog keyboard focus');
     for (const state of Object.keys(mediaRequests)) {
       await setMediaState(fixtureWindow.webContents, state);
-      states[state].reset = await probeView(fixtureWindow.webContents, state, 'reset', {
+      states[state].reset = await waitForViewCascade(fixtureWindow.webContents, state, 'reset', {
         surfaceSelector: '.settings-reset-dialog',
         textSelector: '.settings-reset-dialog__body > strong',
         focusSelector: '.settings-reset-cancel',
