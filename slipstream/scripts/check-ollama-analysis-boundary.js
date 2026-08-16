@@ -51,10 +51,10 @@ function ollamaResponse(value = 'fixture-ok') {
   });
 }
 
-async function analyze(endpoint, structuredOutput = false) {
+async function analyze(endpoint, structuredOutput = false, model = MODEL) {
   return processOllama(
     { ollamaBaseUrl: endpoint },
-    MODEL,
+    model,
     SYSTEM_PROMPT,
     SOURCE_TEXT,
     undefined,
@@ -112,7 +112,19 @@ async function main() {
       assert.equal(body.format, 'json');
       assert.equal(body.options.num_ctx, 16384);
       assert.equal(body.stream, false);
+      assert.equal(Object.hasOwn(body, 'think'), false,
+        'ordinary structured models must keep their default request shape');
     }
+
+    assert.equal(await analyze(ipv4.origin, true, 'deepseek-r1:14b'), 'fixture-ok');
+    const deepSeekBody = JSON.parse(received.at(-1).body);
+    assert.equal(deepSeekBody.think, false,
+      'DeepSeek-R1 structured requests must suppress reasoning text');
+
+    assert.equal(await analyze(ipv4.origin, true, 'gpt-oss:20b'), 'fixture-ok');
+    const gptOssBody = JSON.parse(received.at(-1).body);
+    assert.equal(Object.hasOwn(gptOssBody, 'think'), false,
+      'gpt-oss must not receive an unsupported false thinking option');
 
     const ipv6Received = [];
     const ipv6 = await listen('::1', async (request, response) => {

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.4 — 2026-08-16
+
+### Model setup is clearer and failures are easier to recover from
+
+- Choose supported online models from a visible menu instead of typing model IDs; local Ollama and custom model IDs remain editable.
+- Show the right next step for network problems, provider outages, account limits, custom services, and local Ollama.
+- Improve provider retries, cancellation, and response handling, with safer Ollama suggestions for Chinese structured results.
+
 ## 1.0.3 — 2026-08-16
 
 ### DeepSeek analysis works reliably

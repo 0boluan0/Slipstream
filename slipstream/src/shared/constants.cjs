@@ -57,7 +57,7 @@ const MODEL_IDS = {
   anthropic: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
   openai: ['gpt-4o', 'gpt-4o-mini'],
   deepseek: ['deepseek-v4-flash', 'deepseek-v4-pro'],
-  ollama: ['qwen2.5', 'phi4', 'mistral-small', 'llama3.2', 'llama3.3', 'gpt-oss:20b', 'deepseek-r1:14b'],
+  ollama: ['qwen2.5', 'mistral-small'],
   custom: ['custom'],
 };
 

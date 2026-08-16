@@ -243,7 +243,23 @@ async function main() {
     code: 'unreachable', backend: 'openai', model: 'gpt-4o',
   });
   assert.match(onlineUnreachableRecovery.title, /网络|服务状态/);
+  assert.doesNotMatch(JSON.stringify(onlineUnreachableRecovery), /本机服务|服务地址/,
+    'online-provider recovery must not send users to local-service or endpoint settings');
   assert.equal(onlineUnreachableRecovery.actions[0].kind, 'retry');
+
+  const customUnreachableRecovery = buildConnectionRecoveryPlan({
+    code: 'unreachable', backend: 'custom', model: 'private-model',
+  });
+  assert.match(JSON.stringify(customUnreachableRecovery), /自定义服务地址/,
+    'custom-provider recovery must point users to their configured endpoint');
+
+  const temporarilyUnavailableRecovery = buildConnectionRecoveryPlan({
+    code: 'service-unavailable', backend: 'anthropic', model: 'claude-sonnet-4-6',
+  });
+  assert.match(temporarilyUnavailableRecovery.title, /暂时不可用/);
+  assert.doesNotMatch(JSON.stringify(temporarilyUnavailableRecovery), /模型|本机|服务地址/,
+    'temporary online-service failure must not blame the model or local configuration');
+  assert.equal(temporarilyUnavailableRecovery.actions[0].kind, 'retry');
 
   const customTimeoutRecovery = buildConnectionRecoveryPlan({
     code: 'timeout', backend: 'custom', model: 'private-model',
@@ -315,6 +331,42 @@ async function main() {
     }),
   });
   assert.deepEqual(anthropic, { status: CONNECTION_STATUSES.CONNECTED, code: CONNECTION_CODES.OK });
+
+  const anthropicOverloaded = await testProviderConnection({
+    activeBackend: 'anthropic',
+    activeModel: 'claude-sonnet-4-6',
+    anthropicApiKey: 'test-anthropic-key',
+  }, {
+    lookup: publicLookup,
+    httpsRequest: createRequestImpl({ statusCode: 529 }),
+  });
+  assert.deepEqual(anthropicOverloaded, {
+    status: CONNECTION_STATUSES.FAILED,
+    code: CONNECTION_CODES.SERVICE_UNAVAILABLE,
+  }, 'Anthropic HTTP 529 must use temporary-service recovery');
+
+  const cloudMetadataUnavailableResults = [];
+  for (const [backend, activeModel, keyName] of [
+    ['openai', 'gpt-4o', 'openaiApiKey'],
+    ['anthropic', 'claude-sonnet-4-6', 'anthropicApiKey'],
+    ['deepseek', 'deepseek-v4-flash', 'deepseekApiKey'],
+  ]) {
+    for (const statusCode of [500, 502, 503, 504]) {
+      const result = await testProviderConnection({
+        activeBackend: backend,
+        activeModel,
+        [keyName]: 'test-key',
+      }, {
+        lookup: publicLookup,
+        httpsRequest: createRequestImpl({ statusCode }),
+      });
+      assert.deepEqual(result, {
+        status: CONNECTION_STATUSES.FAILED,
+        code: CONNECTION_CODES.SERVICE_UNAVAILABLE,
+      }, `${backend} metadata HTTP ${statusCode} must use temporary-service recovery`);
+      cloudMetadataUnavailableResults.push(result);
+    }
+  }
 
   const deepseek = await testProviderConnection({
     activeBackend: 'deepseek',
@@ -416,6 +468,17 @@ async function main() {
     httpsRequest: createRequestImpl({ statusCode: 401 }),
   });
   assert.deepEqual(unauthorized, { status: CONNECTION_STATUSES.FAILED, code: CONNECTION_CODES.UNAUTHORIZED });
+
+  const paymentRequired = await testProviderConnection({
+    activeBackend: 'openai', activeModel: 'gpt-4o', openaiApiKey: 'test-key',
+  }, {
+    lookup: publicLookup,
+    httpsRequest: createRequestImpl({ statusCode: 402 }),
+  });
+  assert.deepEqual(paymentRequired, {
+    status: CONNECTION_STATUSES.FAILED,
+    code: CONNECTION_CODES.RATE_LIMITED,
+  }, 'HTTP 402 must lead to the quota/rate-limit recovery');
 
   let redirectRequests = 0;
   const redirect = await testProviderConnection({
@@ -934,6 +997,85 @@ async function main() {
     code: CONNECTION_CODES.GENERATION_FAILED,
   });
 
+  const customGenerationNotFound = await testFullAnalysisCompatibility({
+    activeBackend: 'custom', activeModel: 'private-model',
+  }, {
+    processText: async () => {
+      const error = new Error('自定义服务拒绝了请求');
+      error.code = 'custom-provider-http-error';
+      error.status = 404;
+      throw error;
+    },
+  });
+  assert.deepEqual(customGenerationNotFound, {
+    status: CONNECTION_STATUSES.FAILED,
+    code: CONNECTION_CODES.GENERATION_FAILED,
+  }, 'a custom generation POST 404 must not be presented as a missing model');
+
+  const explicitMissingModel = await testFullAnalysisCompatibility({
+    activeBackend: 'openai', activeModel: 'retired-model',
+  }, {
+    processText: async () => {
+      const error = new Error('model not found');
+      error.code = 'model_not_found';
+      error.status = 404;
+      throw error;
+    },
+  });
+  assert.deepEqual(explicitMissingModel, {
+    status: CONNECTION_STATUSES.FAILED,
+    code: CONNECTION_CODES.MODEL_NOT_FOUND,
+  }, 'an explicit provider model-not-found signal must remain actionable');
+
+  const quotaRequired = await testFullAnalysisCompatibility({
+    activeBackend: 'openai', activeModel: 'gpt-4o',
+  }, {
+    processText: async () => {
+      const error = new Error('private provider response');
+      error.status = 402;
+      throw error;
+    },
+  });
+  assert.deepEqual(quotaRequired, {
+    status: CONNECTION_STATUSES.FAILED,
+    code: CONNECTION_CODES.RATE_LIMITED,
+  }, 'HTTP 402 generation failures must lead to the quota/rate-limit recovery');
+
+  const anthropicGenerationOverloaded = await testFullAnalysisCompatibility({
+    activeBackend: 'anthropic', activeModel: 'claude-sonnet-4-6',
+  }, {
+    processText: async () => {
+      const error = new Error('private provider response');
+      error.status = 529;
+      throw error;
+    },
+  });
+  assert.deepEqual(anthropicGenerationOverloaded, {
+    status: CONNECTION_STATUSES.FAILED,
+    code: CONNECTION_CODES.SERVICE_UNAVAILABLE,
+  }, 'Anthropic HTTP 529 generation failures must use temporary-service recovery');
+
+  const cloudServiceUnavailableResults = [];
+  for (const backend of ['openai', 'anthropic', 'deepseek']) {
+    for (const status of [500, 502, 503, 504]) {
+      const result = await testFullAnalysisCompatibility({
+        activeBackend: backend,
+        activeModel: 'fixture-model',
+      }, {
+        processText: async () => {
+          const error = new Error('private provider response');
+          error.status = status;
+          throw error;
+        },
+      });
+      assert.deepEqual(result, {
+        status: CONNECTION_STATUSES.FAILED,
+        code: CONNECTION_CODES.SERVICE_UNAVAILABLE,
+      }, `${backend} HTTP ${status} must use temporary-service recovery`);
+      cloudServiceUnavailableResults.push(result);
+    }
+  }
+
   const redirectSensitiveValues = [
     'https://private-redirect.example/v1/chat/completions',
     'sk-private-redirect-key',
@@ -986,6 +1128,9 @@ async function main() {
     ollama,
     customUnsupported,
     unauthorized,
+    paymentRequired,
+    anthropicOverloaded,
+    ...cloudMetadataUnavailableResults,
     redirect,
     wrongMime,
     tooLarge,
@@ -997,6 +1142,11 @@ async function main() {
     invalidStructuredOutput,
     emptyStructuredOutput,
     generationFailed,
+    customGenerationNotFound,
+    explicitMissingModel,
+    quotaRequired,
+    anthropicGenerationOverloaded,
+    ...cloudServiceUnavailableResults,
     compatibilityRedirectRejected,
     cancelledReadiness,
   ]) {
@@ -1032,6 +1182,7 @@ async function main() {
   const mainSource = fs.readFileSync(path.join(root, 'src/main/main.js'), 'utf8');
   const rendererSource = fs.readFileSync(path.join(root, 'src/renderer/components/SettingsPanel.jsx'), 'utf8');
   const recoverySource = fs.readFileSync(path.join(root, 'src/renderer/components/ConnectionRecovery.jsx'), 'utf8');
+  const settingsHookSource = fs.readFileSync(path.join(root, 'src/renderer/hooks/useSettings.js'), 'utf8');
   const demoIpcSource = fs.readFileSync(path.join(root, 'src/renderer/hooks/useIpc.js'), 'utf8');
   const apiKeyInputSource = fs.readFileSync(path.join(root, 'src/renderer/components/ApiKeyInput.jsx'), 'utf8');
   const modelSelectorSource = fs.readFileSync(path.join(root, 'src/renderer/components/ModelSelector.jsx'), 'utf8');
@@ -1154,9 +1305,31 @@ async function main() {
 
   assert.match(modelSelectorSource, /className="setting-save-button"/);
   assert.match(modelSelectorSource, /保存模型/);
-  assert.match(modelSelectorSource, /if \(event\.key === 'Enter'\)[\s\S]{0,120}commit\(\)/);
+  assert.match(modelSelectorSource, /<select[\s\S]*?id=\{inputId\}/,
+    'known online providers must use a visible native model picker');
+  assert.match(modelSelectorSource, /DeepSeek V4 Flash（推荐）/);
+  assert.match(modelSelectorSource, /DeepSeek V4 Pro/);
+  assert.match(modelSelectorSource, /当前已保存：/,
+    'a saved online model outside the built-in list must remain selectable');
+  assert.match(modelSelectorSource, /backend === 'ollama' \|\| backend === 'custom'/,
+    'local and custom providers must retain editable model IDs');
   assert.doesNotMatch(modelSelectorSource, /onBlur=\{commit\}/,
     'models must not rely on hidden blur persistence');
+  assert.match(rendererSource, /backend === LLM_BACKENDS\.CUSTOM && code === 'unreachable'/,
+    'custom connection failure copy must explicitly name its configured endpoint');
+  assert.match(rendererSource, /code === 'unreachable'[\s\S]{0,700}无法连接在线服务/,
+    'online connection failure copy must avoid local-service instructions');
+  assert.match(rendererSource, /'service-unavailable': \['服务暂时不可用'/);
+  assert.match(rendererSource, /'rate-limited': \['请求受限', '[^']*(?:余额|额度)/,
+    'HTTP 402 recovery must tell users to check account balance or quota');
+  assert.match(settingsHookSource, /'service-unavailable'/,
+    'the renderer must accept the precise temporary-service failure code');
+  assert.match(rendererSource, /code === 'ok' && fullAnalysisEnabled[\s\S]{0,300}当前配置已可用/,
+    'successful revalidation must acknowledge an already-enabled full-analysis mode');
+  assert.match(rendererSource, /getConnectionResultCopy\([\s\S]{0,160}settings\.setupMode === SETUP_MODES\.FULL/,
+    'the success copy must receive the persisted feature mode');
+  assert.match(rendererSource, /settings\.setupMode === SETUP_MODES\.FULL\s*\? '连接信息已保存，可重新验证'/,
+    'saved full-analysis settings must not be described as never verified after restart');
   assert.match(settingsStyles, /\.setting-save-status\.is-dirty/);
   assert.match(settingsStyles, /\.setting-save-button/);
   assert.match(settingsStyles, /\.connection-recovery-action:focus-visible/);

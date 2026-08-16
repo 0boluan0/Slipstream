@@ -176,14 +176,236 @@ async function main() {
     ]);
   });
 
+  await check('Anthropic joins text blocks that follow thinking blocks', async () => {
+    const originalLoad = Module._load;
+    let requestCount = 0;
+    class FakeAnthropic {
+      constructor(options) {
+        assert.equal(options.apiKey, 'fixture-key');
+        assert.equal(options.maxRetries, 0, 'Slipstream must own Anthropic retries');
+        this.messages = {
+          create: async () => {
+            requestCount += 1;
+            return requestCount === 1
+              ? {
+                  content: [
+                    { type: 'thinking', thinking: 'private reasoning' },
+                    { type: 'text', text: 'first' },
+                    { type: 'text', text: 'second' },
+                  ],
+                  stop_reason: 'end_turn',
+                }
+              : {
+                  content: [{ type: 'thinking', thinking: 'PRIVATE_ANTHROPIC_BLOCK_NEVER_EXPOSE' }],
+                  stop_reason: 'end_turn',
+                };
+          },
+        };
+      }
+    }
+    Module._load = function load(request, parent, isMain) {
+      if (request === '@anthropic-ai/sdk') return FakeAnthropic;
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    try {
+      const response = await processText({
+        text: 'Please explain the fictional notice.',
+        backend: 'anthropic',
+        model: 'claude-sonnet-4-6',
+        languageHint: 'en',
+        ignoreCustomPrompt: true,
+        settingsSnapshot: { anthropicApiKey: 'fixture-key' },
+      });
+      assert.equal(response.result, 'first\nsecond');
+      await assert.rejects(
+        processText({
+          text: 'Please explain another fictional notice.',
+          backend: 'anthropic',
+          model: 'claude-sonnet-4-6',
+          languageHint: 'en',
+          ignoreCustomPrompt: true,
+          settingsSnapshot: { anthropicApiKey: 'fixture-key' },
+        }),
+        (error) => {
+          assert.equal(error?.code, 'anthropic-invalid-response');
+          assert.equal(error?.message, 'Anthropic 返回了无效响应');
+          assert.equal(String(error?.stack).includes('PRIVATE_ANTHROPIC_BLOCK_NEVER_EXPOSE'), false);
+          return true;
+        },
+      );
+    } finally {
+      Module._load = originalLoad;
+    }
+  });
+
   await check('Ollama requests bound the context window', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'src/main/llm-service.js'), 'utf8');
     assert.match(source, /options:\s*\{\s*num_ctx:\s*16384\s*\}/);
-    assert.equal(constants.MODEL_IDS.ollama[0], 'qwen2.5');
-    assert.ok(
-      constants.MODEL_IDS.ollama.indexOf('deepseek-r1:14b') > constants.MODEL_IDS.ollama.indexOf('qwen2.5'),
-      'reasoning-first models must not be the default for structured evidence output',
+    assert.deepEqual(constants.MODEL_IDS.ollama, ['qwen2.5', 'mistral-small'],
+      'new users should only see Ollama models suited to Chinese structured output');
+  });
+
+  await check('OpenAI SDK retries are disabled', async () => {
+    const originalLoad = Module._load;
+    class FakeOpenAI {
+      constructor(options) {
+        assert.equal(options.apiKey, 'fixture-key');
+        assert.equal(options.maxRetries, 0, 'Slipstream must own OpenAI retries');
+        this.chat = {
+          completions: {
+            create: async () => ({
+              choices: [{ finish_reason: 'stop', message: { content: '{"fixture":true}' } }],
+            }),
+          },
+        };
+      }
+    }
+    Module._load = function load(request, parent, isMain) {
+      if (request === 'openai') return FakeOpenAI;
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    try {
+      const response = await processText({
+        text: 'Please submit the fictional form.',
+        backend: 'openai',
+        model: 'gpt-4o',
+        languageHint: 'en',
+        ignoreCustomPrompt: true,
+        settingsSnapshot: { openaiApiKey: 'fixture-key' },
+      });
+      assert.equal(response.result, '{"fixture":true}');
+    } finally {
+      Module._load = originalLoad;
+    }
+  });
+
+  await check('OpenAI HTTP 500 and APIConnectionError cause codes use the outer retry', async () => {
+    const originalLoad = Module._load;
+    const originalSetTimeout = global.setTimeout;
+    let requestCount = 0;
+    class FakeOpenAI {
+      constructor(options) {
+        assert.equal(options.maxRetries, 0);
+        this.chat = {
+          completions: {
+            create: async () => {
+              requestCount += 1;
+              if (requestCount === 1) {
+                const error = new Error('Temporary provider failure.');
+                error.status = 500;
+                throw error;
+              }
+              if (requestCount === 2) {
+                const cause = new Error('socket reset');
+                cause.code = 'ECONNRESET';
+                const error = new Error('Connection error.');
+                error.name = 'APIConnectionError';
+                error.cause = cause;
+                throw error;
+              }
+              return {
+                choices: [{ finish_reason: 'stop', message: { content: '{"retried":true}' } }],
+              };
+            },
+          },
+        };
+      }
+    }
+    Module._load = function load(request, parent, isMain) {
+      if (request === 'openai') return FakeOpenAI;
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    global.setTimeout = (callback, delay, ...args) => originalSetTimeout(
+      callback,
+      delay === 1000 ? 1 : delay,
+      ...args,
     );
+    try {
+      const response = await processText({
+        text: 'Please explain the fictional notice.',
+        backend: 'openai',
+        model: 'gpt-4o',
+        languageHint: 'en',
+        ignoreCustomPrompt: true,
+        settingsSnapshot: { openaiApiKey: 'fixture-key' },
+      });
+      assert.equal(response.result, '{"retried":true}');
+      assert.equal(requestCount, 3);
+    } finally {
+      Module._load = originalLoad;
+      global.setTimeout = originalSetTimeout;
+    }
+  });
+
+  await check('cancellation or timeout during retry backoff never starts another provider attempt', async () => {
+    const originalLoad = Module._load;
+    const originalSetTimeout = global.setTimeout;
+    let requestCount = 0;
+    let shortenModelTimeout = false;
+    class FakeOpenAI {
+      constructor() {
+        this.chat = {
+          completions: {
+            create: async () => {
+              requestCount += 1;
+              const error = new Error('fixture transient failure');
+              error.status = 529;
+              throw error;
+            },
+          },
+        };
+      }
+    }
+    Module._load = function load(request, parent, isMain) {
+      if (request === 'openai') return FakeOpenAI;
+      return originalLoad.call(this, request, parent, isMain);
+    };
+    global.setTimeout = (callback, delay, ...args) => originalSetTimeout(
+      callback,
+      shortenModelTimeout && delay === 60000
+        ? 5
+        : [1000, 2000, 4000].includes(delay) ? 20 : delay,
+      ...args,
+    );
+    try {
+      const controller = new AbortController();
+      const pending = processText({
+        text: 'Please explain the fictional notice.',
+        backend: 'openai',
+        model: 'gpt-4o',
+        languageHint: 'en',
+        ignoreCustomPrompt: true,
+        settingsSnapshot: { openaiApiKey: 'fixture-key' },
+        signal: controller.signal,
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(requestCount, 1);
+      controller.abort();
+      await assert.rejects(pending, (error) => error?.name === 'AbortError');
+      await new Promise((resolve) => originalSetTimeout(resolve, 80));
+      assert.equal(requestCount, 1,
+        'an aborted backoff must not wake up and contact the provider again');
+
+      requestCount = 0;
+      shortenModelTimeout = true;
+      await assert.rejects(
+        processText({
+          text: 'Please explain the fictional notice.',
+          backend: 'openai',
+          model: 'gpt-4o',
+          languageHint: 'en',
+          ignoreCustomPrompt: true,
+          settingsSnapshot: { openaiApiKey: 'fixture-key' },
+        }),
+        (error) => error?.message === '模型响应超时',
+      );
+      await new Promise((resolve) => originalSetTimeout(resolve, 80));
+      assert.equal(requestCount, 1,
+        'a timed-out backoff must not wake up and contact the provider again');
+    } finally {
+      Module._load = originalLoad;
+      global.setTimeout = originalSetTimeout;
+    }
   });
 
   await check('DeepSeek V4 action briefs disable default thinking', async () => {
@@ -193,6 +415,7 @@ async function main() {
       constructor(options) {
         assert.equal(options.apiKey, 'fixture-key');
         assert.equal(options.baseURL, 'https://api.deepseek.com');
+        assert.equal(options.maxRetries, 0, 'Slipstream must own DeepSeek retries');
         this.chat = {
           completions: {
             create: async (payload) => {

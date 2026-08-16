@@ -41,6 +41,7 @@ const CONNECTION_TEST_CODES = new Set([
   'response-too-large',
   'redirect-rejected',
   'rate-limited',
+  'service-unavailable',
   'http-error',
   'structured-output-invalid',
   'generation-failed',

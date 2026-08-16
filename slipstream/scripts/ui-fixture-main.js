@@ -967,7 +967,7 @@ async function finishCommandCommaSafeSettingsRuntimeCheck() {
           'enabled model input',
         );
         const scrollport = settingsPanel.querySelector('.settings-panel__scroll');
-        if (!(scrollport instanceof HTMLElement) || !(modelInput instanceof HTMLInputElement)) {
+        if (!(scrollport instanceof HTMLElement) || !(modelInput instanceof HTMLSelectElement)) {
           throw new Error('Settings identity controls are unavailable');
         }
         const safeApiRejected = await window.api.invoke('app:settings-listener-ready').then(
@@ -975,11 +975,14 @@ async function finishCommandCommaSafeSettingsRuntimeCheck() {
           () => true,
         );
         const originalModel = modelInput.value;
-        const draftModel = originalModel + '-fixture-draft';
-        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-        if (typeof valueSetter !== 'function') throw new Error('Native input setter is unavailable');
+        const draftModel = [...modelInput.options]
+          .map((option) => option.value)
+          .find((option) => option !== originalModel);
+        if (!draftModel) throw new Error('Alternate model option is unavailable');
+        const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+        if (typeof valueSetter !== 'function') throw new Error('Native select setter is unavailable');
         valueSetter.call(modelInput, draftModel);
-        modelInput.dispatchEvent(new Event('input', { bubbles: true }));
+        modelInput.dispatchEvent(new Event('change', { bubbles: true }));
         await waitFor(
           () => modelInput.value === draftModel
             && [...settingsPanel.querySelectorAll('.setting-save-status')]
@@ -1044,9 +1047,9 @@ async function finishCommandCommaSafeSettingsRuntimeCheck() {
           || !focusPreserved || !scrollPreserved) {
           throw new Error('Repeated Settings command changed draft, focus, scroll, or DOM identity');
         }
-        const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+        const valueSetter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
         valueSetter.call(currentInput, state.originalModel);
-        currentInput.dispatchEvent(new Event('input', { bubbles: true }));
+        currentInput.dispatchEvent(new Event('change', { bubbles: true }));
         await waitFor(
           () => currentInput.value === state.originalModel
             && ![...currentPanel.querySelectorAll('.setting-save-status')]
@@ -9792,7 +9795,7 @@ async function finishUiFixtureRuntimeCheck() {
             'focus handoff to failed provider result',
           );
           const failedResultFocused = document.activeElement === failedResult;
-          const firstFailureVisible = failedResult.textContent?.includes('无法连接服务')
+          const firstFailureVisible = failedResult.textContent?.includes('无法连接在线服务')
             && failedResult.textContent?.includes('先确认网络与服务状态');
           ensure(firstFailureVisible, 'first provider test did not show unreachable recovery');
           const retryButton = [...failedResult.querySelectorAll('button')]

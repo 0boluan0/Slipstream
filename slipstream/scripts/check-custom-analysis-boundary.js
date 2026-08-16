@@ -49,16 +49,16 @@ function readBody(request) {
   });
 }
 
-function settingsFor(origin) {
+function settingsFor(origin, apiKey = API_KEY) {
   return {
     customEndpointUrl: `${origin}/v1`,
-    customEndpointApiKey: API_KEY,
+    customEndpointApiKey: apiKey,
   };
 }
 
-async function analyze(origin) {
+async function analyze(origin, apiKey = API_KEY) {
   return processCustom(
-    settingsFor(origin),
+    settingsFor(origin, apiKey),
     'fixture-model',
     SYSTEM_PROMPT,
     SOURCE_TEXT,
@@ -174,6 +174,21 @@ async function main() {
     const normalResult = await analyze(normal.origin);
     assert.equal(normalResult, 'fixture-ok');
     assert.equal(normalRequests, 1, 'a normal same-origin analysis should remain usable');
+
+    let keylessRequests = 0;
+    const keyless = await listen(async (request, response) => {
+      keylessRequests += 1;
+      await readBody(request);
+      assert.equal(request.headers.authorization, undefined,
+        'a keyless custom service must not receive a fabricated Authorization header');
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({
+        choices: [{ finish_reason: 'stop', message: { content: 'keyless-ok' } }],
+      }));
+    });
+    servers.push(keyless.server);
+    assert.equal(await analyze(keyless.origin, ''), 'keyless-ok');
+    assert.equal(keylessRequests, 1);
 
     let declaredOversizeRequests = 0;
     const declaredOversize = await listen(async (request, response) => {
