@@ -22,10 +22,11 @@ const TRUNCATION_WARNING = '⚠️ 注意：回复可能被截断，内容可能
  * Retries on: 429, 502, 503, 504, 529 status codes, or timeout/fetch/socket errors.
  * @param {AbortSignal} signal
  * @param {() => Promise<any>} fn
+ * @param {number[]} additionalRetryStatuses
  * @param {number} retries
  * @returns {Promise<any>}
  */
-async function withRetry(signal, fn, retries = 3) {
+async function withRetry(signal, fn, additionalRetryStatuses = [], retries = 3) {
   let lastError;
   for (let i = 0; i < retries; i++) {
     if (signal?.aborted) throw createParentAbortError(signal);
@@ -37,7 +38,7 @@ async function withRetry(signal, fn, retries = 3) {
       const isRetryable =
         err.status === 429 ||
         err.status === 529 ||
-        err.status === 500 ||
+        additionalRetryStatuses.includes(err.status) ||
         err.status === 503 ||
         err.status === 502 ||
         err.status === 504 ||
@@ -564,7 +565,7 @@ async function processAnthropic(settings, model, systemPrompt, userMessage, pare
 
       if (response.stop_reason === 'max_tokens') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
-    }),
+    }, [500]),
     ms: 60000,
     parentSignal,
   });
@@ -602,7 +603,7 @@ async function processOpenAI(settings, model, systemPrompt, userMessage, parentS
 
       if (response.choices[0].finish_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
-    }),
+    }, [500]),
     ms: 60000,
     parentSignal,
   });
@@ -645,7 +646,7 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
 
       if (response.choices[0].finish_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
-    }),
+    }, [500]),
     ms: 60000,
     parentSignal,
   });
