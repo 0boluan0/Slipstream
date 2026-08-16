@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3 — 2026-08-16
+
+### DeepSeek analysis works reliably
+
+- Disable DeepSeek V4's default thinking mode so complete, source-backed results finish within Slipstream's processing window instead of timing out before the final answer.
+
 ## 1.0.2 — 2026-08-15
 
 ### First use works as intended
