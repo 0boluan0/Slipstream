@@ -52,6 +52,12 @@ const mediaRequests = Object.freeze({
   ]),
 });
 
+const mediaStyleSentinels = Object.freeze({
+  normal: '#d8d3ca',
+  more: '#404644',
+  forced: 'canvastext',
+});
+
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -641,6 +647,41 @@ async function settleAnimationFrames(webContents) {
   );
 }
 
+async function settleMediaStyle(webContents, state) {
+  const expected = {
+    prefersContrastMore: state === 'more',
+    prefersContrastNoPreference: state !== 'more',
+    forcedColorsActive: state === 'forced',
+    borderSecondary: mediaStyleSentinels[state],
+  };
+  await webContents.executeJavaScript(`new Promise((resolve, reject) => {
+    const expected = ${JSON.stringify(expected)};
+    const deadline = performance.now() + 5000;
+    let stableFrames = 0;
+    const sample = () => {
+      const actual = {
+        prefersContrastMore: matchMedia('(prefers-contrast: more)').matches,
+        prefersContrastNoPreference: matchMedia('(prefers-contrast: no-preference)').matches,
+        forcedColorsActive: matchMedia('(forced-colors: active)').matches,
+        borderSecondary: getComputedStyle(document.documentElement)
+          .getPropertyValue('--border-secondary').trim().toLowerCase(),
+      };
+      const ready = Object.keys(expected).every((key) => actual[key] === expected[key]);
+      stableFrames = ready ? stableFrames + 1 : 0;
+      if (stableFrames >= 2) {
+        resolve(true);
+        return;
+      }
+      if (performance.now() >= deadline) {
+        reject(new Error('Media style did not settle: ' + JSON.stringify({ expected, actual })));
+        return;
+      }
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  })`, true);
+}
+
 async function setMediaState(webContents, state) {
   await webContents.debugger.sendCommand('Emulation.setEmulatedMedia', {
     media: '',
@@ -651,7 +692,7 @@ async function setMediaState(webContents, state) {
     media: '',
     features: mediaRequests[state].map((feature) => ({ ...feature })),
   });
-  await settleAnimationFrames(webContents);
+  await settleMediaStyle(webContents, state);
 }
 
 async function sendNativeTab(webContents, reverse = false) {
