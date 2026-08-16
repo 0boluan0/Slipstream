@@ -82,7 +82,44 @@ assert.ok(
 assert.match(mainSource, /async function captureScreenshotTask/,
   'button and F2 must converge on a single capture task');
 assert.match(permissionDiagnosticSource, /systemPreferences\.getMediaAccessStatus\('screen'\)/,
-  'the read-only diagnostic must use the same native macOS permission status as capture preflight');
+  'the read-only diagnostic must report the native macOS permission status without prompting');
+const screenRecordingRequestSource = mainSource.match(
+  /async function requestScreenRecordingAccessForCapture\(\) \{[\s\S]*?\n\}\n\n\/\/ --------------- State/,
+)?.[0] || '';
+assert.ok(screenRecordingRequestSource,
+  'main must own the user-initiated screen recording request');
+assert.match(mainSource, /\{[^}]*desktopCapturer[^}]*\}\s*=\s*require\('electron'\)/,
+  'screen recording permission must be requested by the signed Electron app');
+assert.match(screenRecordingRequestSource,
+  /if \(process\.platform !== 'darwin' \|\| permissionStatus === 'granted'\)[\s\S]*?granted: true/,
+  'non-macOS and already-authorized capture must skip a redundant native request');
+assert.match(screenRecordingRequestSource,
+  /if \(permissionStatus === 'restricted'\)[\s\S]*?granted: false/,
+  'a system-restricted device must fail without opening another prompt');
+const screenRecordingRequestPreflight = screenRecordingRequestSource.slice(
+  0,
+  screenRecordingRequestSource.indexOf('desktopCapturer.getSources'),
+);
+assert.doesNotMatch(screenRecordingRequestPreflight,
+  /permissionStatus === 'denied'|isScreenRecordingAccessDenied\(permissionStatus\)|not-determined/,
+  'macOS denied and not-determined states must reach the signed-app request');
+assert.match(screenRecordingRequestSource,
+  /desktopCapturer\.getSources\(\{[\s\S]*?types: \['screen'\],[\s\S]*?thumbnailSize: \{ width: 0, height: 0 \},[\s\S]*?fetchWindowIcons: false/,
+  'a user capture request must ask through Electron without reading an unselected screen thumbnail');
+assert.equal((mainSource.match(/desktopCapturer\.getSources/g) || []).length, 1,
+  'native screen access must only be requested from the explicit capture preflight');
+const captureTaskSource = mainSource.match(
+  /async function captureScreenshotTask\(senderId\) \{[\s\S]*?\n\}\n\n\/\/ --------------- Tray/,
+)?.[0] || '';
+assert.ok(captureTaskSource, 'the screenshot task must remain statically inspectable');
+assert.match(captureTaskSource,
+  /screenRecordingAccess = await requestScreenRecordingAccessForCapture\(\)[\s\S]*?!screenRecordingAccess\.granted[\s\S]*?SCREENSHOT_PERMISSION_DENIED/,
+  'a rejected native permission request must return the dedicated recovery error');
+assert.ok(
+  captureTaskSource.indexOf('requestScreenRecordingAccessForCapture()')
+    < captureTaskSource.indexOf('hideWindowForCapture()'),
+  'the permission prompt must run while the app is still visible, before native selection',
+);
 assert.match(mainSource, /mainWindow\.hide\(\)[\s\S]*?captureSelectedRegion/,
   'the always-on-top window must be hidden before native selection starts');
 assert.match(mainSource, /finally \{[\s\S]*?restoreWindowAfterCapture/,
@@ -99,10 +136,8 @@ assert.match(mainSource, /backgroundTaskHandoffRegistry\.claim\(\{[\s\S]*?source
   'matching OCR analysis must claim the same background task identity');
 assert.match(mainSource, /if \(backgroundTask && !handoffArmed\) finishBackgroundTask\(backgroundTask, taskOutcome\)/,
   'capture failures and cancellation must settle, while armed OCR success waits for analysis');
-assert.doesNotMatch(mainSource, /const initialPermissionStatus = getScreenRecordingAccessStatus\(\)[\s\S]*?SCREENSHOT_PERMISSION_DENIED[\s\S]*?windowState = await hideWindowForCapture\(\)/,
-  'a first screenshot request must reach native capture so macOS can register and prompt for Slipstream');
 assert.match(mainSource, /catch \(error\) \{[\s\S]*?getScreenRecordingAccessStatus\(\)[\s\S]*?SCREENSHOT_PERMISSION_DENIED[\s\S]*?error\?\.isCancellation/,
-  'a denial that occurs during the macOS prompt must not be mistaken for ordinary selection cancellation');
+  'a native capture permission failure must not be mistaken for ordinary selection cancellation');
 assert.match(mainSource, /const SCREEN_RECORDING_SETTINGS_URL = 'x-apple\.systempreferences:com\.apple\.preference\.security\?Privacy_ScreenCapture'/,
   'screen recording recovery must target the fixed macOS privacy pane');
 assert.match(mainSource, /ipcMain\.handle\(IPC_CHANNELS\.SYSTEM_OPEN_SCREEN_RECORDING_SETTINGS[\s\S]*?assertTrustedIpc\(event\)[\s\S]*?shell\.openExternal\(SCREEN_RECORDING_SETTINGS_URL/,
