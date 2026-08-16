@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, ipcMain, screen, clipboard, dialog, shell, systemPreferences, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, ipcMain, screen, clipboard, dialog, shell, systemPreferences, desktopCapturer, globalShortcut } = require('electron');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
@@ -352,6 +352,31 @@ function getScreenRecordingAccessStatus() {
 
 function isScreenRecordingAccessDenied(status) {
   return SCREEN_RECORDING_BLOCKED_STATUSES.has(status);
+}
+
+async function requestScreenRecordingAccessForCapture() {
+  const permissionStatus = getScreenRecordingAccessStatus();
+  if (process.platform !== 'darwin' || permissionStatus === 'granted') {
+    return { granted: true, permissionStatus };
+  }
+  if (permissionStatus === 'restricted') {
+    return { granted: false, permissionStatus };
+  }
+  // Electron reports both first use and an earlier rejection as `denied` on macOS.
+  // Asking through desktopCapturer makes the request belong to the signed app.
+  try {
+    await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 0, height: 0 },
+      fetchWindowIcons: false,
+    });
+    return { granted: true, permissionStatus: 'granted' };
+  } catch {
+    return {
+      granted: false,
+      permissionStatus: getScreenRecordingAccessStatus(),
+    };
+  }
 }
 
 // --------------- State ---------------
@@ -1598,6 +1623,12 @@ async function captureScreenshotTask(senderId) {
   captureRequestSettlement = settlement;
   try {
     backgroundTask = beginBackgroundTask('capture');
+    const screenRecordingAccess = await requestScreenRecordingAccessForCapture();
+    if (!screenRecordingAccess.granted) {
+      return userError(USER_ERRORS.SCREENSHOT_PERMISSION_DENIED, {
+        permissionStatus: screenRecordingAccess.permissionStatus,
+      });
+    }
     windowState = await hideWindowForCapture();
     imagePath = await ScreenshotService.captureSelectedRegion(undefined, { signal: controller.signal });
     restoreWindowAfterCapture(windowState);
