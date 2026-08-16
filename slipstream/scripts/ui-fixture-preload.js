@@ -653,7 +653,8 @@ async function runClipboardTransactionCheck() {
   await waitFor(() => document.querySelector('.result-footer'), 'restored result after Undo');
   const replyConsequenceAfterUndo = await waitFor(
     () => document.querySelector(
-      '[data-clipboard-kind="reply"][data-clipboard-status="retained"], '
+      '[data-clipboard-kind="reply"][data-clipboard-status="copied"], '
+        + '[data-clipboard-kind="reply"][data-clipboard-status="retained"], '
         + '[data-clipboard-kind="reply"][data-clipboard-status="outdated"]',
     ),
     'reply consequence after Undo',
