@@ -72,8 +72,8 @@ function isNonEmptyText(value) {
 function hasSubmitMeaning(value) {
   const text = value || '';
   return /(?:\u63d0\u4ea4|\u9012\u4ea4|\u4e0a\u4ea4|\u4ea4\u4ed8|\u5448\u4ea4|\u9001\u4ea4|\u4e0a\u4f20|\u4e0a\u50b3|submit|upload|deliver|file)/iu.test(text)
-    && !/(?:do\s+not|don't|cannot|can't|could\s+not|must\s+not|should\s+not|not\s+to|unable\s+to|failed\s+to|did\s+not|never|avoid(?:\s+\w+){0,3}|refrain\s+from)\s+[^.!?]{0,40}(?:submit|upload|deliver|file)/iu.test(text)
-    && !/(?:\u4e0d\u8981|\u4e0d\u5f97|\u4e0d\u53ef|\u65e0\u9700|\u4e0d\u5fc5|\u4e0d\u80fd|\u65e0\u6cd5|\u7121\u6cd5|\u672a\u80fd|\u6ca1\u80fd|\u6c92\u80fd|\u5207\u52ff|\u52ff|\u522b)\s*[^\uff0c\u3002\uff1b;]{0,20}(?:\u63d0\u4ea4|\u9012\u4ea4|\u4e0a\u4ea4|\u4ea4\u4ed8|\u5448\u4ea4|\u9001\u4ea4|\u4e0a\u4f20|\u4e0a\u50b3)/u.test(text);
+    && !/(?:do\s+not|don't|cannot|can't|could\s+not|must\s+not|should\s+not|not\s+to|not\s+yet|unable\s+to|failed\s+to|did\s+not|has\s+not|have\s+not|had\s+not|never|avoid|refrain\s+from|not\s+required|not\s+necessary|optional)/iu.test(text)
+    && !/(?:\u4e0d\u8981|\u4e0d\u5f97|\u4e0d\u53ef|\u65e0\u9700|\u7121\u9700|\u4e0d\u5fc5|\u4e0d\u80fd|\u65e0\u6cd5|\u7121\u6cd5|\u672a\u80fd|\u6ca1\u80fd|\u6c92\u80fd|\u5c1a\u672a|\u8fd8\u672a|\u9084\u672a|\u8fd8\u6ca1\u6709|\u9084\u6c92\u6709|\u8fd8\u6ca1|\u9084\u6c92|\u6ca1\u6709|\u6c92\u6709|\u5207\u52ff|\u52ff|\u522b|\u5e76\u975e\u5fc5\u9700|\u4e26\u975e\u5fc5\u9700|\u975e\u5fc5\u9700|\u975e\u5fc5\u8981|\u53ef\u9009|\u53ef\u9078|\u672a(?:\u63d0\u4ea4|\u9012\u4ea4|\u4e0a\u4ea4|\u4ea4\u4ed8|\u5448\u4ea4|\u9001\u4ea4|\u4e0a\u4f20|\u4e0a\u50b3|\u901a\u8fc7|\u901a\u904e|\u6210\u529f|\u5b8c\u6210))/u.test(text);
 }
 
 function hasReplyMeaning(value) {
@@ -159,13 +159,16 @@ function hasDeadlineMeaning(value) {
 }
 
 function hasRepresentativeMaterialName(value) {
-  const text = typeof value === 'string' ? value.trim() : '';
-  return text.length > 0
-    && text.length <= 80
-    && text.toLowerCase().includes('wren-7')
-    && /(?:\b(?:intake\s+)?form\b|\u8868\u683c|\u8868\u5355|\u8868\u55ae|\u7533\u8bf7\u8868|\u7533\u8acb\u8868)/iu.test(text)
-    && /(?:\bsigned\b|\u5df2(?:\u7ecf|\u7d93)?(?:\u7b7e\u7f72|\u7b7e\u540d|\u7b7e\u5b57|\u7c3d\u7f72|\u7c3d\u540d|\u7c3d\u5b57)|(?:\u7b7e\u7f72|\u7b7e\u540d|\u7b7e\u5b57|\u7c3d\u7f72|\u7c3d\u540d|\u7c3d\u5b57)(?:\u540e|\u5f8c|\u5b8c\u6210))/iu.test(text)
-    && !/not(?:\s+yet)?\s+signed/iu.test(text);
+  const text = typeof value === 'string' ? value.trim().replace(/\s+/gu, ' ') : '';
+  const english = text.toLowerCase();
+  if ([
+    'signed wren-7 intake form',
+    'the signed wren-7 intake form',
+    'fully signed wren-7 intake form',
+    'signed copy of the wren-7 intake form',
+    'wren-7 intake form (signed)',
+  ].includes(english)) return true;
+  return /^(?:(?:\u5df2(?:\u7ecf|\u7d93)?(?:\u7b7e\u7f72|\u7b7e\u540d|\u7b7e\u5b57|\u7c3d\u7f72|\u7c3d\u540d|\u7c3d\u5b57)|(?:\u7b7e\u7f72|\u7b7e\u540d|\u7b7e\u5b57|\u7c3d\u7f72|\u7c3d\u540d|\u7c3d\u5b57)(?:\u540e|\u5f8c|\u5b8c\u6210)|\u7b7e\u597d|\u7c3d\u597d|(?:\u586b\u59a5|\u586b\u5199\u5b8c\u6210|\u586b\u5beb\u5b8c\u6210)(?:\u5e76|\u4e26)?(?:\u7b7e\u7f72|\u7b7e\u540d|\u7b7e\u5b57|\u7c3d\u7f72|\u7c3d\u540d|\u7c3d\u5b57))\u7684?\s*Wren-7 Intake Form|Wren-7 Intake Form\s*[\uff08(](?:\u5df2(?:\u7ecf|\u7d93)?(?:\u7b7e\u7f72|\u7b7e\u540d|\u7b7e\u5b57|\u7c3d\u7f72|\u7c3d\u540d|\u7c3d\u5b57)|\u7b7e\u7f72\u5b8c\u6210|\u7c3d\u7f72\u5b8c\u6210)[\uff09)])$/u.test(text);
 }
 
 function hasTermExplanationMeaning(term, expectedSurface) {
