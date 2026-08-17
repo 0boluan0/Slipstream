@@ -737,6 +737,17 @@ async function main() {
   assert.equal(isRepresentativeStructuredBrief(chineseMaterialValue), true,
     'the canonical Chinese material label required by task review must satisfy readiness');
 
+  for (const validMaterialName of [
+    '签好的 Wren-7 Intake Form',
+    '填妥并签署的 Wren-7 Intake Form',
+    'Wren-7 Intake Form（已签署）',
+  ]) {
+    const validMaterial = structuredClone(representativeBrief);
+    validMaterial.materials[0].name = validMaterialName;
+    assert.equal(isRepresentativeStructuredBrief(validMaterial), true,
+      'a concise completed-signature material name must satisfy readiness');
+  }
+
   const unsignedMaterialValue = structuredClone(representativeBrief);
   unsignedMaterialValue.materials[0].name = 'Wren-7 Intake Form';
   assert.equal(isRepresentativeStructuredBrief(unsignedMaterialValue), false,
@@ -761,6 +772,34 @@ async function main() {
   optionalChineseSignatureMaterialValue.materials[0].name = '不需要签名的 Wren-7 Intake Form';
   assert.equal(isRepresentativeStructuredBrief(optionalChineseSignatureMaterialValue), false,
     'a Chinese signature mention must describe a completed signature to pass');
+
+  const contradictedSignedMaterialValue = structuredClone(representativeBrief);
+  contradictedSignedMaterialValue.materials[0].name =
+    '已签署的 Wren-7 Intake Form（其实不需要签名）';
+  assert.equal(isRepresentativeStructuredBrief(contradictedSignedMaterialValue), false,
+    'a completed-signature phrase must not hide a contradictory requirement');
+
+  const wrongFormIdentifier = structuredClone(representativeBrief);
+  wrongFormIdentifier.materials[0].name = '已签署的 Wren-7 Other Form';
+  assert.equal(isRepresentativeStructuredBrief(wrongFormIdentifier), false,
+    'the representative material must retain the complete source form identifier');
+
+  const uploadSentenceAsMaterial = structuredClone(representativeBrief);
+  uploadSentenceAsMaterial.materials[0].name = '请上传已签署的 Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(uploadSentenceAsMaterial), false,
+    'an action sentence must not masquerade as a material name');
+
+  for (const expandedMaterialName of [
+    '已签署的 Wren-7 Intake Form（签名可选）',
+    'signed Wren-7 Intake Form (signature is optional)',
+    'signed Wren-7 Intake Form and passport',
+    '已签署的 Wren-7 Intake Form 和护照',
+  ]) {
+    const expandedMaterial = structuredClone(representativeBrief);
+    expandedMaterial.materials[0].name = expandedMaterialName;
+    assert.equal(isRepresentativeStructuredBrief(expandedMaterial), false,
+      'the fixed material check must reject optional or appended requirements');
+  }
 
   const decoyMaterialValue = structuredClone(representativeBrief);
   decoyMaterialValue.materials[0].name = 'signed Wren-7 platform';
@@ -798,6 +837,23 @@ async function main() {
     'Unable to upload the signed Wren-7 Intake Form through LanternGate';
   assert.equal(isRepresentativeStructuredBrief(unableEnglishUploadAction), false,
     'an English inability statement must not satisfy the required action');
+
+  for (const incompleteUpload of [
+    '尚未通过 LanternGate 上传已签署的 Wren-7 Intake Form',
+    '还没有通过 LanternGate 上传已签署的 Wren-7 Intake Form',
+    '还没通过 LanternGate 上传已签署的 Wren-7 Intake Form',
+    '未通过 LanternGate 上传已签署的 Wren-7 Intake Form',
+    '未上传已签署的 Wren-7 Intake Form 至 LanternGate',
+    '尚未将已签署的 Wren-7 Intake Form 上传至 LanternGate',
+    '没有通过 LanternGate 上传已签署的 Wren-7 Intake Form',
+    '通过 LanternGate 上传已签署的 Wren-7 Intake Form 并非必需',
+    'Has not yet uploaded the signed Wren-7 Intake Form through LanternGate',
+  ]) {
+    const incompleteUploadAction = structuredClone(representativeBrief);
+    incompleteUploadAction.nextSteps[0].action = incompleteUpload;
+    assert.equal(isRepresentativeStructuredBrief(incompleteUploadAction), false,
+      'an incomplete-upload status must not satisfy the required action');
+  }
 
   const negatedSubmitAction = structuredClone(representativeBrief);
   negatedSubmitAction.nextSteps[0].action = 'Do not submit the Wren-7 Intake Form through LanternGate';
