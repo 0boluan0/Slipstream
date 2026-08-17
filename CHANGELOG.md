@@ -7,6 +7,7 @@
 - Keep completed confirmations, optional controls, and institution-side work out of the user's action list.
 - Preserve explicit required and conditional user tasks, with their exact source evidence.
 - Recheck proposed tasks, materials, and deadlines with the same configured model before showing them as unfinished work; online providers may charge for this second call.
+- Keep DeepSeek's reviewed items bound to their original claims, and accept equivalent Chinese upload and material wording during setup checks.
 - Show an honest no-action result without mislabeling the analysis as basic translation.
 
 ## 1.0.4 — 2026-08-16
