@@ -13,7 +13,7 @@
   <p>
     <img alt="macOS 12 or later" src="https://img.shields.io/badge/macOS-12%2B-222222?logo=apple">
     <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-2F6FEB"></a>
-    <img alt="No telemetry" src="https://img.shields.io/badge/Telemetry-None-087F6D">
+    <img alt="No product analytics" src="https://img.shields.io/badge/Product%20analytics-None-087F6D">
   </p>
 </div>
 
@@ -60,20 +60,22 @@ Slipstream supports **macOS 12 or later**.
 
 | Your Mac | Download |
 | --- | --- |
-| Apple silicon — M1, M2, M3, M4, and later | [Slipstream 1.0.5 for arm64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.5/Slipstream-1.0.5-arm64.dmg) |
-| Intel processor | [Slipstream 1.0.5 for x64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.5/Slipstream-1.0.5-x64.dmg) |
+| Apple silicon — M1, M2, M3, M4, and later | [Slipstream 1.0.6 for arm64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.6/Slipstream-1.0.6-arm64.dmg) |
+| Intel processor | [Slipstream 1.0.6 for x64](https://github.com/0boluan0/Slipstream/releases/download/v1.0.6/Slipstream-1.0.6-x64.dmg) |
 
 1. Open the downloaded DMG.
 2. Drag **Slipstream** into **Applications**.
 3. Launch it normally. The app is signed with an Apple Developer ID and notarized by Apple.
 4. Allow Screen Recording when macOS asks if you want to capture text from the screen. Pasting and copied-text capture do not need that permission.
 
+Version 1.0.6 is the first version that can update inside Slipstream. It checks the public GitHub release feed after launch, asks before downloading, and asks again before restarting to install. Earlier versions need this one manual installation first.
+
 Not sure which Mac you have? Open ** → About This Mac**. Choose `arm64` for an Apple M-series chip and `x64` for Intel.
 
 ## Privacy you can see
 
 - Screenshot text recognition uses Apple Vision and runs on your Mac.
-- Slipstream keeps no history of your original cases and collects no telemetry.
+- Slipstream keeps no history of your original cases and collects no product analytics.
 - The destination of a full analysis is shown before submission; local Ollama can keep the source on your Mac.
 - If a model proposes tasks, materials, or deadlines, full analysis may send the same source and those claims to the same configured service once more for a short accuracy review. An online provider may charge for both calls.
 - Official-source lookup asks before sending a minimized query or opening a candidate page. Finding a page is not presented as proof by itself.

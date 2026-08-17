@@ -188,6 +188,6 @@ To inspect the current macOS Screen Recording permission without requesting or c
 
 ## Release
 
-`npm run release:unsigned` produces ad-hoc artifacts for local smoke testing only. Those builds identify themselves in Settings and the macOS About panel as `本地测试包 · 临时签名 · 未公证`. Public distribution requires a Developer ID Application identity and Apple notarization credentials, then `npm run release:signed`. The signed gate verifies both arm64 and x64 ZIP/DMG artifacts, packaged identity/signature agreement, hardened runtime, stapling, and Gatekeeper acceptance; a Developer ID label alone never claims those distribution checks passed.
+`npm run release:unsigned` produces ad-hoc artifacts for local smoke testing only. Those builds identify themselves in Settings and the macOS About panel as `本地测试包 · 临时签名 · 未公证` and do not contact the update feed. Public distribution requires a Developer ID Application identity and Apple notarization credentials, then `npm run release:signed`. The signed gate verifies both arm64 and x64 ZIP/DMG artifacts, update metadata and ZIP blockmaps, packaged identity/signature agreement, hardened runtime, stapling, and Gatekeeper acceptance; a Developer ID label alone never claims those distribution checks passed.
 
-Slipstream collects no telemetry. See the repository's `docs/PRIVACY.md`, `SECURITY.md`, and MIT `LICENSE` for details.
+Slipstream has no accounts, advertising, or product analytics. See the repository's `docs/PRIVACY.md`, `SECURITY.md`, and MIT `LICENSE` for the automatic-update network boundary and other details.

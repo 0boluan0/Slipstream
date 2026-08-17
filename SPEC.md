@@ -158,9 +158,10 @@ V1 is release-ready when a new user can:
 8. Distinguish model processing completion from the user's self-reported task completion, and leave a fully marked task through an explicit reversible action.
 9. Complete the primary flow without hidden waits, silent failure, or fabricated verification.
 10. Keep normal persistent runtime blocked when startup settings cannot be validated or migrated, then recover through safe retry or an explicitly confirmed local archive-and-fresh path without modifying the original on failure.
-11. Enable full analysis only after metadata and the fixed fictional prompt-v2 probe pass the production parser/validator and the additional source-grounding assertions.
+11. Enable full analysis only after metadata and the fixed fictional prompt-v4 probe pass the production parser/validator, independent task review when claims exist, and the additional source-grounding assertions.
 12. Change a custom provider's origin without ever persisting or sending the credential that belonged to the previous origin; same-origin path changes may retain it.
 13. Keep every destructive capture choice truthful after it is committed, and never replay a failed full-analysis activation after its validated processing configuration changes.
 14. Classify custom and Ollama endpoints consistently across Settings, validation, formal transport, task/result provenance, recovery, cancellation, quit, tray, and support diagnostics without retaining an endpoint URL, credential, arbitrary model marker, or source text in those snapshots or logs; fail before DNS/request on unsafe Ollama values and bound custom responses before parsing.
+15. Let signed public builds check only the fixed public GitHub release feed, download only signed architecture-matched update archives, and enter restart-to-install through the same task, draft, clipboard, and cleanup protections as a normal quit. Update traffic must never contain task text, screenshots, settings, service addresses, or credentials.
 
-Public macOS distribution additionally requires reproducible checks, Developer ID signing, Apple notarization, stapling, and Gatekeeper acceptance for both arm64 and x64 artifacts.
+Public macOS distribution additionally requires reproducible checks, Developer ID signing, Apple notarization, stapling, Gatekeeper acceptance for both arm64 and x64 artifacts, and published update metadata that matches both signed ZIP payloads and blockmaps.

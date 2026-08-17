@@ -80,8 +80,11 @@ const { createVerificationApprovalRegistry } = require('./verification/approval-
 const { redactSettingsForRenderer } = require('./safe-settings');
 const { resolvePublicAddresses } = require('./verification/url-safety');
 const { createSupportDiagnostics } = require('./support-diagnostics');
+const { autoUpdater } = require('electron-updater');
+const { createAutoUpdateManager } = require('./auto-update');
 const appPackageMetadata = require('../../package.json');
 const {
+  BUILD_IDENTITIES,
   createAboutPanelOptions,
   resolveBuildIdentity,
 } = require('./build-identity');
@@ -420,6 +423,8 @@ let quitCleanupStarted = false;
 let nativeResidueQuitDialogOpen = false;
 let rendererRecoveryReloadTimer = null;
 let rendererRecoveryReloadStarted = false;
+let autoUpdateManager = null;
+let updateInstallRequested = false;
 let shortcutRegistrationStatus = createShortcutRegistrationStatus();
 let persistentRuntimeActive = false;
 let shortcutsRuntimeActivated = false;
@@ -611,6 +616,32 @@ function requestAppSettings(_menuItem, _browserWindow, event) {
   sendPendingSettingsRequest(senderId);
 }
 
+function requestAppUpdateCheck() {
+  void autoUpdateManager?.checkForUpdates();
+}
+
+function requestUpdateInstall() {
+  if (!autoUpdateManager) return;
+  updateInstallRequested = true;
+  requestAppQuit();
+}
+
+function cancelUpdateInstallRequest() {
+  updateInstallRequested = false;
+}
+
+function showUpdateMessageBox(options) {
+  const targetWindow = mainWindow
+    && !mainWindow.isDestroyed()
+    && mainWindow.isVisible()
+    && !mainWindow.isMinimized()
+    ? mainWindow
+    : null;
+  return targetWindow
+    ? dialog.showMessageBox(targetWindow, options)
+    : dialog.showMessageBox(options);
+}
+
 function performConfirmedQuit({ defer = false } = {}) {
   if (app.isQuitting) return;
   // Enter the committed-quit state before yielding so no later clipboard
@@ -622,8 +653,15 @@ function performConfirmedQuit({ defer = false } = {}) {
   pendingOcrReviewRegistry.clear();
   clipboardResidueRegistry.clearAll();
   uiFixtureRuntime?.recordCommandQSafeExitLifecycle?.({ confirmedQuitCount: 1 });
-  if (defer) setImmediate(() => app.quit());
-  else app.quit();
+  const finishQuit = () => {
+    if (updateInstallRequested) {
+      updateInstallRequested = false;
+      if (autoUpdateManager?.installUpdate()) return;
+    }
+    app.quit();
+  };
+  if (defer) setImmediate(finishQuit);
+  else finishQuit();
 }
 
 function clearPendingRendererRecoveryReload() {
@@ -672,10 +710,12 @@ function requestNativeResidueAwareQuit(targetWindow, consequenceSnapshot) {
       performConfirmedQuit();
       return;
     }
+    cancelUpdateInstallRequest();
     reloadAfterNativeResidueQuitCancel(targetWindow);
   }).catch(() => {
     nativeResidueQuitDialogOpen = false;
     // A dialog failure is not consent to leave clipboard contents behind.
+    cancelUpdateInstallRequest();
     reloadAfterNativeResidueQuitCancel(targetWindow);
   });
 }
@@ -747,6 +787,7 @@ function resetRendererOwnedWorkAfterCrash(senderId) {
   // recovered UI cannot imply that the system clipboard is safe.
   clipboardResidueRegistry.markInterrupted(senderId);
   quitRequestRegistry.clearSender(senderId);
+  cancelUpdateInstallRequest();
   termImportGenerationBySender.set(
     senderId,
     (termImportGenerationBySender.get(senderId) || 0) + 1,
@@ -822,6 +863,13 @@ function createApplicationMenuTemplate() {
       label: app.name,
       submenu: [
         { role: 'about' },
+        {
+          id: 'app-check-for-updates',
+          label: '检查更新…',
+          enabled: false,
+          click: requestAppUpdateCheck,
+        },
+        { type: 'separator' },
         {
           id: 'app-settings',
           label: '设置…',
@@ -1488,6 +1536,7 @@ function createMainWindow(settings = getStartupSettings()) {
     }
     verificationAbortController?.abort();
     quitRequestRegistry.clearSender(rendererSenderId);
+    if (!app.isQuitting) cancelUpdateInstallRequest();
     settingsRequestRegistry.clearSender(rendererSenderId);
     rendererQuitRiskKnown = false;
     rendererHasQuitRisk = true;
@@ -1944,6 +1993,7 @@ function registerAppQuitIpcHandlers() {
       };
     }
     const decision = quitRequestRegistry.decide(event.sender.id, payload);
+    if (decision.status !== 'confirmed') cancelUpdateInstallRequest();
     if (decision.status === 'cancelled') {
       uiFixtureRuntime?.recordCommandQSafeExitLifecycle?.({ cancelDecisionCount: 1 });
     }
@@ -2745,6 +2795,15 @@ app.on('ready', () => {
   if (!uiFixtureMode.enabled) registerIpcHandlers();
   createMainWindow(settings);
   if (uiFixtureMode.enabled) return;
+  autoUpdateManager = createAutoUpdateManager({
+    updater: autoUpdater,
+    enabled: app.isPackaged && runtimeBuildIdentity === BUILD_IDENTITIES.DEVELOPER_ID,
+    getMenuItem: () => Menu.getApplicationMenu()?.getMenuItemById('app-check-for-updates'),
+    onInstallFailed: () => app.quit(),
+    onInstallRequested: requestUpdateInstall,
+    showMessageBox: showUpdateMessageBox,
+  });
+  autoUpdateManager.start();
   if (storageStatus.state === 'ready') activatePersistentRuntime(settings);
 
   // Send settings to renderer once ready (strip sensitive keys)

@@ -13,7 +13,7 @@
   <p>
     <img alt="需要 macOS 12 或以上版本" src="https://img.shields.io/badge/macOS-12%2B-222222?logo=apple">
     <a href="./LICENSE"><img alt="MIT 许可证" src="https://img.shields.io/badge/许可证-MIT-2F6FEB"></a>
-    <img alt="不收集遥测" src="https://img.shields.io/badge/遥测-不收集-087F6D">
+    <img alt="不收集产品分析" src="https://img.shields.io/badge/产品分析-不收集-087F6D">
   </p>
 </div>
 
@@ -60,20 +60,22 @@ Slipstream 支持 **macOS 12 或以上版本**。
 
 | 你的 Mac | 下载 |
 | --- | --- |
-| Apple 芯片——M1、M2、M3、M4 及更新型号 | [下载 Slipstream 1.0.5 arm64 版](https://github.com/0boluan0/Slipstream/releases/download/v1.0.5/Slipstream-1.0.5-arm64.dmg) |
-| Intel 处理器 | [下载 Slipstream 1.0.5 x64 版](https://github.com/0boluan0/Slipstream/releases/download/v1.0.5/Slipstream-1.0.5-x64.dmg) |
+| Apple 芯片——M1、M2、M3、M4 及更新型号 | [下载 Slipstream 1.0.6 arm64 版](https://github.com/0boluan0/Slipstream/releases/download/v1.0.6/Slipstream-1.0.6-arm64.dmg) |
+| Intel 处理器 | [下载 Slipstream 1.0.6 x64 版](https://github.com/0boluan0/Slipstream/releases/download/v1.0.6/Slipstream-1.0.6-x64.dmg) |
 
 1. 打开下载好的 DMG。
 2. 把 **Slipstream** 拖进 **Applications（应用程序）**。
 3. 正常启动即可。应用已经使用 Apple Developer ID 签名，并通过 Apple 公证。
 4. 如果要从屏幕截图识别文字，请在 macOS 提示时允许“屏幕录制”。粘贴文字和读取已复制文字不需要这项权限。
 
+1.0.6 是首个支持软件内更新的版本。启动后会检查公开的 GitHub Release；下载前会询问，重启安装前也会再次询问。更早版本需要先手动安装这一次。
+
 不知道自己的 Mac 属于哪一种？打开 ** → 关于本机**。Apple M 系列芯片选择 `arm64`，Intel 处理器选择 `x64`。
 
 ## 隐私边界，事先讲清楚
 
 - 截图文字识别使用 Apple Vision，在你的 Mac 本地完成。
-- Slipstream 不建立原文历史，也不收集遥测数据。
+- Slipstream 不建立原文历史，也不收集产品分析数据。
 - 完整分析会在提交前显示处理位置；选择本机 Ollama 时，原文可以留在这台 Mac。
 - 如果模型提出行动、材料或截止日期，完整分析可能把同一原文和这些候选项再发送给同一个已配置服务，做一次短复核；在线服务可能对两次调用分别计费。
 - 查询官方资料前会先询问，只发送尽量精简的查询或候选页面；找到网页本身不会被包装成“已经证实”。
