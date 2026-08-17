@@ -341,6 +341,11 @@ function normalizeNextSteps(value, context) {
       context.warnings.add('INVALID_NEXT_STEP_DROPPED', '缺少动作说明的下一步已丢弃。');
       return;
     }
+    const requiredUserAction = candidate?.actor === 'user' && candidate?.mandatory === true;
+    const conditionalUserAction = candidate?.actor === 'user'
+      && candidate?.mandatory === false
+      && candidate?.urgency === 'when_triggered';
+    if (!requiredUserAction && !conditionalUserAction) return;
     const key = action.toLocaleLowerCase();
     if (seen.has(key)) return;
     const provenance = normalizeProvenance(candidate, {

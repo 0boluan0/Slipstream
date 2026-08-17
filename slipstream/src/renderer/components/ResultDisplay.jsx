@@ -40,6 +40,7 @@ import {
   getReplyDraftPlaceholders,
   getReplyProgressConsistency,
   hasExactGrounding,
+  isUserActionStep,
   isTranslationOnlyBrief,
   selectPrimaryDeadline,
   shouldOfferReply,
@@ -188,7 +189,7 @@ function normalizeBrief(brief, result, sourceText) {
     contexts: Array.isArray(base.contexts) ? base.contexts : [],
     deadlines: Array.isArray(base.deadlines) ? base.deadlines : [],
     materials: Array.isArray(base.materials) ? base.materials : [],
-    nextSteps: Array.isArray(base.nextSteps) ? base.nextSteps : [],
+    nextSteps: Array.isArray(base.nextSteps) ? base.nextSteps.filter(isUserActionStep) : [],
     verifications: Array.isArray(base.verifications) ? base.verifications : [],
     warnings: Array.isArray(base.warnings) ? base.warnings : [],
   };
@@ -1666,7 +1667,7 @@ export default function ResultDisplay({
             {actionGroups.length === 0 && (
               <div className="translation-only-state">
                 <BookOpen size={21} />
-                <div><strong>当前结果只有基础翻译</strong><p>未生成或推断行动路径，也没有添加缺少证据的彩色编号。</p></div>
+                <div><strong>未识别到需要继续完成的行动</strong><p>你仍可查看翻译、术语、材料、日期与流程解释，并结合左侧原文核对。</p></div>
               </div>
             )}
           </div>

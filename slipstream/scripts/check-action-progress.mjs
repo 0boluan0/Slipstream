@@ -22,8 +22,8 @@ const brief = {
   deadlines: [],
   materials: [],
   nextSteps: [
-    { id: 'prepare', action: '准备护照信息页', mandatory: true },
-    { id: 'submit', action: '提交材料', mandatory: true },
+    { id: 'prepare', action: '准备护照信息页', actor: 'user', urgency: 'now', mandatory: true },
+    { id: 'submit', action: '提交材料', actor: 'user', urgency: 'now', mandatory: true },
   ],
   warnings: [],
 };

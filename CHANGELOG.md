@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5 — 2026-08-17
+
+### Action lists stop at real unfinished work
+
+- Keep completed confirmations, optional controls, and institution-side work out of the user's action list.
+- Preserve explicit required and conditional user tasks, with their exact source evidence.
+- Show an honest no-action result without mislabeling the analysis as basic translation.
+
 ## 1.0.4 — 2026-08-16
 
 ### Model setup is clearer and failures are easier to recover from
