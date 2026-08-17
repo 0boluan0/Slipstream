@@ -12,7 +12,8 @@ const productName = pkg.build?.productName || pkg.name;
 const files = ['arm64', 'x64'].flatMap((arch) => [
   `${productName}-${pkg.version}-${arch}.dmg`,
   `${productName}-${pkg.version}-${arch}.zip`,
-]);
+  `${productName}-${pkg.version}-${arch}.zip.blockmap`,
+]).concat('latest-mac.yml');
 const releaseConflictCopies = findFileProviderConflictCopies(path.join(root, 'release'));
 
 if (releaseConflictCopies.length) {

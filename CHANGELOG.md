@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.6 — 2026-08-17
+
+### Updates stay inside Slipstream
+
+- Check the public GitHub release feed automatically after launch or manually from the Slipstream menu.
+- Download updates in the app, show progress in the macOS menu, and ask before restarting to install.
+- Keep restart-to-install behind the same draft, task, and clipboard exit protections as a normal quit.
+- Publish signed arm64 and Intel update archives with verified metadata and differential-download blockmaps.
+
 ## 1.0.5 — 2026-08-17
 
 ### Action lists stop at real unfinished work

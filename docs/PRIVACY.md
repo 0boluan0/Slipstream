@@ -1,6 +1,6 @@
 # Privacy and data flow
 
-Slipstream has no accounts, advertising, analytics, or telemetry.
+Slipstream has no accounts, advertising, or product analytics.
 
 ## Data that stays on the Mac
 
@@ -49,6 +49,8 @@ Slipstream offers no post-copy automatic clear action and the production preload
 Global-shortcut readiness contains only the configured accelerator text and whether macOS registered it. The shortcut recorder derives one canonical accelerator from the key combination being pressed and does not retain a keystroke history. Slipstream keeps the resulting status in application memory, shows it in Settings, and includes the same accelerator/boolean state in the preview-before-copy support summary. It does not contain clipboard text, screenshots, submitted source text, or credentials, and it is never sent automatically.
 
 ## Data that can leave the Mac
+
+A signed public build checks Slipstream's public GitHub release feed once after launch and when the user explicitly chooses **Check for Updates**. These HTTPS requests can reveal the IP address, app version, operating system, architecture, updater user agent, and a random persistent per-install update-staging identifier to GitHub. That identifier is created by the updater, stored in Slipstream's local application data, and used for staged rollouts; it is not derived from an account, task, source text, setting, service address, or API key. Update requests never include source text, screenshots, clipboard contents, saved terms, service addresses, settings, or API keys. Slipstream asks before downloading an update and again before restarting to install it; the downloaded ZIP and blockmap come from the same public GitHub Release and remain subject to macOS code-signature verification.
 
 Before submission, the capture panel shows the current processing destination beside the generate action at every supported window size. It states whether the full source stays on this Mac or is sent to the named online provider, separates model analysis from optional official-source lookup, and links directly to changing the processing method.
 

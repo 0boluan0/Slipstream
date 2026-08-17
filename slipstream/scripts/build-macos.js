@@ -2,7 +2,6 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { buildBlockMap } = require('app-builder-lib/out/targets/blockmap/blockmap');
 const { BUILD_IDENTITIES } = require('../src/main/build-identity');
 const {
   findFileProviderConflictCopies,
@@ -13,7 +12,7 @@ const root = path.join(__dirname, '..');
 const pkg = require('../package.json');
 const productName = pkg.build?.productName || pkg.name;
 const architectures = ['x64', 'arm64'];
-const extensions = ['dmg', 'dmg.blockmap', 'zip', 'zip.blockmap'];
+const extensions = ['dmg', 'zip', 'zip.blockmap'];
 const packagedInputDirectories = [
   'node_modules',
   'dist/renderer',
@@ -42,13 +41,16 @@ function createStagingDirectory() {
   return stagingDir;
 }
 
-function buildArguments(arch, signed, stagingDir) {
+function buildArguments(signed, stagingDir) {
   const buildIdentity = signed
     ? BUILD_IDENTITIES.DEVELOPER_ID
     : BUILD_IDENTITIES.LOCAL_ADHOC;
   const args = [
     '--mac',
-    `--${arch}`,
+    '--x64',
+    '--arm64',
+    '--publish',
+    'never',
     `-c.directories.output=${stagingDir}`,
     `-c.extraMetadata.slipstreamBuildIdentity=${buildIdentity}`,
   ];
@@ -65,9 +67,12 @@ function buildArguments(arch, signed, stagingDir) {
 }
 
 function artifactNames() {
-  return architectures.flatMap((arch) =>
-    extensions.map((extension) => `${productName}-${pkg.version}-${arch}.${extension}`)
-  );
+  return [
+    ...architectures.flatMap((arch) =>
+      extensions.map((extension) => `${productName}-${pkg.version}-${arch}.${extension}`)
+    ),
+    'latest-mac.yml',
+  ];
 }
 
 function notarizationArguments(dmgPath, env = process.env) {
@@ -161,7 +166,6 @@ async function notarizeDmgArtifacts(stagingDir, env = process.env) {
     }
     execFileSync('xcrun', ['stapler', 'staple', dmgPath], { env, stdio: 'inherit' });
     execFileSync('xcrun', ['stapler', 'validate', dmgPath], { env, stdio: 'inherit' });
-    await buildBlockMap(dmgPath, 'gzip', `${dmgPath}.blockmap`);
   }
 }
 
@@ -201,15 +205,13 @@ async function buildMacRelease({ signed = false } = {}) {
 
   console.log(`staging macOS release outside the synced workspace: ${stagingDir}`);
   try {
-    for (const arch of architectures) {
-      execFileSync(builder, buildArguments(arch, signed, stagingDir), {
-        cwd: root,
-        env,
-        stdio: 'inherit',
-      });
-      assertCleanPackagingInputs();
-      discardUnpackedApplication(stagingDir, arch);
-    }
+    execFileSync(builder, buildArguments(signed, stagingDir), {
+      cwd: root,
+      env,
+      stdio: 'inherit',
+    });
+    assertCleanPackagingInputs();
+    discardUnpackedApplications(stagingDir);
     if (signed) await notarizeDmgArtifacts(stagingDir, env);
     publishArtifacts(stagingDir);
     completed = true;

@@ -5,6 +5,7 @@ const pkg = require('../package.json');
 const { DebugLogger } = require('builder-util');
 const { validateConfiguration } = require('app-builder-lib/out/util/config/config');
 const {
+  artifactNames,
   buildArguments,
   createStagingDirectory,
   discardUnpackedApplications,
@@ -45,7 +46,28 @@ if (missing.length) {
   process.exit(1);
 }
 
+if (pkg.dependencies?.['electron-updater'] !== '6.8.9') {
+  console.error('electron-updater must remain a pinned production dependency');
+  process.exit(1);
+}
+
+const expectedPublishConfig = {
+  provider: 'github',
+  owner: '0boluan0',
+  repo: 'Slipstream',
+};
+if (JSON.stringify(pkg.build.publish) !== JSON.stringify(expectedPublishConfig)) {
+  console.error('macOS updates must use the public Slipstream GitHub release feed');
+  process.exit(1);
+}
+
+if (!pkg.build.mac.target.includes('zip')) {
+  console.error('macOS auto-update requires the ZIP target');
+  process.exit(1);
+}
+
 const expectedDmgConfig = {
+  writeUpdateInfo: false,
   title: 'Install Slipstream',
   background: 'dmg-background.png',
   iconSize: 128,
@@ -208,9 +230,32 @@ if (
   process.exit(1);
 }
 
-const adHocArguments = buildArguments('arm64', false, '/tmp/slipstream-check');
-const signedArguments = buildArguments('arm64', true, '/tmp/slipstream-check');
+const adHocArguments = buildArguments(false, '/tmp/slipstream-check');
+const signedArguments = buildArguments(true, '/tmp/slipstream-check');
 const buildIdentityArgumentPrefix = '-c.extraMetadata.slipstreamBuildIdentity=';
+
+for (const args of [adHocArguments, signedArguments]) {
+  for (const requiredArgument of ['--x64', '--arm64', '--publish', 'never']) {
+    if (args.filter((argument) => argument === requiredArgument).length !== 1) {
+      console.error(`one macOS build must produce both architectures without publishing: ${requiredArgument}`);
+      process.exit(1);
+    }
+  }
+}
+
+const expectedArtifacts = [
+  `Slipstream-${pkg.version}-x64.dmg`,
+  `Slipstream-${pkg.version}-x64.zip`,
+  `Slipstream-${pkg.version}-x64.zip.blockmap`,
+  `Slipstream-${pkg.version}-arm64.dmg`,
+  `Slipstream-${pkg.version}-arm64.zip`,
+  `Slipstream-${pkg.version}-arm64.zip.blockmap`,
+  'latest-mac.yml',
+];
+if (JSON.stringify(artifactNames().sort()) !== JSON.stringify(expectedArtifacts.sort())) {
+  console.error('release staging must publish only the two installers and ZIP update assets');
+  process.exit(1);
+}
 
 if (
   !adHocArguments.includes(`${buildIdentityArgumentPrefix}local-adhoc`)
@@ -317,7 +362,6 @@ const stagedDmgStepIndexes = [
   macBuildSource.indexOf("execFileSync('xcrun', notarizationArguments(dmgPath, env)"),
   macBuildSource.indexOf("['stapler', 'staple', dmgPath]"),
   macBuildSource.indexOf("['stapler', 'validate', dmgPath]"),
-  macBuildSource.indexOf("await buildBlockMap(dmgPath, 'gzip', `${dmgPath}.blockmap`)"),
 ];
 const stagedNotarizationIndex = macBuildSource.lastIndexOf(
   'if (signed) await notarizeDmgArtifacts(stagingDir, env);',
@@ -332,7 +376,7 @@ if (
   || stagedNotarizationIndex > artifactPublishIndex
 ) {
   console.error(
-    'signed DMGs must be signed, notarized, stapled, validated, and re-blockmapped before publishing',
+    'signed DMGs must be signed, notarized, stapled, and validated before publishing',
   );
   process.exit(1);
 }
