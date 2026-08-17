@@ -21,19 +21,21 @@ Security and review rules:
 - Judge the source wording, not the candidate's actor, mandatory, urgency, requirement, or deadline labels.
 - Accept a next step only when the source explicitly requires the user to perform work that is still unfinished.
 - For every accepted next step, return kind "required" for an unconditional requirement or "conditional" only when the source explicitly makes the work depend on a future condition. Return condition as concise Chinese for a conditional step and null for a required step.
-- Write each accepted next step's action as concise user-visible Chinese without repeating the condition. Return only source-supported prerequisite step indices. Never copy or intensify the candidate wording.
+- Treat claimId values as opaque strings, not positions. Copy every accepted claimId character-for-character from TASK_REVIEW_PAYLOAD. Never invent, shorten, replace, or renumber one, including when earlier claims are rejected. The IDs in the shape below are illustrative; use only IDs present in the current payload.
+- Write each accepted next step's action as concise user-visible Chinese without repeating the condition. Preserve every source naming identifier, such as form names, portal names, and case IDs, verbatim; translate only the surrounding wording. Return only source-supported prerequisiteStepClaimIds copied from accepted next-step claims. Never copy or intensify the candidate wording.
 - Reject completed events, status notices, institutional work, optional suggestions, and capabilities merely described as available (including things the user can/may view, print, download, save, or keep).
 - Accept a material or deadline only when it supports at least one accepted next step. Return a concise user-visible Chinese material name and optional Chinese details without adding certification, translation, or format requirements.
-- For an accepted deadline, copy whenText exactly from the source. Return calendarDate, normalizedAt, and an IANA timezone only when the source safely determines them; otherwise return null. Return condition as a concise Chinese condition supported by the same requirement, or null. A deadline linked to a conditional step must have a non-empty condition.
+- For an accepted deadline, copy whenText exactly from the source. Return calendarDate, normalizedAt, and an IANA timezone only when the source safely determines them; otherwise return null. normalizedAt must include Z or an explicit numeric UTC offset; otherwise return null. Return condition as a concise Chinese condition supported by the same requirement, or null. A deadline linked to a conditional step must have a non-empty condition.
 - Every accepted item needs one exact, case-sensitive source quote that proves the unfinished user requirement. A capability or completion quote is not proof.
 - When uncertain, reject. Omitted items are rejected.
 
-Return this shape, using the supplied zero-based indices:
-{"schemaVersion":"action-brief.task-review.v1","acceptedNextSteps":[{"index":0,"kind":"required","action":"提交签字表格","condition":null,"prerequisiteStepIndices":[],"requirementEvidenceQuote":"exact source quote"}],"acceptedMaterials":[{"index":0,"name":"签字表格","details":null,"nextStepIndices":[0],"requirementEvidenceQuote":"exact source quote"}],"acceptedDeadlines":[{"index":0,"whenText":"Friday","calendarDate":null,"normalizedAt":null,"timezone":null,"nextStepIndices":[0],"condition":null,"requirementEvidenceQuote":"exact source quote"}]}
+Return this shape, copying only the supplied opaque claim IDs:
+{"schemaVersion":"action-brief.task-review.v1","acceptedNextSteps":[{"claimId":"step-a1b2c3d4e5f60718","kind":"required","action":"通过 Portal-B 上传已签署的 Form-A","condition":null,"prerequisiteStepClaimIds":[],"requirementEvidenceQuote":"exact source quote"}],"acceptedMaterials":[{"claimId":"material-18f7e6d5c4b3a291","name":"已签署的 Form-A","details":null,"nextStepClaimIds":["step-a1b2c3d4e5f60718"],"requirementEvidenceQuote":"exact source quote"}],"acceptedDeadlines":[{"claimId":"deadline-0123456789abcdef","whenText":"Friday","calendarDate":null,"normalizedAt":null,"timezone":null,"nextStepClaimIds":["step-a1b2c3d4e5f60718"],"condition":null,"requirementEvidenceQuote":"exact source quote"}]}
 
 Negative example: “Your file was successfully submitted. Your receipt can be viewed or downloaded.” accepts nothing.
-Positive example: “Please upload the signed form by Friday.” may accept a required step with action “上传签字表格”, plus the signed form and Friday deadline linked to that step.
-Conditional example: “If your application is rejected, upload the corrected form.” may accept {"index":0,"kind":"conditional","action":"上传修正后的表格","condition":"如果申请被拒","prerequisiteStepIndices":[],"requirementEvidenceQuote":"If your application is rejected, upload the corrected form."}.`;
+Positive example: “Please upload signed Form-A through Portal-B by Friday.” may accept a required step with action “通过 Portal-B 上传已签署的 Form-A”, plus material “已签署的 Form-A” and the Friday deadline linked to that step.
+Conditional example: “If your application is rejected, upload the corrected form.” may accept the exact supplied claimId with {"claimId":"step-a1b2c3d4e5f60718","kind":"conditional","action":"上传修正后的表格","condition":"如果申请被拒","prerequisiteStepClaimIds":[],"requirementEvidenceQuote":"If your application is rejected, upload the corrected form."}.
+Deadline example: for source “Submit the form by 5:00 PM on 30 September 2099” with no timezone, return whenText "5:00 PM on 30 September 2099", calendarDate "2099-09-30", normalizedAt null, and timezone null.`;
 
 function createTaskReviewPlan({ sourceText, rawOutput } = {}) {
   if (typeof sourceText !== 'string' || !sourceText.trim()) return null;
@@ -68,13 +70,17 @@ function finalizeTaskReview({ plan, rawOutput } = {}) {
   if (review.schemaVersion !== TASK_REVIEW_SCHEMA_VERSION) {
     return createFailedTaskReview(plan, 'TASK_REVIEW_UNSUPPORTED_SCHEMA');
   }
+  const mapped = mapTaskReviewClaimIds(plan.payload, review);
+  if (!mapped.valid) {
+    return createFailedTaskReview(plan, mapped.errorCode);
+  }
   const metadata = {
     schemaVersion: review.schemaVersion,
     status: 'complete',
     taskPayloadSha256: plan.taskPayloadSha256,
-    acceptedNextSteps: review.acceptedNextSteps,
-    acceptedMaterials: review.acceptedMaterials,
-    acceptedDeadlines: review.acceptedDeadlines,
+    acceptedNextSteps: mapped.review.acceptedNextSteps,
+    acceptedMaterials: mapped.review.acceptedMaterials,
+    acceptedDeadlines: mapped.review.acceptedDeadlines,
   };
   const resolved = resolveTaskReviewGate({
     sourceText: plan.payload.sourceText,
@@ -194,7 +200,7 @@ function normalizeAcceptedEntries({
     return { valid: false, errorCode: 'TASK_REVIEW_INVALID_ARRAY' };
   }
   const claimsByIndex = new Map(
-    (Array.isArray(claims) ? claims : []).map((claim) => [claim.index, claim]),
+    (Array.isArray(claims) ? claims : []).map((claim, index) => [index, claim]),
   );
   const indices = new Set();
   const seenIndices = new Set();
@@ -313,7 +319,7 @@ function normalizeAcceptedEntries({
       if (links.some((index) => !acceptedNextStepIndices.has(index))) {
         continue;
       }
-      const nextStepClaimsByIndex = new Map(nextStepClaims.map((claim) => [claim.index, claim]));
+      const nextStepClaimsByIndex = new Map(nextStepClaims.map((claim, index) => [index, claim]));
       const everyLinkedStepOverlaps = links.every((stepIndex) => evidenceRangesOverlap(
         reviewEvidence,
         resolveEvidenceQuotes(
@@ -382,24 +388,134 @@ function normalizeAcceptedEntries({
 
 function createTaskReviewPayload(sourceText, candidate) {
   const safeSourceText = typeof sourceText === 'string' ? sourceText : '';
+  const sourceSha256 = createHash('sha256').update(safeSourceText, 'utf8').digest('hex');
   return {
     sourceText: safeSourceText,
-    sourceSha256: createHash('sha256').update(safeSourceText, 'utf8').digest('hex'),
+    sourceSha256,
     binding: createTaskArrayBinding(candidate),
     claims: {
-      nextSteps: summarizeArray(candidate?.nextSteps, (item) => summarizeNextStep(item, safeSourceText)),
-      materials: summarizeArray(candidate?.materials, (item) => summarizeMaterial(item, safeSourceText)),
-      deadlines: summarizeArray(candidate?.deadlines, (item) => summarizeDeadline(item, safeSourceText)),
+      nextSteps: summarizeArray('step', candidate?.nextSteps, sourceSha256,
+        (item) => summarizeNextStep(item, safeSourceText)),
+      materials: summarizeArray('material', candidate?.materials, sourceSha256,
+        (item) => summarizeMaterial(item, safeSourceText)),
+      deadlines: summarizeArray('deadline', candidate?.deadlines, sourceSha256,
+        (item) => summarizeDeadline(item, safeSourceText)),
     },
   };
 }
 
-function summarizeArray(value, summarize) {
+function summarizeArray(prefix, value, sourceSha256, summarize) {
   if (!Array.isArray(value)) return [];
   return value.slice(0, TASK_REVIEW_MAX_ITEMS).map((item, index) => ({
-    index,
+    claimId: createClaimId(prefix, sourceSha256, index, item),
     ...summarize(item),
   }));
+}
+
+function createClaimId(prefix, sourceSha256, index, item) {
+  const digest = createHash('sha256').update(JSON.stringify({
+    sourceSha256,
+    prefix,
+    index,
+    item: toJsonSafe(item),
+  }), 'utf8').digest('hex');
+  return `${prefix}-${digest.slice(0, 16)}`;
+}
+
+function mapTaskReviewClaimIds(payload, review) {
+  const claims = payload?.claims || {};
+  const stepClaimsById = claimIndicesById(claims.nextSteps);
+  const materialClaimsById = claimIndicesById(claims.materials);
+  const deadlineClaimsById = claimIndicesById(claims.deadlines);
+  if (!stepClaimsById || !materialClaimsById || !deadlineClaimsById) {
+    return { valid: false, errorCode: 'TASK_REVIEW_INVALID_ENTRY' };
+  }
+  const nextSteps = mapAcceptedClaimEntries({
+    value: review.acceptedNextSteps,
+    claimsById: stepClaimsById,
+    linkField: 'prerequisiteStepClaimIds',
+    canonicalLinkField: 'prerequisiteStepIndices',
+    linkClaimsById: stepClaimsById,
+    linkErrorCode: 'TASK_REVIEW_INVALID_STEP_SEMANTICS',
+    unknownLinkErrorCode: 'TASK_REVIEW_INVALID_PREREQUISITE',
+  });
+  if (!nextSteps.valid) return nextSteps;
+  const materials = mapAcceptedClaimEntries({
+    value: review.acceptedMaterials,
+    claimsById: materialClaimsById,
+    linkField: 'nextStepClaimIds',
+    canonicalLinkField: 'nextStepIndices',
+    linkClaimsById: stepClaimsById,
+    linkErrorCode: 'TASK_REVIEW_INVALID_LINKS',
+    unknownLinkErrorCode: 'TASK_REVIEW_INVALID_LINKS',
+  });
+  if (!materials.valid) return materials;
+  const deadlines = mapAcceptedClaimEntries({
+    value: review.acceptedDeadlines,
+    claimsById: deadlineClaimsById,
+    linkField: 'nextStepClaimIds',
+    canonicalLinkField: 'nextStepIndices',
+    linkClaimsById: stepClaimsById,
+    linkErrorCode: 'TASK_REVIEW_INVALID_LINKS',
+    unknownLinkErrorCode: 'TASK_REVIEW_INVALID_LINKS',
+  });
+  if (!deadlines.valid) return deadlines;
+  return {
+    valid: true,
+    review: {
+      acceptedNextSteps: nextSteps.entries,
+      acceptedMaterials: materials.entries,
+      acceptedDeadlines: deadlines.entries,
+    },
+  };
+}
+
+function claimIndicesById(claims) {
+  const items = Array.isArray(claims) ? claims : [];
+  if (items.some((claim) => typeof claim?.claimId !== 'string' || !claim.claimId)) return null;
+  const indices = new Map(items.map((claim, index) => [claim.claimId, index]));
+  return indices.size === items.length ? indices : null;
+}
+
+function mapAcceptedClaimEntries({
+  value,
+  claimsById,
+  linkField,
+  canonicalLinkField,
+  linkClaimsById,
+  linkErrorCode,
+  unknownLinkErrorCode,
+}) {
+  if (!Array.isArray(value)) {
+    return { valid: false, errorCode: 'TASK_REVIEW_INVALID_ARRAY' };
+  }
+  const entries = [];
+  for (const entry of value) {
+    if (
+      !isPlainObject(entry)
+      || typeof entry.claimId !== 'string'
+      || !claimsById.has(entry.claimId)
+      || Object.prototype.hasOwnProperty.call(entry, 'index')
+    ) {
+      return { valid: false, errorCode: 'TASK_REVIEW_INVALID_ENTRY' };
+    }
+    if (
+      !Array.isArray(entry[linkField])
+      || Object.prototype.hasOwnProperty.call(entry, canonicalLinkField)
+      || entry[linkField].some((claimId) => typeof claimId !== 'string')
+    ) {
+      return { valid: false, errorCode: linkErrorCode };
+    }
+    if (entry[linkField].some((claimId) => !linkClaimsById.has(claimId))) {
+      return { valid: false, errorCode: unknownLinkErrorCode };
+    }
+    const mapped = { ...entry, index: claimsById.get(entry.claimId) };
+    mapped[canonicalLinkField] = entry[linkField].map((claimId) => linkClaimsById.get(claimId));
+    delete mapped.claimId;
+    delete mapped[linkField];
+    entries.push(mapped);
+  }
+  return { valid: true, entries };
 }
 
 function summarizeNextStep(item, sourceText) {

@@ -732,6 +732,41 @@ async function main() {
   assert.equal(isRepresentativeStructuredBrief(wrongMaterialValue), false,
     'correct evidence must not rescue an incorrect material value');
 
+  const chineseMaterialValue = structuredClone(representativeBrief);
+  chineseMaterialValue.materials[0].name = '已签署的 Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(chineseMaterialValue), true,
+    'the canonical Chinese material label required by task review must satisfy readiness');
+
+  const unsignedMaterialValue = structuredClone(representativeBrief);
+  unsignedMaterialValue.materials[0].name = 'Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(unsignedMaterialValue), false,
+    'the representative material must retain the source requirement that it is signed');
+
+  const negatedSignedMaterialValue = structuredClone(representativeBrief);
+  negatedSignedMaterialValue.materials[0].name = '未签署的 Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(negatedSignedMaterialValue), false,
+    'a negated signed label must not satisfy the required material');
+
+  const unsignedEnglishMaterialValue = structuredClone(representativeBrief);
+  unsignedEnglishMaterialValue.materials[0].name = 'unsigned Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(unsignedEnglishMaterialValue), false,
+    'an unsigned English label must not satisfy the required material');
+
+  const optionalSignatureMaterialValue = structuredClone(representativeBrief);
+  optionalSignatureMaterialValue.materials[0].name = 'Wren-7 Intake Form; signature is not required';
+  assert.equal(isRepresentativeStructuredBrief(optionalSignatureMaterialValue), false,
+    'mentioning a non-required signature must not imply that the form is signed');
+
+  const optionalChineseSignatureMaterialValue = structuredClone(representativeBrief);
+  optionalChineseSignatureMaterialValue.materials[0].name = '不需要签名的 Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(optionalChineseSignatureMaterialValue), false,
+    'a Chinese signature mention must describe a completed signature to pass');
+
+  const decoyMaterialValue = structuredClone(representativeBrief);
+  decoyMaterialValue.materials[0].name = 'signed Wren-7 platform';
+  assert.equal(isRepresentativeStructuredBrief(decoyMaterialValue), false,
+    'a word containing form must not masquerade as the required form');
+
   const sentenceAsMaterial = structuredClone(representativeBrief);
   sentenceAsMaterial.materials[0].name =
     'Please submit the signed Wren-7 Intake Form through the LanternGate portal by 5:00 PM on 30 September 2099.';
@@ -742,6 +777,27 @@ async function main() {
   wrongSubmitAction.nextSteps[0].action = '做一件无关的事';
   assert.equal(isRepresentativeStructuredBrief(wrongSubmitAction), false,
     'correct evidence must not rescue an unrelated submit action');
+
+  const uploadSubmitAction = structuredClone(representativeBrief);
+  uploadSubmitAction.nextSteps[0].action = '在截止时间前通过 LanternGate 上传已签署的 Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(uploadSubmitAction), true,
+    'an upload action must satisfy the same grounded submission requirement');
+
+  const negatedUploadAction = structuredClone(representativeBrief);
+  negatedUploadAction.nextSteps[0].action = '不要通过 LanternGate 上传已签署的 Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(negatedUploadAction), false,
+    'a negated upload instruction must not satisfy the required action');
+
+  const unableUploadAction = structuredClone(representativeBrief);
+  unableUploadAction.nextSteps[0].action = '无法通过 LanternGate 上传已签署的 Wren-7 Intake Form';
+  assert.equal(isRepresentativeStructuredBrief(unableUploadAction), false,
+    'an inability statement must not satisfy the required action');
+
+  const unableEnglishUploadAction = structuredClone(representativeBrief);
+  unableEnglishUploadAction.nextSteps[0].action =
+    'Unable to upload the signed Wren-7 Intake Form through LanternGate';
+  assert.equal(isRepresentativeStructuredBrief(unableEnglishUploadAction), false,
+    'an English inability statement must not satisfy the required action');
 
   const negatedSubmitAction = structuredClone(representativeBrief);
   negatedSubmitAction.nextSteps[0].action = 'Do not submit the Wren-7 Intake Form through LanternGate';

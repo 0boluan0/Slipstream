@@ -71,9 +71,9 @@ function isNonEmptyText(value) {
 
 function hasSubmitMeaning(value) {
   const text = value || '';
-  return /(?:\u63d0\u4ea4|\u9012\u4ea4|\u4e0a\u4ea4|\u4ea4\u4ed8|\u5448\u4ea4|\u9001\u4ea4|submit|deliver|file)/iu.test(text)
-    && !/(?:do\s+not|don't|must\s+not|should\s+not|not\s+to|never|avoid(?:\s+\w+){0,3}|refrain\s+from)\s+[^.!?]{0,40}(?:submit|deliver|file)/iu.test(text)
-    && !/(?:\u4e0d\u8981|\u4e0d\u5f97|\u4e0d\u53ef|\u65e0\u9700|\u4e0d\u5fc5|\u5207\u52ff|\u52ff|\u522b)\s*[^\uff0c\u3002\uff1b;]{0,20}(?:\u63d0\u4ea4|\u9012\u4ea4|\u4e0a\u4ea4|\u4ea4\u4ed8|\u5448\u4ea4|\u9001\u4ea4)/u.test(text);
+  return /(?:\u63d0\u4ea4|\u9012\u4ea4|\u4e0a\u4ea4|\u4ea4\u4ed8|\u5448\u4ea4|\u9001\u4ea4|\u4e0a\u4f20|\u4e0a\u50b3|submit|upload|deliver|file)/iu.test(text)
+    && !/(?:do\s+not|don't|cannot|can't|could\s+not|must\s+not|should\s+not|not\s+to|unable\s+to|failed\s+to|did\s+not|never|avoid(?:\s+\w+){0,3}|refrain\s+from)\s+[^.!?]{0,40}(?:submit|upload|deliver|file)/iu.test(text)
+    && !/(?:\u4e0d\u8981|\u4e0d\u5f97|\u4e0d\u53ef|\u65e0\u9700|\u4e0d\u5fc5|\u4e0d\u80fd|\u65e0\u6cd5|\u7121\u6cd5|\u672a\u80fd|\u6ca1\u80fd|\u6c92\u80fd|\u5207\u52ff|\u52ff|\u522b)\s*[^\uff0c\u3002\uff1b;]{0,20}(?:\u63d0\u4ea4|\u9012\u4ea4|\u4e0a\u4ea4|\u4ea4\u4ed8|\u5448\u4ea4|\u9001\u4ea4|\u4e0a\u4f20|\u4e0a\u50b3)/u.test(text);
 }
 
 function hasReplyMeaning(value) {
@@ -158,6 +158,16 @@ function hasDeadlineMeaning(value) {
     && !/(?:not|no|never)\s+[^.!?]{0,20}5:00\s*PM/iu.test(text);
 }
 
+function hasRepresentativeMaterialName(value) {
+  const text = typeof value === 'string' ? value.trim() : '';
+  return text.length > 0
+    && text.length <= 80
+    && text.toLowerCase().includes('wren-7')
+    && /(?:\b(?:intake\s+)?form\b|\u8868\u683c|\u8868\u5355|\u8868\u55ae|\u7533\u8bf7\u8868|\u7533\u8acb\u8868)/iu.test(text)
+    && /(?:\bsigned\b|\u5df2(?:\u7ecf|\u7d93)?(?:\u7b7e\u7f72|\u7b7e\u540d|\u7b7e\u5b57|\u7c3d\u7f72|\u7c3d\u540d|\u7c3d\u5b57)|(?:\u7b7e\u7f72|\u7b7e\u540d|\u7b7e\u5b57|\u7c3d\u7f72|\u7c3d\u540d|\u7c3d\u5b57)(?:\u540e|\u5f8c|\u5b8c\u6210))/iu.test(text)
+    && !/not(?:\s+yet)?\s+signed/iu.test(text);
+}
+
 function hasTermExplanationMeaning(term, expectedSurface) {
   const explanation = term?.explanation || '';
   if (
@@ -204,9 +214,7 @@ function getRepresentativeStructuredBriefChecks(brief) {
   const material = Array.isArray(brief?.materials)
     ? brief.materials.find((candidate) => (
       candidate?.requirement === 'required'
-      && isNonEmptyText(candidate?.name)
-      && [COMPATIBILITY_FORM_TERM_ANCHOR, COMPATIBILITY_MATERIAL_PHRASE]
-        .some((allowedName) => candidate.name.trim().toLowerCase() === allowedName.toLowerCase())
+      && hasRepresentativeMaterialName(candidate?.name)
       && evidenceContainsTextWithinSentence(
         candidate,
         COMPATIBILITY_SUBMIT_SENTENCE,

@@ -9,7 +9,10 @@ const {
   createTaskReviewPlan,
   finalizeTaskReview,
 } = require('../src/main/analysis/task-review');
-const { createFixtureTaskReview } = require('./task-review-fixture.cjs');
+const {
+  createFixtureTaskReview,
+  createFixtureTaskReviewOutput,
+} = require('./task-review-fixture.cjs');
 const persistentStore = require('../src/main/store');
 const { buildActionBriefMessages, processText } = require('../src/main/llm-service');
 const { validateActionBrief } = require('../src/shared/action-brief.cjs');
@@ -148,6 +151,46 @@ function analyzeModelOutput(options = {}) {
   return analyzeModelOutputWithoutReview({
     ...options,
     ...(plan ? { taskReview: createFixtureTaskReview(options.sourceText, plan.candidate) } : {}),
+  });
+}
+
+function serializeTaskReview(plan, review) {
+  const claimIdAt = (kind, index) => (
+    Number.isSafeInteger(index) ? plan.payload.claims[kind]?.[index]?.claimId ?? index : index
+  );
+  const mapEntries = (value, kind, linkField, claimLinkField) => (
+    Array.isArray(value) ? value.map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+      const { index, [linkField]: links, ...rest } = entry;
+      return {
+        ...rest,
+        claimId: claimIdAt(kind, index),
+        [claimLinkField]: Array.isArray(links)
+          ? links.map((link) => claimIdAt('nextSteps', link))
+          : links,
+      };
+    }) : value
+  );
+  return JSON.stringify({
+    ...review,
+    acceptedNextSteps: mapEntries(
+      review.acceptedNextSteps,
+      'nextSteps',
+      'prerequisiteStepIndices',
+      'prerequisiteStepClaimIds',
+    ),
+    acceptedMaterials: mapEntries(
+      review.acceptedMaterials,
+      'materials',
+      'nextStepIndices',
+      'nextStepClaimIds',
+    ),
+    acceptedDeadlines: mapEntries(
+      review.acceptedDeadlines,
+      'deadlines',
+      'nextStepIndices',
+      'nextStepClaimIds',
+    ),
   });
 }
 
@@ -528,7 +571,7 @@ function checkTaskReviewWhitelistRejectsInvalidEntries() {
   });
   const qwenStyleReview = finalizeTaskReview({
     plan: confirmationPlan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(confirmationPlan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [],
       acceptedMaterials: [{
@@ -574,7 +617,7 @@ function checkTaskReviewWhitelistRejectsInvalidEntries() {
   const mixedPlan = createTaskReviewPlan({ sourceText: mixedSource, rawOutput: mixedCandidate });
   const borrowedEvidenceReview = finalizeTaskReview({
     plan: mixedPlan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(mixedPlan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [
         {
@@ -607,6 +650,111 @@ function checkTaskReviewWhitelistRejectsInvalidEntries() {
   assert.deepEqual(mixedBrief.nextSteps, [],
     'a failed review must hide every task claim instead of partially trusting malformed output');
   assert(mixedBrief.warnings.some((warning) => warning.code === 'TASK_REVIEW_FAILED'));
+}
+
+function checkTaskReviewKeepsSparseClaimIdentity() {
+  const sparseSource = [
+    'Your receipt can be downloaded.',
+    'Please upload the signed form.',
+    'Please reply to confirm submission.',
+  ].join(' ');
+  const sparseCandidate = makeCandidate();
+  sparseCandidate.materials = [];
+  sparseCandidate.deadlines = [];
+  sparseCandidate.nextSteps = [
+    ['下载收据', 'Your receipt can be downloaded.'],
+    ['上传签字表格', 'Please upload the signed form.'],
+    ['回复确认已提交', 'Please reply to confirm submission.'],
+  ].map(([action, evidenceQuote]) => ({
+    action,
+    actor: 'user',
+    urgency: 'now',
+    mandatory: true,
+    deadlineIndex: null,
+    prerequisiteStepIndices: [],
+    provenance: 'inference',
+    evidenceQuotes: [evidenceQuote],
+    citationIds: [],
+  }));
+  const plan = createTaskReviewPlan({ sourceText: sparseSource, rawOutput: sparseCandidate });
+  const stepClaimIds = plan.payload.claims.nextSteps.map((claim) => claim.claimId);
+  assert(stepClaimIds.every((claimId) => (
+    typeof claimId === 'string' && !/^step-\d+$/.test(claimId)
+  )),
+    'server-issued claim IDs must not expose candidate ordinals');
+  assert.equal(new Set(stepClaimIds).size, stepClaimIds.length);
+  assert.deepEqual(
+    createTaskReviewPlan({ sourceText: sparseSource, rawOutput: sparseCandidate })
+      .payload.claims.nextSteps.map((claim) => claim.claimId),
+    stepClaimIds,
+    'claim IDs must be deterministic for the same bound source and candidate',
+  );
+  const reboundCandidate = structuredClone(sparseCandidate);
+  reboundCandidate.nextSteps[1].action = '更改后的动作';
+  assert.notEqual(
+    createTaskReviewPlan({ sourceText: sparseSource, rawOutput: reboundCandidate })
+      .payload.claims.nextSteps[1].claimId,
+    stepClaimIds[1],
+    'claim IDs must bind to the candidate claim instead of its visible position',
+  );
+  const collidingPlan = structuredClone(plan);
+  collidingPlan.payload.claims.nextSteps[1].claimId = stepClaimIds[0];
+  assert.equal(finalizeTaskReview({
+    plan: collidingPlan,
+    rawOutput: JSON.stringify({
+      schemaVersion: 'action-brief.task-review.v1',
+      acceptedNextSteps: [],
+      acceptedMaterials: [],
+      acceptedDeadlines: [],
+    }),
+  }).status, 'failed', 'a claim-ID collision must fail closed before review mapping');
+  const reviewedSteps = [
+    {
+      claimId: stepClaimIds[1],
+      kind: 'required',
+      action: '上传签字表格',
+      condition: null,
+      prerequisiteStepClaimIds: [],
+      requirementEvidenceQuote: 'Please upload the signed form.',
+    },
+    {
+      claimId: stepClaimIds[2],
+      kind: 'required',
+      action: '回复确认已提交',
+      condition: null,
+      prerequisiteStepClaimIds: [],
+      requirementEvidenceQuote: 'Please reply to confirm submission.',
+    },
+  ];
+  const sparseReview = finalizeTaskReview({
+    plan,
+    rawOutput: JSON.stringify({
+      schemaVersion: 'action-brief.task-review.v1',
+      acceptedNextSteps: reviewedSteps,
+      acceptedMaterials: [],
+      acceptedDeadlines: [],
+    }),
+  });
+  assert.equal(sparseReview.status, 'complete',
+    'accepted subsets must retain server-issued claim IDs instead of being renumbered');
+  assert.deepEqual(sparseReview.acceptedNextSteps.map((entry) => entry.index), [1, 2],
+    'finalized metadata must map opaque claim IDs back to canonical candidate indices');
+
+  for (const [label, acceptedNextSteps] of [
+    ['numeric renumbering', [{ ...reviewedSteps[0], claimId: undefined, index: 0 }]],
+    ['unknown claim ID', [{ ...reviewedSteps[0], claimId: 'step-0000000000000000' }]],
+  ]) {
+    const invalidReview = finalizeTaskReview({
+      plan,
+      rawOutput: JSON.stringify({
+        schemaVersion: 'action-brief.task-review.v1',
+        acceptedNextSteps,
+        acceptedMaterials: [],
+        acceptedDeadlines: [],
+      }),
+    });
+    assert.equal(invalidReview.status, 'failed', `${label} must fail the whole review`);
+  }
 }
 
 async function checkTaskReviewIsCanonicalAuthority() {
@@ -657,7 +805,7 @@ async function checkTaskReviewIsCanonicalAuthority() {
   });
   const conditionalReview = finalizeTaskReview({
     plan: conditionalPlan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(conditionalPlan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [{
         index: 0,
@@ -716,7 +864,7 @@ async function checkTaskReviewIsCanonicalAuthority() {
 
   const missingConditionReview = finalizeTaskReview({
     plan: conditionalPlan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(conditionalPlan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [{
         index: 0,
@@ -777,7 +925,7 @@ async function checkTaskReviewIsCanonicalAuthority() {
   const deadlinePlan = createTaskReviewPlan({ sourceText: deadlineSource, rawOutput: wrongDeadlineCandidate });
   const deadlineReview = finalizeTaskReview({
     plan: deadlinePlan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(deadlinePlan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [{
         index: 0,
@@ -829,7 +977,7 @@ async function checkTaskReviewIsCanonicalAuthority() {
   const malformedPlan = createTaskReviewPlan({ sourceText: requiredSource, rawOutput: malformedCandidate });
   const malformedReview = finalizeTaskReview({
     plan: malformedPlan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(malformedPlan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [{
         index: '0',
@@ -860,7 +1008,7 @@ async function checkTaskReviewIsCanonicalAuthority() {
   ]) {
     const invalidReview = finalizeTaskReview({
       plan: malformedPlan,
-      rawOutput: JSON.stringify({
+      rawOutput: serializeTaskReview(malformedPlan, {
         schemaVersion: 'action-brief.task-review.v1',
         acceptedNextSteps,
         acceptedMaterials: [],
@@ -946,7 +1094,7 @@ function checkReviewedDeadlineLinksAreAuthoritative() {
   const plan = createTaskReviewPlan({ sourceText: deadlineSource, rawOutput: candidate });
   const taskReview = finalizeTaskReview({
     plan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(plan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [
         { index: 0, kind: 'required', action: '提交 Project A', prerequisiteStepIndices: [], requirementEvidenceQuote: 'Submit Project A by Friday.' },
@@ -977,7 +1125,7 @@ function checkReviewedDeadlineLinksAreAuthoritative() {
 
   const crossLinkedReview = finalizeTaskReview({
     plan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(plan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [
         { index: 0, kind: 'required', action: '提交 Project A', prerequisiteStepIndices: [], requirementEvidenceQuote: 'Submit Project A by Friday.' },
@@ -1033,7 +1181,7 @@ function checkReviewedDeadlineLinksAreAuthoritative() {
   });
   const statusReview = finalizeTaskReview({
     plan: statusPlan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(statusPlan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [{
         index: 0,
@@ -1391,7 +1539,7 @@ async function checkLlmServiceUsesOneStructuredCall() {
 
 async function checkLlmServiceUsesIndependentTaskReview() {
   const candidate = makeCandidate();
-  const acceptedReview = createFixtureTaskReview(sourceText, candidate);
+  const acceptedReview = createFixtureTaskReviewOutput(sourceText, candidate);
   const requests = [];
   let mode = 'valid';
   let fakeNow = 1000;
@@ -1423,7 +1571,15 @@ async function checkLlmServiceUsesIndependentTaskReview() {
     });
     assert.equal(requests.length, 2, 'task candidates require one independent review call');
     assert.match(requests[1].system, /Omitted items are rejected/);
+    assert.match(requests[1].system, /Treat claimId values as opaque strings, not positions/);
+    assert.match(requests[1].system, /Never invent, shorten, replace, or renumber one/);
+    assert.match(requests[1].system, /Preserve every source naming identifier/);
+    assert.match(requests[1].system, /Portal-B.*Form-A/);
+    assert.match(requests[1].system, /5:00 PM on 30 September 2099/);
+    assert.match(requests[1].system, /normalizedAt null, and timezone null/);
     assert.match(requests[1].prompt, /acceptedNextSteps|candidate task claims/i);
+    assert.match(requests[1].prompt, /"claimId":"step-[a-f0-9]{16}"/);
+    assert.doesNotMatch(requests[1].prompt, /"index"\s*:/);
     assert.equal(requests[1].format, 'json');
     assert.equal(requests[1].options.num_predict, 8192,
       'the reviewer needs the same structured-output budget as the main analysis');
@@ -1552,7 +1708,7 @@ function checkUnsafeCalendarDateFailsClosed() {
   const plan = createTaskReviewPlan({ sourceText, rawOutput: candidate });
   const taskReview = finalizeTaskReview({
     plan,
-    rawOutput: JSON.stringify({
+    rawOutput: serializeTaskReview(plan, {
       schemaVersion: 'action-brief.task-review.v1',
       acceptedNextSteps: [{
         index: 0,
@@ -1594,6 +1750,7 @@ async function main() {
   checkUnsupportedClaimsAreDropped();
   checkInformationalCapabilityIsNotAction();
   checkTaskReviewWhitelistRejectsInvalidEntries();
+  checkTaskReviewKeepsSparseClaimIdentity();
   await checkTaskReviewIsCanonicalAuthority();
   checkReviewedDeadlineLinksAreAuthoritative();
   checkUngroundedExplanationFailsClosed();
