@@ -240,7 +240,7 @@ async function main() {
 
   await check('Ollama requests bound the context window', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'src/main/llm-service.js'), 'utf8');
-    assert.match(source, /options:\s*\{\s*num_ctx:\s*16384\s*\}/);
+    assert.match(source, /options:\s*\{\s*num_ctx:\s*16384,/);
     assert.deepEqual(constants.MODEL_IDS.ollama, ['qwen2.5', 'mistral-small'],
       'new users should only see Ollama models suited to Chinese structured output');
   });

@@ -1,5 +1,12 @@
 const store = require('./store');
 const { buildActionBriefPrompt } = require('./analysis');
+const {
+  TASK_REVIEW_MAX_TOKENS,
+  TASK_REVIEW_TIMEOUT_MS,
+  createFailedTaskReview,
+  createTaskReviewPlan,
+  finalizeTaskReview,
+} = require('./analysis/task-review');
 const { DEFAULTS, PROMPT_TEMPLATES } = require('../shared/constants.cjs');
 const {
   validateEndpointUrl,
@@ -15,6 +22,7 @@ const LONG_TEXT_CHUNK_SIZE = 3500;
 const FREE_TRANSLATE_CHUNK_TIMEOUT_MS = 15000;
 const FREE_TRANSLATE_TASK_TIMEOUT_MS = 45000;
 const MAX_ACTION_BRIEF_PREFERENCE_LENGTH = 4000;
+const ACTION_BRIEF_TOTAL_TIMEOUT_MS = 60000;
 const TRUNCATION_WARNING = '⚠️ 注意：回复可能被截断，内容可能不完整。';
 
 /**
@@ -175,7 +183,7 @@ function withTimeout({ fn, ms, parentSignal }) {
  * @param {string} [options.promptTemplate] - User prompt template (with {{text}} and {{languageHint}} placeholders).
  * @param {string} [options.languageHint]   - Language hint (e.g. 'en', 'zh').
  * @param {boolean} [options.ignoreCustomPrompt] - Use only the built-in prompt for fixed compatibility checks.
- * @returns {Promise<{result: string, processingTimeMs: number, provider: string, model: string, responseKind: string, promptVersion: string|null}>}
+ * @returns {Promise<{result: string, processingTimeMs: number, provider: string, model: string, responseKind: string, promptVersion: string|null, taskReview?: object}>}
  */
 async function processText({
   text,
@@ -223,6 +231,15 @@ async function processText({
       signal,
       true,
     );
+    const taskReview = await reviewActionBriefTaskClaims({
+      sourceText: text,
+      rawOutput: result,
+      settings,
+      backend: resolvedBackend,
+      model: resolvedModel,
+      startTime,
+      signal,
+    });
     return createProcessResponse({
       result,
       startTime,
@@ -230,6 +247,7 @@ async function processText({
       model: resolvedModel,
       responseKind: 'action_brief_candidate',
       promptVersion: actionBriefMessages.promptVersion,
+      taskReview,
     });
   }
 
@@ -336,6 +354,7 @@ function createProcessResponse({
   model,
   responseKind,
   promptVersion = null,
+  taskReview = null,
 }) {
   return {
     result,
@@ -344,23 +363,69 @@ function createProcessResponse({
     model,
     responseKind,
     promptVersion,
+    ...(taskReview ? { taskReview } : {}),
   };
 }
 
-async function processLlmBackend(settings, backend, model, systemPrompt, userMessage, languageHint, sourceText, signal, structuredOutput = false) {
+async function reviewActionBriefTaskClaims({
+  sourceText,
+  rawOutput,
+  settings,
+  backend,
+  model,
+  startTime,
+  signal,
+}) {
+  const plan = createTaskReviewPlan({ sourceText, rawOutput });
+  if (!plan) return null;
+
+  const remainingMs = ACTION_BRIEF_TOTAL_TIMEOUT_MS - (Date.now() - startTime);
+  const reviewTimeoutMs = Math.min(TASK_REVIEW_TIMEOUT_MS, remainingMs);
+  if (reviewTimeoutMs <= 0) {
+    return createFailedTaskReview(plan, 'TASK_REVIEW_TIMEOUT');
+  }
+
+  try {
+    const reviewOutput = await processLlmBackend(
+      settings,
+      backend,
+      model,
+      plan.systemPrompt,
+      plan.userMessage,
+      undefined,
+      undefined,
+      signal,
+      true,
+      {
+        timeoutMs: reviewTimeoutMs,
+        maxTokens: TASK_REVIEW_MAX_TOKENS,
+        retries: 1,
+      },
+    );
+    return finalizeTaskReview({ plan, rawOutput: reviewOutput });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    const reason = error?.message === MODEL_TIMEOUT_MESSAGE
+      ? 'TASK_REVIEW_TIMEOUT'
+      : 'TASK_REVIEW_FAILED';
+    return createFailedTaskReview(plan, reason);
+  }
+}
+
+async function processLlmBackend(settings, backend, model, systemPrompt, userMessage, languageHint, sourceText, signal, structuredOutput = false, requestOptions = {}) {
   switch (backend) {
     case 'free_translate':
       return processFreeTranslate(sourceText || userMessage, languageHint, signal);
     case 'anthropic':
-      return processAnthropic(settings, model, systemPrompt, userMessage, signal, structuredOutput);
+      return processAnthropic(settings, model, systemPrompt, userMessage, signal, structuredOutput, requestOptions);
     case 'openai':
-      return processOpenAI(settings, model, systemPrompt, userMessage, signal, structuredOutput);
+      return processOpenAI(settings, model, systemPrompt, userMessage, signal, structuredOutput, requestOptions);
     case 'deepseek':
-      return processDeepSeek(settings, model, systemPrompt, userMessage, signal, structuredOutput);
+      return processDeepSeek(settings, model, systemPrompt, userMessage, signal, structuredOutput, requestOptions);
     case 'ollama':
-      return processOllama(settings, model, systemPrompt, userMessage, signal, structuredOutput);
+      return processOllama(settings, model, systemPrompt, userMessage, signal, structuredOutput, requestOptions);
     case 'custom':
-      return processCustom(settings, model, systemPrompt, userMessage, signal, structuredOutput);
+      return processCustom(settings, model, systemPrompt, userMessage, signal, structuredOutput, requestOptions);
     default:
       throw new Error(`不支持的处理后端：${backend}`);
   }
@@ -532,7 +597,7 @@ function isEmptyTerms(text) {
 /**
  * Process via Anthropic SDK.
  */
-async function processAnthropic(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false) {
+async function processAnthropic(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false, requestOptions = {}) {
   const Anthropic = require('@anthropic-ai/sdk');
   const apiKey = settings.anthropicApiKey;
 
@@ -546,7 +611,7 @@ async function processAnthropic(settings, model, systemPrompt, userMessage, pare
 
       const response = await anthropic.messages.create({
         model: model,
-        max_tokens: structuredOutput ? 8192 : 4096,
+        max_tokens: requestOptions.maxTokens || (structuredOutput ? 8192 : 4096),
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       }, { signal });
@@ -565,8 +630,8 @@ async function processAnthropic(settings, model, systemPrompt, userMessage, pare
 
       if (response.stop_reason === 'max_tokens') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
-    }, [500]),
-    ms: 60000,
+    }, [500], requestOptions.retries || 3),
+    ms: requestOptions.timeoutMs || 60000,
     parentSignal,
   });
 }
@@ -574,7 +639,7 @@ async function processAnthropic(settings, model, systemPrompt, userMessage, pare
 /**
  * Process via OpenAI SDK.
  */
-async function processOpenAI(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false) {
+async function processOpenAI(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false, requestOptions = {}) {
   const OpenAI = require('openai');
   const apiKey = settings.openaiApiKey;
 
@@ -592,7 +657,7 @@ async function processOpenAI(settings, model, systemPrompt, userMessage, parentS
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
         ],
-        max_tokens: structuredOutput ? 8192 : 4096,
+        max_tokens: requestOptions.maxTokens || (structuredOutput ? 8192 : 4096),
         ...(structuredOutput ? {
           response_format: { type: 'json_object' },
           temperature: 0,
@@ -603,8 +668,8 @@ async function processOpenAI(settings, model, systemPrompt, userMessage, parentS
 
       if (response.choices[0].finish_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
-    }, [500]),
-    ms: 60000,
+    }, [500], requestOptions.retries || 3),
+    ms: requestOptions.timeoutMs || 60000,
     parentSignal,
   });
 }
@@ -612,7 +677,7 @@ async function processOpenAI(settings, model, systemPrompt, userMessage, parentS
 /**
  * Process via DeepSeek's OpenAI-compatible API.
  */
-async function processDeepSeek(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false) {
+async function processDeepSeek(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false, requestOptions = {}) {
   const OpenAI = require('openai');
   const apiKey = settings.deepseekApiKey;
 
@@ -634,7 +699,7 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
         ],
-        max_tokens: structuredOutput ? 8192 : 4096,
+        max_tokens: requestOptions.maxTokens || (structuredOutput ? 8192 : 4096),
         thinking: { type: 'disabled' },
         ...(structuredOutput ? {
           response_format: { type: 'json_object' },
@@ -646,8 +711,8 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
 
       if (response.choices[0].finish_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
-    }, [500]),
-    ms: 60000,
+    }, [500], requestOptions.retries || 3),
+    ms: requestOptions.timeoutMs || 60000,
     parentSignal,
   });
 }
@@ -655,7 +720,7 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
 /**
  * Process via Ollama's local API.
  */
-async function processOllama(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false) {
+async function processOllama(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false, requestOptions = {}) {
   const baseUrl = resolveOllamaBaseUrl(settings?.ollamaBaseUrl);
   const generateUrl = new URL(baseUrl);
   const basePath = generateUrl.pathname === '/' ? '' : generateUrl.pathname.replace(/\/+$/, '');
@@ -685,7 +750,10 @@ async function processOllama(settings, model, systemPrompt, userMessage, parentS
             // Loading that full KV cache can exhaust memory before a modest
             // Slipstream request begins, so use a bounded window that still
             // covers the 10K-character source limit plus structured output.
-            options: { num_ctx: 16384 },
+            options: {
+              num_ctx: 16384,
+              ...(requestOptions.maxTokens ? { num_predict: requestOptions.maxTokens } : {}),
+            },
             stream: false,
           }),
           signal: signal,
@@ -720,8 +788,8 @@ async function processOllama(settings, model, systemPrompt, userMessage, parentS
 
       if (data.done && data.done_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
-    }),
-    ms: 60000,
+    }, [], requestOptions.retries || 3),
+    ms: requestOptions.timeoutMs || 60000,
     parentSignal,
   });
 }
@@ -891,7 +959,7 @@ function customProviderHttpError(status) {
 /**
  * Process via a custom OpenAI-compatible endpoint.
  */
-async function processCustom(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false) {
+async function processCustom(settings, model, systemPrompt, userMessage, parentSignal, structuredOutput = false, requestOptions = {}) {
   const configuredBaseURL = settings.customEndpointUrl;
   const apiKey = typeof settings.customEndpointApiKey === 'string'
     ? settings.customEndpointApiKey.trim()
@@ -930,7 +998,7 @@ async function processCustom(settings, model, systemPrompt, userMessage, parentS
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userMessage },
             ],
-            max_tokens: structuredOutput ? 8192 : 4096,
+            max_tokens: requestOptions.maxTokens || (structuredOutput ? 8192 : 4096),
           }),
           signal,
         });
@@ -955,8 +1023,8 @@ async function processCustom(settings, model, systemPrompt, userMessage, parentS
 
       if (choice.finish_reason === 'length') return result + '\n\n' + TRUNCATION_WARNING;
       return result;
-    }),
-    ms: 60000,
+    }, [], requestOptions.retries || 3),
+    ms: requestOptions.timeoutMs || 60000,
     parentSignal,
   });
 }

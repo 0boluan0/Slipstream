@@ -1,10 +1,11 @@
 const ACTION_BRIEF_SCHEMA_VERSION = 'action-brief.v1';
 const ACTION_BRIEF_CANDIDATE_VERSION = 'action-brief.candidate.v1';
 const { PROCESSING_LOCATION_KINDS } = require('./endpoint-location.cjs');
-const ACTION_BRIEF_PROMPT_VERSION = 'action-brief.prompt.v3';
+const ACTION_BRIEF_PROMPT_VERSION = 'action-brief.prompt.v4';
 const ACTION_BRIEF_PROMPT_VERSIONS = Object.freeze([
   'action-brief.prompt.v1',
   'action-brief.prompt.v2',
+  'action-brief.prompt.v3',
   ACTION_BRIEF_PROMPT_VERSION,
 ]);
 

@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const fs = require('node:fs');
 const path = require('node:path');
+const { createFixtureTaskReview } = require('./task-review-fixture.cjs');
 
 const root = path.resolve(__dirname, '..');
 
@@ -105,7 +106,7 @@ function createCompatibilityCandidate() {
       requirement: 'required',
       details: null,
       provenance: 'original',
-      evidenceQuotes: ['submit the signed Wren-7 Intake Form through the LanternGate portal'],
+      evidenceQuotes: ['Please submit the signed Wren-7 Intake Form through the LanternGate portal by 5:00 PM on 30 September 2099.'],
       citationIds: [],
       confidence: 1,
     }],
@@ -172,6 +173,12 @@ async function main() {
     validateOllamaEndpointUrl,
     validateProviderConnectionTestOptions,
   } = require('../src/main/validation');
+  const compatibilityResponse = (candidate, processingTimeMs = 25) => ({
+    result: JSON.stringify(candidate),
+    processingTimeMs,
+    responseKind: 'action_brief_candidate',
+    taskReview: createFixtureTaskReview(FULL_ANALYSIS_COMPATIBILITY_SOURCE, candidate),
+  });
 
   assert.equal(PROVIDER_CONNECTION_CANCEL_ACK_MS, 2000);
   assert.equal(describeConnectionTestExitIntent({ kind: 'close' }).confirmLabel, '停止验证并返回');
@@ -548,11 +555,7 @@ async function main() {
     }),
     processText: async (options) => {
       compatibilityRequest = options;
-      return {
-        result: JSON.stringify(createCompatibilityCandidate()),
-        processingTimeMs: 25,
-        responseKind: 'action_brief_candidate',
-      };
+      return compatibilityResponse(createCompatibilityCandidate());
     },
   });
   assert.deepEqual(ready, { status: CONNECTION_STATUSES.CONNECTED, code: CONNECTION_CODES.OK });
@@ -573,6 +576,7 @@ async function main() {
     provider: 'test-provider',
     model: 'test-model',
     processingTimeMs: 25,
+    taskReview: createFixtureTaskReview(FULL_ANALYSIS_COMPATIBILITY_SOURCE, candidate),
   });
   const representativeBrief = normalizeCompatibilityCandidate(createCompatibilityCandidate());
   assert.equal(isRepresentativeStructuredBrief(representativeBrief), true);
@@ -877,11 +881,7 @@ async function main() {
   const expandedEvidence = await testFullAnalysisCompatibility({
     activeBackend: 'deepseek', activeModel: 'deepseek-v4-flash',
   }, {
-    processText: async () => ({
-      result: JSON.stringify(expandedEvidenceCandidate),
-      processingTimeMs: 25,
-      responseKind: 'action_brief_candidate',
-    }),
+    processText: async () => compatibilityResponse(expandedEvidenceCandidate),
   });
   assert.deepEqual(expandedEvidence, {
     status: CONNECTION_STATUSES.CONNECTED,
@@ -893,11 +893,7 @@ async function main() {
   const weakActionEvidence = await testFullAnalysisCompatibility({
     activeBackend: 'deepseek', activeModel: 'deepseek-v4-flash',
   }, {
-    processText: async () => ({
-      result: JSON.stringify(weakActionEvidenceCandidate),
-      processingTimeMs: 25,
-      responseKind: 'action_brief_candidate',
-    }),
+    processText: async () => compatibilityResponse(weakActionEvidenceCandidate),
   });
   assert.deepEqual(weakActionEvidence, {
     status: CONNECTION_STATUSES.FAILED,
@@ -909,11 +905,7 @@ async function main() {
   const weakReplyEvidence = await testFullAnalysisCompatibility({
     activeBackend: 'deepseek', activeModel: 'deepseek-v4-flash',
   }, {
-    processText: async () => ({
-      result: JSON.stringify(weakReplyEvidenceCandidate),
-      processingTimeMs: 25,
-      responseKind: 'action_brief_candidate',
-    }),
+    processText: async () => compatibilityResponse(weakReplyEvidenceCandidate),
   });
   assert.deepEqual(weakReplyEvidence, {
     status: CONNECTION_STATUSES.FAILED,
@@ -944,11 +936,7 @@ async function main() {
       status: CONNECTION_STATUSES.INCONCLUSIVE,
       code: CONNECTION_CODES.UNSUPPORTED,
     }),
-    processText: async () => ({
-      result: JSON.stringify(createCompatibilityCandidate()),
-      processingTimeMs: 30,
-      responseKind: 'action_brief_candidate',
-    }),
+    processText: async () => compatibilityResponse(createCompatibilityCandidate(), 30),
   });
   assert.deepEqual(customReady, { status: CONNECTION_STATUSES.CONNECTED, code: CONNECTION_CODES.OK },
     'a real structured generation can prove custom-provider readiness even without a model-list endpoint');
@@ -967,6 +955,25 @@ async function main() {
     code: CONNECTION_CODES.STRUCTURED_OUTPUT_INVALID,
   });
 
+  const reviewTimedOut = await testFullAnalysisCompatibility({
+    activeBackend: 'ollama', activeModel: 'slow-review-model',
+  }, {
+    processText: async () => ({
+      result: JSON.stringify(createCompatibilityCandidate()),
+      processingTimeMs: 60000,
+      responseKind: 'action_brief_candidate',
+      taskReview: {
+        schemaVersion: 'action-brief.task-review.v1',
+        status: 'failed',
+        reason: 'TASK_REVIEW_TIMEOUT',
+      },
+    }),
+  });
+  assert.deepEqual(reviewTimedOut, {
+    status: CONNECTION_STATUSES.FAILED,
+    code: CONNECTION_CODES.TIMEOUT,
+  }, 'a task-review timeout must remain a retryable timeout in provider readiness');
+
   const emptyStructuredCandidate = createCompatibilityCandidate();
   emptyStructuredCandidate.terms = [];
   emptyStructuredCandidate.contexts = [];
@@ -976,11 +983,7 @@ async function main() {
   const emptyStructuredOutput = await testFullAnalysisCompatibility({
     activeBackend: 'ollama', activeModel: 'weak-json-model',
   }, {
-    processText: async () => ({
-      result: JSON.stringify(emptyStructuredCandidate),
-      processingTimeMs: 10,
-      responseKind: 'action_brief_candidate',
-    }),
+    processText: async () => compatibilityResponse(emptyStructuredCandidate, 10),
   });
   assert.deepEqual(emptyStructuredOutput, {
     status: CONNECTION_STATUSES.FAILED,

@@ -1185,18 +1185,22 @@ function createMainWindow(settings = getStartupSettings()) {
     : path.join(__dirname, '..', '..', 'preload.js');
 
   const windowOptions = {
-    width: Math.min(
-      uiFixtureMode.enabled
-        ? fixtureWidth
-        : needsSetup ? DEFAULTS.SETUP_WINDOW_WIDTH : Math.max(settings.windowWidth || DEFAULTS.WINDOW_WIDTH, 400),
-      primaryWorkArea.width,
-    ),
-    height: Math.min(
-      uiFixtureMode.enabled
-        ? fixtureHeight
-        : needsSetup ? DEFAULTS.SETUP_WINDOW_HEIGHT : Math.max(settings.windowHeight || DEFAULTS.WINDOW_HEIGHT, 400),
-      primaryWorkArea.height,
-    ),
+    width: uiFixtureCheckMode
+      ? fixtureWidth
+      : Math.min(
+        uiFixtureMode.enabled
+          ? fixtureWidth
+          : needsSetup ? DEFAULTS.SETUP_WINDOW_WIDTH : Math.max(settings.windowWidth || DEFAULTS.WINDOW_WIDTH, 400),
+        primaryWorkArea.width,
+      ),
+    height: uiFixtureCheckMode
+      ? fixtureHeight
+      : Math.min(
+        uiFixtureMode.enabled
+          ? fixtureHeight
+          : needsSetup ? DEFAULTS.SETUP_WINDOW_HEIGHT : Math.max(settings.windowHeight || DEFAULTS.WINDOW_HEIGHT, 400),
+        primaryWorkArea.height,
+      ),
     frame: false,
     // The compact capture surface may float above the current app, but the
     // wide result and setup surfaces must let users switch to the source app
@@ -2555,6 +2559,7 @@ function registerIpcHandlers() {
         verificationPolicy: settings.verificationPolicy,
         verificationApproved: request.verificationApproved,
         signal: controller.signal,
+        taskReview: llmResponse.taskReview,
       });
       if (
         controller.signal.aborted

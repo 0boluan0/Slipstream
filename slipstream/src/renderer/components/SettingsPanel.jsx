@@ -2207,7 +2207,7 @@ export default function SettingsPanel({
                   : '完成上方必需信息后，才能测试当前服务与模型。'}
               </p>
               <small className="provider-connection-privacy">
-                测试先读取模型元数据，再让当前模型处理一段内置、虚构的英文测试文本；它会检查翻译、行动、术语、流程背景及其来源证据，不会发送截图、剪贴板、你的任务原文或高级分析说明。{providerConnectionTestRiskCopy}
+                测试先读取模型元数据，再让当前模型处理一段内置、虚构的英文测试文本；若模型提出待办，会再用同一模型做一次短复核。它会检查翻译、行动、术语、流程背景及其来源证据，不会发送截图、剪贴板、你的任务原文或高级分析说明。{providerConnectionTestRiskCopy}
               </small>
               <button
                 type="button"

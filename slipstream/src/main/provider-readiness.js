@@ -384,6 +384,12 @@ async function testFullAnalysisCompatibility(settings, dependencies = {}) {
       signal,
     });
     if (signal?.aborted) return failed(CONNECTION_CODES.CANCELLED);
+    if (
+      response?.taskReview?.status === 'failed'
+      && response.taskReview.reason === 'TASK_REVIEW_TIMEOUT'
+    ) {
+      return failed(CONNECTION_CODES.TIMEOUT);
+    }
     if (response?.responseKind !== 'action_brief_candidate') {
       return failed(CONNECTION_CODES.STRUCTURED_OUTPUT_INVALID);
     }
@@ -394,6 +400,7 @@ async function testFullAnalysisCompatibility(settings, dependencies = {}) {
       provider: settings?.activeBackend || null,
       model: settings?.activeModel || null,
       processingTimeMs: response.processingTimeMs,
+      taskReview: response.taskReview,
     });
     if (!isRepresentativeStructuredBrief(brief)) {
       return failed(CONNECTION_CODES.STRUCTURED_OUTPUT_INVALID);

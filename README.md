@@ -75,6 +75,7 @@ Not sure which Mac you have? Open ** → About This Mac**. Choose `arm64` for
 - Screenshot text recognition uses Apple Vision and runs on your Mac.
 - Slipstream keeps no history of your original cases and collects no telemetry.
 - The destination of a full analysis is shown before submission; local Ollama can keep the source on your Mac.
+- If a model proposes tasks, materials, or deadlines, full analysis may send the same source and those claims to the same configured service once more for a short accuracy review. An online provider may charge for both calls.
 - Official-source lookup asks before sending a minimized query or opening a candidate page. Finding a page is not presented as proof by itself.
 - Clipboard monitoring is off by default. Clipboard monitoring requires a destination-specific confirmation. When enabled, the main task surface and macOS menu keep the destination and a direct off action visible.
 
