@@ -621,6 +621,27 @@
         ],
         "noAction": false
       }
+    },
+    {
+      "id": "university-submission-confirmation",
+      "domain": "university",
+      "tags": ["no-action", "completion-confirmation", "optional-capability"],
+      "source": "Fictional Northbridge University confirms that the sample Wren-103 essay was successfully submitted on 14 August 2099 at 2:50 PM. Submission ID is LANTERN-287787251. The digital receipt can be viewed, printed, or downloaded from the Document Viewer. Thank you for using the portal.",
+      "expected": {
+        "anchors": [
+          { "id": "submission", "anyOf": ["Wren-103"] },
+          { "id": "receipt-location", "anyOf": ["Document Viewer"] }
+        ],
+        "actions": [],
+        "deadlines": [],
+        "materials": [],
+        "reply": {
+          "mode": "not_requested",
+          "evidenceAny": []
+        },
+        "prohibitions": [],
+        "noAction": true
+      }
     }
   ]
 }

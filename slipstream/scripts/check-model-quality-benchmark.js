@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const corpus = require('../quality-benchmark/cases.json');
-const { buildGoldenBrief } = require('../quality-benchmark/golden');
+const { buildGoldenBrief, provenanceFor } = require('../quality-benchmark/golden');
 const { parseLiveOptions } = require('../quality-benchmark/live-options');
 const {
   scoreBenchmarkCase,
@@ -99,6 +99,7 @@ function main() {
 
   const universityCase = findCase('university-course-change');
   const noActionCase = findCase('government-closed-status-notice');
+  const confirmationCase = findCase('university-submission-confirmation');
   const mutations = [
     assertMutationFails({
       name: 'missing-required-action',
@@ -136,6 +137,24 @@ function main() {
         });
       },
       expectedFailureCode: 'hallucination.source-grounding',
+    }),
+    assertMutationFails({
+      name: 'grounded-optional-capability-as-action',
+      testCase: confirmationCase,
+      mutate: (brief, testCase) => {
+        const quote = 'The digital receipt can be viewed, printed, or downloaded from the Document Viewer.';
+        brief.nextSteps.push({
+          id: 'step-optional-receipt',
+          action: 'Download and save the digital receipt.',
+          actor: 'user',
+          urgency: 'now',
+          mandatory: false,
+          deadlineId: null,
+          prerequisiteStepIds: [],
+          provenance: provenanceFor(testCase.source, quote, 'inference'),
+        });
+      },
+      expectedFailureCode: 'hallucination.unexpected-actions',
     }),
     assertMutationFails({
       name: 'wrong-calendar-date',

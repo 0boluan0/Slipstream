@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {
+  buildReplyDraft,
   buildActionGroups,
   buildEvidenceCatalog,
   catalogEntriesFor,
+  composeActionChecklistText,
+  composeCompleteResultText,
   getEvidenceResultRoute,
   getHeadline,
 } from '../src/renderer/utils/evidenceMapping.mjs';
@@ -43,6 +46,40 @@ const resultSource = fs.readFileSync(
 );
 assert.match(resultSource, /点击任意彩色原文，右侧会跳到并展开对应结论/,
   'the result must directly teach source-to-conclusion evidence navigation');
+assert.match(resultSource, /未识别到需要继续完成的行动/,
+  'a complete zero-action analysis must not be mislabeled as basic translation');
+assert.match(resultSource, /base\.nextSteps\.filter\(isUserActionStep\)/,
+  'every result consumer must receive the same user-action-only step list');
+
+{
+  const brief = briefWith({
+    materials: [{ id: 'receipt', name: 'digital receipt', provenance: { evidence: [] } }],
+    deadlines: [{ id: 'submitted-at', whenText: '14 August 2026', provenance: { evidence: [] } }],
+    nextSteps: [
+      { id: 'optional', action: '保存副本', actor: 'user', mandatory: false, urgency: 'now' },
+      { id: 'institution', action: '学校审核材料', actor: 'institution', mandatory: true, urgency: 'now' },
+    ],
+  });
+  assert.deepEqual(buildActionGroups(brief, []), [],
+    'materials and dates must not be synthesized into user actions');
+}
+
+{
+  const sourceText = 'Reply to confirm receipt. You can save a copy. The university will review the form.';
+  const brief = briefWith({
+    nextSteps: [
+      { id: 'reply', action: '回复确认收到', actor: 'user', mandatory: true, urgency: 'now', provenance: provenance(sourceText, 'original', 'Reply to confirm receipt.') },
+      { id: 'optional', action: '保存副本', actor: 'user', mandatory: false, urgency: 'now', provenance: provenance(sourceText, 'inference', 'You can save a copy.') },
+      { id: 'institution', action: '学校审核表格', actor: 'institution', mandatory: true, urgency: 'now', provenance: provenance(sourceText, 'original', 'The university will review the form.') },
+    ],
+  });
+  const catalog = buildEvidenceCatalog(brief, sourceText);
+  assert.deepEqual(buildActionGroups(brief, catalog).map((group) => group.id), ['reply']);
+  assert.deepEqual(catalog.map((entry) => entry.quote), ['Reply to confirm receipt.']);
+  assert.doesNotMatch(composeActionChecklistText(brief), /保存副本|学校审核表格/);
+  assert.doesNotMatch(composeCompleteResultText(brief), /保存副本|学校审核表格/);
+  assert.deepEqual(buildReplyDraft(brief).facts.map((fact) => fact.value), ['Reply to confirm receipt.']);
+}
 
 {
   const sourceText = [
@@ -65,6 +102,7 @@ assert.match(resultSource, /点击任意彩色原文，右侧会跳到并展开�
   const step = {
     id: 'step-submit',
     action: '提交表格',
+    actor: 'user',
     urgency: 'now',
     mandatory: true,
     deadlineId: null,
@@ -118,6 +156,7 @@ assert.match(resultSource, /点击任意彩色原文，右侧会跳到并展开�
   const step = {
     id: 'step-evisa',
     action: '准备 eVisa share code',
+    actor: 'user',
     urgency: 'now',
     mandatory: true,
     deadlineId: null,

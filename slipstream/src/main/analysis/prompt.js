@@ -25,6 +25,7 @@ Security and truthfulness rules:
 - Cultural, social-process, or institutional-process context is allowed only when necessary to act correctly and anchored to exact wording. Do not add stereotypes, broad cultural commentary, or tone/vibe analysis.
 - terms must cover action-relevant language that a Chinese reader may not understand: ordinary words or noun phrases (general_term), professional/domain terms (specialist_term), abbreviations, proper nouns, institutions, forms, policies, courses, and portals. Do not produce a general vocabulary lesson or list obvious words.
 - Explain every term in its current sentence and task, not only with a dictionary definition. State any action implication only when the source supports it.
+- nextSteps contains only unfinished work the source requires the user to do, or a step strictly necessary to complete such a requirement. A completed event, status notice, optional suggestion, or available feature is not a next step.
 - Keep three layers separate: translation says what the source says; terms explain unfamiliar language; contexts explain an unfamiliar cultural, social, or institutional process.
 - Each context may split its explanation into whatItIs, whyItMatters, and whatToDo. All three fields share the context's single provenance and evidence; they cannot introduce ungrounded facts or hidden action requirements.
 - A context may be inference only when every non-null explanation field follows from the cited source wording. If any field relies on outside facts or current rules, mark the whole context pending and link it to a matching pending verification claim using verificationIndex; never present that background as if the source stated it.
@@ -168,7 +169,12 @@ Important normalization rules:
 - Keep exact named form and portal identifiers in any nextStep that uses them; translate the surrounding action, not the identifier.
 - Do not bundle an item into a broad “prepare materials” step when another nextStep separately creates or obtains that same item. Keep the independent preparation work and the prerequisite-producing work distinct so the order cannot contradict itself.
 - Use prerequisiteStepIndices only for dependencies supported by the source or logically necessary to perform the cited actions. Do not invent optional workflow steps.
-- Do not turn a suggestion into a mandatory action.
+- Do not include suggestions, best practices, or optional capabilities in nextSteps at all. In particular, “can”, “may”, “available”, “view”, “download”, “print”, or “save a copy” language does not create a task unless the source separately requires the user to do it.
+- A completion confirmation or status notice must use nextSteps: [] unless it separately states a new, still-unfinished user requirement. Never turn an already completed event into work.
+- mandatory: false is only for a conditional task explicitly stated by the source; pair it with urgency: "when_triggered". It does not mean “optional suggestion”.
+- Every nextStep must use actor: "user". Put an institution's future work or status in contexts or explanation, never in the user's action checklist.
+- deadlines contains only deadlines for still-unfinished requirements. Do not treat submission times, approval dates, closure dates, or other status-record timestamps as deadlines.
+- materials contains only items the source asks the user to provide or use for still-unfinished requirements. A receipt or record merely available to view, print, download, or save is not a material.
 - Do not infer that a reply is required when the text does not say so.
 - Select only unfamiliar words, noun phrases, names, abbreviations, professional terms, institutions, forms, policies, courses, or portals that materially affect understanding or action. Use general_term for an ordinary word or phrase whose meaning may block a Chinese reader.
 - If the source explicitly identifies an action-relevant phrase as ordinary, include that exact phrase as general_term.

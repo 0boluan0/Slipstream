@@ -107,6 +107,12 @@ function getContextSections(context) {
     .map(([label, value]) => ({ label, value: value.trim() }));
 }
 
+export function isUserActionStep(step) {
+  return step.actor === 'user' && (
+    step.mandatory === true || (step.mandatory === false && step.urgency === 'when_triggered')
+  );
+}
+
 function getAllContentItems(brief) {
   return [brief?.translation, brief?.explanation]
     .concat(
@@ -114,7 +120,7 @@ function getAllContentItems(brief) {
       Array.isArray(brief?.contexts) ? brief.contexts : [],
       Array.isArray(brief?.deadlines) ? brief.deadlines : [],
       Array.isArray(brief?.materials) ? brief.materials : [],
-      Array.isArray(brief?.nextSteps) ? brief.nextSteps : [],
+      Array.isArray(brief?.nextSteps) ? brief.nextSteps.filter(isUserActionStep) : [],
       Array.isArray(brief?.verifications) ? brief.verifications : [],
     )
     .filter(Boolean);
@@ -164,7 +170,9 @@ export function composeActionChecklistText(brief, {
 
   const deadlines = Array.isArray(brief?.deadlines) ? brief.deadlines : [];
   const materials = Array.isArray(brief?.materials) ? brief.materials : [];
-  const nextSteps = Array.isArray(brief?.nextSteps) ? brief.nextSteps : [];
+  const nextSteps = Array.isArray(brief?.nextSteps)
+    ? brief.nextSteps.filter(isUserActionStep)
+    : [];
   const stepNumberById = new Map(nextSteps.map((step, index) => [step?.id, index + 1]));
   const completedActionIdSet = Array.isArray(completedActionIds)
     ? new Set(completedActionIds)
@@ -270,7 +278,7 @@ export function buildReplyDraft(brief) {
   const materials = Array.isArray(brief?.materials) ? brief.materials : [];
   const deadlines = Array.isArray(brief?.deadlines) ? brief.deadlines : [];
   const nonReplySteps = (Array.isArray(brief?.nextSteps) ? brief.nextSteps : [])
-    .filter((step) => step !== replyStep);
+    .filter((step) => step !== replyStep && isUserActionStep(step));
   const requiredCompletionActionIds = getReplyRequiredCompletionActionIds(brief, replyStep);
   const deadlineEvidence = new Map(deadlines.map((deadline) => [
     deadline.id,
@@ -383,7 +391,7 @@ function evidenceOwners(brief) {
   return [
     brief.deadlines,
     brief.materials,
-    brief.nextSteps,
+    brief.nextSteps.filter(isUserActionStep),
     brief.terms,
     brief.contexts,
     brief.verifications,
@@ -498,9 +506,10 @@ export function getEvidenceResultRoute(highlight, brief, actionGroups) {
 }
 
 export function buildActionGroups(brief, catalog) {
-  if (brief.nextSteps.length > 0) {
-    const stepNumberById = new Map(brief.nextSteps.map((step, index) => [step.id, index + 1]));
-    return brief.nextSteps.map((step, index) => {
+  const userSteps = brief.nextSteps.filter(isUserActionStep);
+  if (userSteps.length > 0) {
+    const stepNumberById = new Map(userSteps.map((step, index) => [step.id, index + 1]));
+    return userSteps.map((step, index) => {
       const linkedDeadline = brief.deadlines.find((deadline) => deadline.id === step.deadlineId);
       const prerequisiteStepIds = (Array.isArray(step.prerequisiteStepIds)
         ? step.prerequisiteStepIds
@@ -518,27 +527,7 @@ export function buildActionGroups(brief, catalog) {
       };
     });
   }
-
-  const groups = [];
-  if (brief.materials.length > 0) {
-    groups.push({
-      id: 'materials',
-      title: `准备 ${brief.materials.length} 项材料`,
-      detail: brief.materials.map((item) => item.name).join('、'),
-      provenance: brief.materials[0].provenance,
-      evidence: brief.materials.flatMap((item) => catalogEntriesFor(item, catalog)),
-    });
-  }
-  if (brief.deadlines.length > 0) {
-    groups.push({
-      id: 'deadlines',
-      title: `核对截止日期：${brief.deadlines[0].whenText}`,
-      detail: brief.deadlines[0].condition,
-      provenance: brief.deadlines[0].provenance,
-      evidence: brief.deadlines.flatMap((item) => catalogEntriesFor(item, catalog)),
-    });
-  }
-  return groups;
+  return [];
 }
 
 export function hasExactGrounding(item, sourceText) {
@@ -562,6 +551,7 @@ export function selectPrimaryDeadline(brief, sourceText) {
   }
 
   const groundedSteps = (Array.isArray(brief?.nextSteps) ? brief.nextSteps : [])
+    .filter(isUserActionStep)
     .filter((step) => hasExactGrounding(step, sourceText));
   const ranked = deadlines.map((deadline, index) => {
     const linkedSteps = groundedSteps.filter((step) => step.deadlineId === deadline.id);
@@ -599,7 +589,9 @@ export function selectPrimaryDeadline(brief, sourceText) {
 export function getHeadline(brief, sourceText) {
   if (isTranslationOnlyBrief(brief)) return '完整翻译已生成';
 
-  const groundedSteps = brief.nextSteps.filter((step) => hasExactGrounding(step, sourceText));
+  const groundedSteps = brief.nextSteps
+    .filter(isUserActionStep)
+    .filter((step) => hasExactGrounding(step, sourceText));
   const groundedDeadline = selectPrimaryDeadline(brief, sourceText).deadline;
 
   if (groundedDeadline?.id) {
