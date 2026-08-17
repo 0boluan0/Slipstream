@@ -3,11 +3,8 @@ const { createHash } = require('node:crypto');
 const {
   ACTION_BRIEF_CANDIDATE_VERSION,
   CONTEXT_KINDS,
-  MATERIAL_REQUIREMENTS,
   PROVENANCE_KINDS,
   SOURCE_LANGUAGES,
-  STEP_ACTORS,
-  STEP_URGENCIES,
   TARGET_LANGUAGES,
   TERM_KINDS,
   assertActionBrief,
@@ -22,6 +19,7 @@ const {
   resolveEvidenceQuotes,
   resolveOfficialCitations,
 } = require('./evidence');
+const { resolveTaskReviewGate } = require('./task-review');
 
 const ARRAY_LIMITS = Object.freeze({
   terms: 50,
@@ -43,6 +41,7 @@ function normalizeActionBriefCandidate(candidate, options) {
     sourceId = null,
     generatedAt,
     parserWarnings = [],
+    taskReview = null,
   } = options || {};
 
   assertSourceText(sourceText);
@@ -60,6 +59,20 @@ function normalizeActionBriefCandidate(candidate, options) {
   }
 
   const warnings = createWarningCollector(parserWarnings);
+  const taskReviewGate = resolveTaskReviewGate({
+    sourceText,
+    candidate,
+    taskReview,
+  });
+  if (taskReviewGate.required && !taskReviewGate.valid) {
+    const reviewTimedOut = taskReviewGate.errorCode === 'TASK_REVIEW_TIMEOUT';
+    warnings.add(
+      taskReviewGate.errorCode || 'TASK_REVIEW_FAILED',
+      reviewTimedOut
+        ? '行动复核超时；为避免制造错误待办，已隐藏行动、材料和截止日期。请重试，翻译与解释仍然保留。'
+        : '行动候选未通过独立复核；为避免制造错误待办，已隐藏行动、材料和截止日期。请重试，翻译与解释仍然保留。',
+    );
+  }
   const officialSourcesById = normalizeOfficialSources(officialSources);
   const sourceLanguage = resolveSourceLanguage(sourceText, candidate.sourceLanguage);
   const targetLanguage = TARGET_LANGUAGES.includes(candidate.targetLanguage)
@@ -119,18 +132,67 @@ function normalizeActionBriefCandidate(candidate, options) {
     sourceText,
     officialSourcesById,
     warnings,
+    allowedCandidateIndices: taskReviewGate.acceptedDeadlineIndices,
+    reviewedConditionsByCandidateIndex: taskReviewGate.reviewedDeadlineConditions,
+    reviewedWhenTextsByCandidateIndex: taskReviewGate.reviewedDeadlineWhenTexts,
+    reviewedCalendarDatesByCandidateIndex: taskReviewGate.reviewedDeadlineCalendarDates,
+    reviewedNormalizedAtsByCandidateIndex: taskReviewGate.reviewedDeadlineNormalizedAts,
+    reviewedTimezonesByCandidateIndex: taskReviewGate.reviewedDeadlineTimezones,
+    reviewedEvidenceQuotesByCandidateIndex: taskReviewGate.reviewedDeadlineEvidenceQuotes,
   });
-  brief.deadlines = normalizedDeadlines.items;
+  const normalizedNextSteps = normalizeNextSteps(candidate.nextSteps, {
+    sourceText,
+    officialSourcesById,
+    warnings,
+    allowedCandidateIndices: taskReviewGate.acceptedNextStepIndices,
+    reviewedActionsByCandidateIndex: taskReviewGate.reviewedStepActions,
+    reviewedKindsByCandidateIndex: taskReviewGate.reviewedStepKinds,
+    reviewedConditionsByCandidateIndex: taskReviewGate.reviewedStepConditions,
+    reviewedPrerequisiteIndicesByCandidateIndex: taskReviewGate.reviewedStepPrerequisiteIndices,
+    reviewedEvidenceQuotesByCandidateIndex: taskReviewGate.reviewedStepEvidenceQuotes,
+  });
+  const survivingStepIndices = normalizedNextSteps.candidateIndices;
+  const survivingDeadlineIndices = linkedCandidatesForSurvivingSteps(
+    taskReviewGate.deadlineStepIndices,
+    survivingStepIndices,
+  );
+  brief.deadlines = normalizedDeadlines.items.filter((_, itemIndex) => (
+    survivingDeadlineIndices.has(normalizedDeadlines.candidateIndices[itemIndex])
+  ));
+  const reviewedDeadlineIdsByStepIndex = deadlineIdsByReviewedStepIndex({
+    deadlineStepIndices: taskReviewGate.deadlineStepIndices,
+    deadlineIdsByCandidateIndex: normalizedDeadlines.idsByCandidateIndex,
+    survivingDeadlineIndices,
+    survivingStepIndices,
+  });
+  brief.nextSteps = normalizedNextSteps.items.map((step) => {
+    const candidateIndex = normalizedNextSteps.candidateIndexByStepId.get(step.id);
+    const reviewedKind = taskReviewGate.reviewedStepKinds.get(candidateIndex);
+    const deadlineId = reviewedDeadlineIdsByStepIndex.get(candidateIndex) || null;
+    return {
+      ...step,
+      actor: 'user',
+      mandatory: reviewedKind === 'required',
+      urgency: reviewedKind === 'conditional'
+        ? 'when_triggered'
+        : deadlineId ? 'before_deadline' : 'now',
+      deadlineId,
+    };
+  });
+  const reviewedMaterials = materialReviewForSurvivingSteps({
+    materialStepIndices: taskReviewGate.materialStepIndices,
+    survivingStepIndices,
+    reviewedStepKinds: taskReviewGate.reviewedStepKinds,
+  });
   brief.materials = normalizeMaterials(candidate.materials, {
     sourceText,
     officialSourcesById,
     warnings,
-  });
-  brief.nextSteps = normalizeNextSteps(candidate.nextSteps, {
-    sourceText,
-    officialSourcesById,
-    warnings,
-    deadlineIdsByCandidateIndex: normalizedDeadlines.idsByCandidateIndex,
+    allowedCandidateIndices: reviewedMaterials.candidateIndices,
+    reviewedRequirementsByCandidateIndex: reviewedMaterials.requirementsByCandidateIndex,
+    reviewedNamesByCandidateIndex: taskReviewGate.reviewedMaterialNames,
+    reviewedDetailsByCandidateIndex: taskReviewGate.reviewedMaterialDetails,
+    reviewedEvidenceQuotesByCandidateIndex: taskReviewGate.reviewedMaterialEvidenceQuotes,
   });
   addCandidateWarnings(candidate.warnings, warnings);
 
@@ -249,32 +311,43 @@ function normalizeContexts(value, context) {
 function normalizeDeadlines(value, context) {
   const items = [];
   const idsByCandidateIndex = [];
+  const candidateIndices = [];
   forEachCandidate(value, 'deadlines', context.warnings, (candidate, candidateIndex) => {
-    const whenText = boundedString(candidate?.whenText, 1000);
+    if (!context.allowedCandidateIndices?.has(candidateIndex)) return;
+    const whenText = boundedString(
+      context.reviewedWhenTextsByCandidateIndex?.get(candidateIndex),
+      1000,
+    );
     if (!whenText) {
       context.warnings.add('INVALID_DEADLINE_DROPPED', '缺少原文日期文字的截止日期已丢弃。');
       return;
     }
-    const provenance = normalizeProvenance(candidate, {
+    const provenance = normalizeProvenance(candidateWithReviewedEvidence(
+      candidate,
+      context.reviewedEvidenceQuotesByCandidateIndex?.get(candidateIndex),
+      'original',
+    ), {
       ...context,
       defaultKind: 'original',
       requireEvidence: true,
-      fallbackQuotes: [whenText],
+      fallbackQuotes: [],
       path: `deadline:${whenText}`,
     });
     if (!isGrounded(provenance)) {
       context.warnings.add('UNSUPPORTED_DEADLINE_DROPPED', `截止日期“${whenText}”没有可追溯依据，已丢弃。`);
       return;
     }
-    const calendarDate = normalizeIsoCalendarDate(candidate?.calendarDate);
-    if (candidate?.calendarDate && !calendarDate) {
+    const reviewedCalendarDate = context.reviewedCalendarDatesByCandidateIndex?.get(candidateIndex);
+    const calendarDate = normalizeIsoCalendarDate(reviewedCalendarDate);
+    if (reviewedCalendarDate && !calendarDate) {
       context.warnings.add(
         'UNSAFE_CALENDAR_DEADLINE_DROPPED',
         `无法安全识别截止日期“${whenText}”的日历日期，已保留原文并清空结构化日期。`,
       );
     }
-    const normalizedAt = normalizeIsoInstant(candidate?.normalizedAt);
-    if (candidate?.normalizedAt && !normalizedAt) {
+    const reviewedNormalizedAt = context.reviewedNormalizedAtsByCandidateIndex?.get(candidateIndex);
+    const normalizedAt = normalizeIsoInstant(reviewedNormalizedAt);
+    if (reviewedNormalizedAt && !normalizedAt) {
       context.warnings.add(
         'UNSAFE_NORMALIZED_DEADLINE_DROPPED',
         `无法安全标准化截止日期“${whenText}”，已保留原文并清空标准时间。`,
@@ -282,31 +355,43 @@ function normalizeDeadlines(value, context) {
     }
     const id = `deadline-${items.length + 1}`;
     idsByCandidateIndex[candidateIndex] = id;
+    candidateIndices.push(candidateIndex);
     items.push({
       id,
       whenText,
       calendarDate,
       normalizedAt,
-      timezone: nullableBoundedString(candidate?.timezone, 100),
-      condition: nullableBoundedString(candidate?.condition, 1000),
+      timezone: nullableBoundedString(
+        context.reviewedTimezonesByCandidateIndex?.get(candidateIndex),
+        100,
+      ),
+      condition: nullableBoundedString(
+        context.reviewedConditionsByCandidateIndex?.get(candidateIndex),
+        1000,
+      ),
       provenance,
     });
   });
-  return { items, idsByCandidateIndex };
+  return { items, idsByCandidateIndex, candidateIndices };
 }
 
 function normalizeMaterials(value, context) {
   const items = [];
   const seen = new Set();
-  forEachCandidate(value, 'materials', context.warnings, (candidate) => {
-    const name = boundedString(candidate?.name, 500);
+  forEachCandidate(value, 'materials', context.warnings, (candidate, candidateIndex) => {
+    if (!context.allowedCandidateIndices?.has(candidateIndex)) return;
+    const name = boundedString(context.reviewedNamesByCandidateIndex?.get(candidateIndex), 500);
     if (!name) {
       context.warnings.add('INVALID_MATERIAL_DROPPED', '缺少材料名称的条目已丢弃。');
       return;
     }
     const key = name.toLocaleLowerCase();
     if (seen.has(key)) return;
-    const provenance = normalizeProvenance(candidate, {
+    const provenance = normalizeProvenance(candidateWithReviewedEvidence(
+      candidate,
+      context.reviewedEvidenceQuotesByCandidateIndex?.get(candidateIndex),
+      'original',
+    ), {
       ...context,
       defaultKind: 'original',
       requireEvidence: true,
@@ -319,13 +404,16 @@ function normalizeMaterials(value, context) {
       return;
     }
     seen.add(key);
+    const requirement = context.reviewedRequirementsByCandidateIndex?.get(candidateIndex);
+    if (requirement !== 'required' && requirement !== 'conditional') return;
     items.push({
       id: `material-${items.length + 1}`,
       name,
-      requirement: MATERIAL_REQUIREMENTS.includes(candidate?.requirement)
-        ? candidate.requirement
-        : 'unknown',
-      details: nullableBoundedString(candidate?.details, 2000),
+      requirement,
+      details: nullableBoundedString(
+        context.reviewedDetailsByCandidateIndex?.get(candidateIndex),
+        2000,
+      ),
       provenance,
     });
   });
@@ -336,19 +424,34 @@ function normalizeNextSteps(value, context) {
   const items = [];
   const seen = new Set();
   forEachCandidate(value, 'nextSteps', context.warnings, (candidate, candidateIndex) => {
-    const action = boundedString(candidate?.action, 2000);
-    if (!action) {
-      context.warnings.add('INVALID_NEXT_STEP_DROPPED', '缺少动作说明的下一步已丢弃。');
+    if (!context.allowedCandidateIndices?.has(candidateIndex)) return;
+    const reviewedAction = boundedString(
+      context.reviewedActionsByCandidateIndex?.get(candidateIndex),
+      2000,
+    );
+    const reviewedKind = context.reviewedKindsByCandidateIndex?.get(candidateIndex);
+    const reviewedCondition = nullableBoundedString(
+      context.reviewedConditionsByCandidateIndex?.get(candidateIndex),
+      1000,
+    );
+    if (
+      !reviewedAction
+      || (reviewedKind !== 'required' && reviewedKind !== 'conditional')
+      || (reviewedKind === 'conditional' && !reviewedCondition)
+    ) {
+      context.warnings.add('INVALID_NEXT_STEP_DROPPED', '行动复核缺少动作说明或强度，已丢弃。');
       return;
     }
-    const requiredUserAction = candidate?.actor === 'user' && candidate?.mandatory === true;
-    const conditionalUserAction = candidate?.actor === 'user'
-      && candidate?.mandatory === false
-      && candidate?.urgency === 'when_triggered';
-    if (!requiredUserAction && !conditionalUserAction) return;
+    const action = reviewedKind === 'conditional' && !reviewedAction.includes(reviewedCondition)
+      ? `${reviewedCondition}，${reviewedAction}`
+      : reviewedAction;
     const key = action.toLocaleLowerCase();
     if (seen.has(key)) return;
-    const provenance = normalizeProvenance(candidate, {
+    const provenance = normalizeProvenance(candidateWithReviewedEvidence(
+      candidate,
+      context.reviewedEvidenceQuotesByCandidateIndex?.get(candidateIndex),
+      'inference',
+    ), {
       ...context,
       defaultKind: 'inference',
       requireEvidence: true,
@@ -359,27 +462,21 @@ function normalizeNextSteps(value, context) {
       context.warnings.add('UNSUPPORTED_NEXT_STEP_DROPPED', `下一步“${action}”没有原文依据，已丢弃。`);
       return;
     }
-    const deadlineIndex = Number.isSafeInteger(candidate?.deadlineIndex)
-      ? candidate.deadlineIndex
-      : null;
-    const deadlineId = deadlineIndex === null
-      ? null
-      : context.deadlineIdsByCandidateIndex[deadlineIndex] || null;
-    if (deadlineIndex !== null && !deadlineId) {
-      context.warnings.add('INVALID_DEADLINE_REFERENCE', `下一步“${action}”引用了无效的截止日期。`);
-    }
     let prerequisiteStepIndices = [];
-    if (candidate?.prerequisiteStepIndices !== undefined) {
-      if (!Array.isArray(candidate.prerequisiteStepIndices)) {
+    const reviewedPrerequisites = context.reviewedPrerequisiteIndicesByCandidateIndex?.get(
+      candidateIndex,
+    );
+    if (reviewedPrerequisites !== undefined) {
+      if (!Array.isArray(reviewedPrerequisites)) {
         context.warnings.add(
           'INVALID_STEP_DEPENDENCIES',
           `下一步“${action}”的前置步骤不是数组，已忽略。`,
         );
       } else {
-        prerequisiteStepIndices = [...new Set(candidate.prerequisiteStepIndices.filter((index) => (
+        prerequisiteStepIndices = [...new Set(reviewedPrerequisites.filter((index) => (
           Number.isSafeInteger(index) && index >= 0
         )))];
-        if (prerequisiteStepIndices.length !== candidate.prerequisiteStepIndices.length) {
+        if (prerequisiteStepIndices.length !== reviewedPrerequisites.length) {
           context.warnings.add(
             'INVALID_STEP_DEPENDENCIES',
             `下一步“${action}”包含无效或重复的前置步骤，已忽略这些引用。`,
@@ -391,10 +488,10 @@ function normalizeNextSteps(value, context) {
     items.push({
       id: `step-${items.length + 1}`,
       action,
-      actor: STEP_ACTORS.includes(candidate?.actor) ? candidate.actor : 'unknown',
-      urgency: STEP_URGENCIES.includes(candidate?.urgency) ? candidate.urgency : 'unknown',
-      mandatory: typeof candidate?.mandatory === 'boolean' ? candidate.mandatory : null,
-      deadlineId,
+      actor: 'user',
+      urgency: reviewedKind === 'conditional' ? 'when_triggered' : 'now',
+      mandatory: reviewedKind === 'required',
+      deadlineId: null,
       provenance,
       candidateIndex,
       prerequisiteStepIndices,
@@ -427,7 +524,94 @@ function normalizeNextSteps(value, context) {
     };
   });
 
-  return sortNextStepsByDependencies(normalized, context.warnings);
+  return {
+    items: sortNextStepsByDependencies(normalized, context.warnings),
+    candidateIndices: new Set(items.map((item) => item.candidateIndex)),
+    candidateIndexByStepId: new Map(items.map((item) => [item.id, item.candidateIndex])),
+  };
+}
+
+function deadlineIdsByReviewedStepIndex({
+  deadlineStepIndices,
+  deadlineIdsByCandidateIndex,
+  survivingDeadlineIndices,
+  survivingStepIndices,
+}) {
+  const deadlineIdsByStepIndex = new Map();
+  const ambiguousStepIndices = new Set();
+  if (!(deadlineStepIndices instanceof Map)) return deadlineIdsByStepIndex;
+
+  for (const [deadlineIndex, stepIndices] of deadlineStepIndices) {
+    if (!survivingDeadlineIndices.has(deadlineIndex)) continue;
+    const deadlineId = deadlineIdsByCandidateIndex[deadlineIndex];
+    if (!deadlineId) continue;
+    for (const stepIndex of stepIndices) {
+      if (!survivingStepIndices.has(stepIndex) || ambiguousStepIndices.has(stepIndex)) continue;
+      const existing = deadlineIdsByStepIndex.get(stepIndex);
+      if (existing && existing !== deadlineId) {
+        deadlineIdsByStepIndex.delete(stepIndex);
+        ambiguousStepIndices.add(stepIndex);
+        continue;
+      }
+      deadlineIdsByStepIndex.set(stepIndex, deadlineId);
+    }
+  }
+  return deadlineIdsByStepIndex;
+}
+
+function linkedCandidatesForSurvivingSteps(linkedStepIndices, survivingStepIndices) {
+  const survivingCandidates = new Set();
+  if (!(linkedStepIndices instanceof Map) || !(survivingStepIndices instanceof Set)) {
+    return survivingCandidates;
+  }
+  for (const [candidateIndex, stepIndices] of linkedStepIndices) {
+    if ([...stepIndices].some((stepIndex) => survivingStepIndices.has(stepIndex))) {
+      survivingCandidates.add(candidateIndex);
+    }
+  }
+  return survivingCandidates;
+}
+
+function materialReviewForSurvivingSteps({
+  materialStepIndices,
+  survivingStepIndices,
+  reviewedStepKinds,
+}) {
+  const candidateIndices = new Set();
+  const requirementsByCandidateIndex = new Map();
+  if (
+    !(materialStepIndices instanceof Map)
+    || !(survivingStepIndices instanceof Set)
+    || !(reviewedStepKinds instanceof Map)
+  ) {
+    return { candidateIndices, requirementsByCandidateIndex };
+  }
+
+  for (const [candidateIndex, stepIndices] of materialStepIndices) {
+    const linkedKinds = [...stepIndices]
+      .filter((stepIndex) => survivingStepIndices.has(stepIndex))
+      .map((stepIndex) => reviewedStepKinds.get(stepIndex))
+      .filter((kind) => kind === 'required' || kind === 'conditional');
+    if (linkedKinds.length === 0) continue;
+    candidateIndices.add(candidateIndex);
+    requirementsByCandidateIndex.set(
+      candidateIndex,
+      linkedKinds.includes('required') ? 'required' : 'conditional',
+    );
+  }
+  return { candidateIndices, requirementsByCandidateIndex };
+}
+
+function candidateWithReviewedEvidence(candidate, evidenceQuote, provenanceKind) {
+  if (typeof evidenceQuote !== 'string' || !evidenceQuote.trim()) return candidate;
+  return {
+    ...candidate,
+    provenance: provenanceKind,
+    confidence: null,
+    citationIds: [],
+    evidenceQuotes: [evidenceQuote],
+    evidence: [],
+  };
 }
 
 function sortNextStepsByDependencies(items, warnings) {

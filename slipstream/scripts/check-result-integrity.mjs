@@ -75,9 +75,9 @@ assert.deepEqual(getProcessingPrivacyDisclosure('ollama', { processingLocation: 
   providerLabel: 'Ollama',
   headerLabel: '本地处理 · 隐私优先',
   title: '将在这台 Mac 上分析',
-  detail: '原文不会发送给模型服务商；截图 OCR 始终在本机，官方来源核验另行征求允许。',
+  detail: '原文不会发送给模型服务商；若模型提出待办，会在本机再做一次短复核。截图 OCR 始终在本机，官方来源核验另行征求允许。',
   activeTitle: '正在这台 Mac 上分析',
-  activeDetail: '原文仍在本机，不会发送给模型服务商。',
+  activeDetail: '原文仍在本机；若模型提出待办，会在本机再做一次短复核。',
   resultTitle: '本次在这台 Mac 上完成分析',
   resultDetail: '原文没有发送给模型服务商；官方来源核验仅在你允许时另行联网。',
   footer: '原文不会发送给模型服务商；官方来源核验只在你允许时进行。',
@@ -93,6 +93,8 @@ assert.match(
 );
 assert.equal(getProcessingPrivacyDisclosure('openai').title, '将发送给 OpenAI');
 assert.match(getProcessingPrivacyDisclosure('openai').detail, /完整原文会发送/);
+assert.match(getProcessingPrivacyDisclosure('openai').detail, /再发送一次做短复核/);
+assert.match(getProcessingPrivacyDisclosure('openai').detail, /第二次调用费用/);
 assert.equal(getProcessingPrivacyDisclosure('openai').activeTitle, '正在由 OpenAI 分析');
 assert.match(getProcessingPrivacyDisclosure('openai').activeDetail, /已发送/);
 const freeTranslationDisclosure = getProcessingPrivacyDisclosure('free_translate');
@@ -108,7 +110,8 @@ const localCustomDisclosure = getProcessingPrivacyDisclosure({
 assert.equal(localCustomDisclosure.location, 'local-loopback');
 assert.equal(localCustomDisclosure.providerLabel, '本机兼容服务');
 assert.match(localCustomDisclosure.title, /这台 Mac 上的兼容服务/);
-assert.match(localCustomDisclosure.detail, /是否再联网、转发或留存取决于它自己的配置/);
+assert.match(localCustomDisclosure.detail, /是否再联网、转发、留存或计费取决于它自己的配置/);
+assert.match(localCustomDisclosure.detail, /再发送一次做短复核/);
 assert.doesNotMatch(localCustomDisclosure.activeDetail, /在线服务/);
 assert.match(localCustomDisclosure.resultTitle, /这台 Mac 上的兼容服务完成分析/);
 assert.match(localCustomDisclosure.resultDetail, /本机回环地址/);
@@ -979,7 +982,7 @@ function briefWith(overrides = {}) {
 
   assert.equal(composeReplyDraft(draft), '', 'an unconfirmed real-world status must not produce a sendable draft');
   const completedDraft = composeReplyDraft(draft, { completionStatus: 'completed' });
-  assert.match(completedDraft, /I confirm that I have completed the requested steps and provided the requested materials\./);
+  assert.match(completedDraft, /I confirm that I have completed the currently required steps and provided the currently required materials\./);
   assert.match(completedDraft, /\[Your name\]/);
   assert.deepEqual(getReplyDraftPlaceholders(completedDraft), ['[Your name]']);
   assert.deepEqual(
@@ -994,7 +997,7 @@ function briefWith(overrides = {}) {
   );
 
   const inProgressDraft = composeReplyDraft(draft, { completionStatus: 'in_progress' });
-  assert.match(inProgressDraft, /I have not completed the requested steps yet\./);
+  assert.match(inProgressDraft, /I have not completed the currently required steps yet\./);
   assert.doesNotMatch(inProgressDraft, /I confirm that I have completed/);
   assert.doesNotMatch(inProgressDraft, /provided the requested materials/);
 }

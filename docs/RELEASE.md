@@ -26,5 +26,5 @@
 
 - Publish only from a reviewed, clean exact-version commit after `release:signed` and `check:distribution` pass with a valid Developer ID identity and notarization credentials. Never upload the local-ad-hoc artifacts as the public production release.
 - Create a version tag from the exact commit used to build.
-- Attach both user-facing DMGs and `SHA256SUMS.txt` to the release. ZIPs and blockmaps remain build outputs unless an updater needs them.
+- Attach both user-facing DMGs, both ZIPs, and `SHA256SUMS.txt` to the release. Blockmaps remain build outputs until an in-app updater consumes them.
 - Include known limitations and privacy-impacting changes in the notes. In V1, GOV.UK is the only built-in search-discovery provider; other publishers require an eligible candidate URL and retrieved pages remain claim-neutral unless an explicit semantic assessor verifies support.

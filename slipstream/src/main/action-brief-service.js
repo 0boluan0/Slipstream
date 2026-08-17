@@ -28,6 +28,7 @@ async function createActionBrief({
   verificationApprovalId = null,
   verificationDependencies,
   signal,
+  taskReview = null,
 }) {
   const sourceId = captureEnvelope?.id || null;
   const brief = backend === 'free_translate'
@@ -46,6 +47,7 @@ async function createActionBrief({
       model,
       processingTimeMs,
       sourceId,
+      taskReview,
     });
   if (brief?.analysisProvenance) {
     brief.analysisProvenance.processingLocation = processingLocation;

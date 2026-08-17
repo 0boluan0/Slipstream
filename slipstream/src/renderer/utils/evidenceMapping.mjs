@@ -276,6 +276,7 @@ export function buildReplyDraft(brief) {
     .find((term) => term.kind === 'institution')?.surface;
   const salutation = institution ? `Dear ${institution},` : 'Dear Sir or Madam,';
   const materials = Array.isArray(brief?.materials) ? brief.materials : [];
+  const requiredMaterials = materials.filter((material) => material?.requirement === 'required');
   const deadlines = Array.isArray(brief?.deadlines) ? brief.deadlines : [];
   const nonReplySteps = (Array.isArray(brief?.nextSteps) ? brief.nextSteps : [])
     .filter((step) => step !== replyStep && isUserActionStep(step));
@@ -306,7 +307,7 @@ export function buildReplyDraft(brief) {
     text: '',
     facts,
     salutation,
-    hasMaterials: materials.length > 0,
+    hasMaterials: requiredMaterials.length > 0,
     replyStepId: typeof replyStep.id === 'string' ? replyStep.id : null,
     requiredCompletionActionIds: [...new Set(requiredCompletionActionIds)],
     safetyNote: 'Slipstream 不知道你现实中是否已经完成这些事项。请选择真实状态后，才会生成可复制的草稿。',
@@ -341,9 +342,9 @@ export function composeReplyDraft(model, { completionStatus } = {}) {
 
   const statusLine = completionStatus === 'completed'
     ? model.hasMaterials
-      ? 'I confirm that I have completed the requested steps and provided the requested materials.'
-      : 'I confirm that I have completed the requested steps.'
-    : 'I have not completed the requested steps yet. I will reply again once they are complete.';
+      ? 'I confirm that I have completed the currently required steps and provided the currently required materials.'
+      : 'I confirm that I have completed the currently required steps.'
+    : 'I have not completed the currently required steps yet. I will reply again once they are complete.';
 
   return [
     model.salutation || 'Dear Sir or Madam,',
@@ -606,8 +607,17 @@ export function getHeadline(brief, sourceText) {
 
   const groundedStep = groundedSteps[0];
   if (groundedStep?.action) return groundedStep.action;
-  if (hasExactGrounding(brief.explanation, sourceText)) {
-    return brief.explanation.text.split(/[。.!?]/)[0];
-  }
-  return '已生成中文解释，请查看证据与待核验标记';
+  if (hasTaskReviewFailure(brief)) return '行动复核失败，请重试';
+  return '未识别到需要继续完成的行动';
+}
+
+function hasTaskReviewFailure(brief) {
+  return Boolean(getTaskReviewFailureCode(brief));
+}
+
+export function getTaskReviewFailureCode(brief) {
+  const warning = (Array.isArray(brief?.warnings) ? brief.warnings : []).find((item) => (
+    typeof item?.code === 'string' && item.code.startsWith('TASK_REVIEW_')
+  ));
+  return warning?.code || null;
 }

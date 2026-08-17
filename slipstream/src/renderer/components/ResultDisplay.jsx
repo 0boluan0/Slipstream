@@ -39,6 +39,7 @@ import {
   getHeadline,
   getReplyDraftPlaceholders,
   getReplyProgressConsistency,
+  getTaskReviewFailureCode,
   hasExactGrounding,
   isUserActionStep,
   isTranslationOnlyBrief,
@@ -426,6 +427,8 @@ export default function ResultDisplay({
   const verificationTargets = useMemo(() => collectVerificationTargets(normalizedBrief), [normalizedBrief]);
   const govUkDiscoveryPlans = useMemo(() => collectGovUkDiscoveryPlans(normalizedBrief), [normalizedBrief]);
   const headline = useMemo(() => getHeadline(normalizedBrief, sourceText), [normalizedBrief, sourceText]);
+  const taskReviewFailureCode = getTaskReviewFailureCode(normalizedBrief);
+  const taskReviewFailed = Boolean(taskReviewFailureCode);
   const completionStages = isTranslationOnly ? TRANSLATION_PROCESSING_STAGES : PROCESSING_STAGES;
   const effectivePreference = isTranslationOnly ? 'translation' : preference;
   const [hoveredEvidence, setHoveredEvidence] = useState(null);
@@ -1666,8 +1669,15 @@ export default function ResultDisplay({
             </ol>
             {actionGroups.length === 0 && (
               <div className="translation-only-state">
-                <BookOpen size={21} />
-                <div><strong>未识别到需要继续完成的行动</strong><p>你仍可查看翻译、术语、材料、日期与流程解释，并结合左侧原文核对。</p></div>
+                {taskReviewFailed ? <WarningCircle size={21} /> : <BookOpen size={21} />}
+                <div>
+                  <strong>{taskReviewFailed ? '行动复核失败，请重试' : '未识别到需要继续完成的行动'}</strong>
+                  <p>{taskReviewFailed
+                    ? taskReviewFailureCode === 'TASK_REVIEW_TIMEOUT'
+                      ? '行动复核超时，本次已隐藏行动、材料和截止日期。请重试；翻译与解释仍可查看。'
+                      : '本次已隐藏未经复核的行动、材料和截止日期。请重试；翻译与解释仍可查看。'
+                    : '你仍可查看翻译、术语、材料、日期与流程解释，并结合左侧原文核对。'}</p>
+                </div>
               </div>
             )}
           </div>

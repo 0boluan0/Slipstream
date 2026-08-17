@@ -288,6 +288,7 @@ async function main() {
     provider: 'deepseek',
     model: modelLabel,
     processingTimeMs,
+    taskReview: response.taskReview,
   });
   const structuredBrief = isRepresentativeStructuredBrief(brief);
 

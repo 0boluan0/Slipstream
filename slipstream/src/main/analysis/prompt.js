@@ -161,6 +161,8 @@ Allowed step actors: ${STEP_ACTORS.join(', ')}.
 Allowed step urgencies: ${STEP_URGENCIES.join(', ')}.
 
 Important normalization rules:
+- Negative example: “Your file was successfully submitted. Your receipt can be viewed or downloaded.” means deadlines, materials, and nextSteps are all empty.
+- Positive example: “Please upload the signed form by Friday.” may produce the required upload action, signed-form material, and Friday deadline.
 - calendarDate may be YYYY-MM-DD only when the source supplies an unambiguous full calendar date; otherwise null. Never guess a year, month, or day.
 - normalizedAt may be a full ISO-8601 instant only when the source supplies enough date, time, and timezone information; otherwise null.
 - deadlineIndex is a zero-based reference to the candidate deadlines array, or null.

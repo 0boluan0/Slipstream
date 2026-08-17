@@ -7,14 +7,48 @@ import {
   catalogEntriesFor,
   composeActionChecklistText,
   composeCompleteResultText,
+  composeReplyDraft,
   getEvidenceResultRoute,
   getHeadline,
+  getTaskReviewFailureCode,
 } from '../src/renderer/utils/evidenceMapping.mjs';
 
 function evidenceFor(sourceText, quote) {
   const start = sourceText.indexOf(quote);
   assert.notEqual(start, -1, `fixture quote is missing: ${quote}`);
   return { quote, start, end: start + quote.length, match: 'exact', ambiguous: false };
+}
+
+{
+  const brief = briefWith({
+    materials: [{ id: 'conditional-form', name: '修正表格', requirement: 'conditional', provenance: { evidence: [] } }],
+    nextSteps: [{
+      id: 'reply',
+      action: '完成后回复确认',
+      actor: 'user',
+      mandatory: true,
+      urgency: 'now',
+      provenance: { evidence: [] },
+    }, {
+      id: 'conditional-upload',
+      action: '如果被拒，上传修正后的表格',
+      actor: 'user',
+      mandatory: false,
+      urgency: 'when_triggered',
+      provenance: { evidence: [] },
+    }],
+  });
+  const model = buildReplyDraft(brief);
+  assert.equal(model.hasMaterials, false,
+    'conditional materials must not be claimed as already provided in a completion reply');
+  assert.deepEqual(model.requiredCompletionActionIds, [],
+    'a conditional action must not be treated as a currently required completion fact');
+  const completedDraft = composeReplyDraft(model, { completionStatus: 'completed' });
+  assert.match(completedDraft, /completed the currently required steps/);
+  assert.doesNotMatch(
+    completedDraft,
+    /provided the requested materials/,
+  );
 }
 
 function provenance(sourceText, kind, ...quotes) {
@@ -48,6 +82,10 @@ assert.match(resultSource, /点击任意彩色原文，右侧会跳到并展开�
   'the result must directly teach source-to-conclusion evidence navigation');
 assert.match(resultSource, /未识别到需要继续完成的行动/,
   'a complete zero-action analysis must not be mislabeled as basic translation');
+assert.match(resultSource, /行动复核失败，请重试/,
+  'a failed task review must not masquerade as a successful zero-action analysis');
+assert.match(resultSource, /taskReviewFailureCode === 'TASK_REVIEW_TIMEOUT'/,
+  'a task-review timeout must retain retry-specific empty-state copy');
 assert.match(resultSource, /base\.nextSteps\.filter\(isUserActionStep\)/,
   'every result consumer must receive the same user-action-only step list');
 
@@ -79,6 +117,39 @@ assert.match(resultSource, /base\.nextSteps\.filter\(isUserActionStep\)/,
   assert.doesNotMatch(composeActionChecklistText(brief), /保存副本|学校审核表格/);
   assert.doesNotMatch(composeCompleteResultText(brief), /保存副本|学校审核表格/);
   assert.deepEqual(buildReplyDraft(brief).facts.map((fact) => fact.value), ['Reply to confirm receipt.']);
+}
+
+{
+  const sourceText = 'Your file was successfully submitted. Your receipt can be downloaded.';
+  const brief = briefWith({
+    explanation: {
+      text: '保存或下载收据',
+      provenance: provenance(sourceText, 'inference', 'Your receipt can be downloaded.'),
+    },
+    nextSteps: [{
+      id: 'optional-receipt',
+      action: '下载收据',
+      actor: 'user',
+      mandatory: false,
+      urgency: 'now',
+      provenance: provenance(sourceText, 'inference', 'Your receipt can be downloaded.'),
+    }],
+  });
+  assert.equal(
+    getHeadline(brief, sourceText),
+    '未识别到需要继续完成的行动',
+    'an explanation or optional capability must not reappear as the zero-action headline',
+  );
+
+  const timedOutBrief = briefWith({
+    warnings: [{ code: 'TASK_REVIEW_TIMEOUT', message: '行动复核超时，请重试。' }],
+  });
+  assert.equal(getTaskReviewFailureCode(timedOutBrief), 'TASK_REVIEW_TIMEOUT');
+  assert.equal(
+    getHeadline(timedOutBrief, sourceText),
+    '行动复核失败，请重试',
+    'a review timeout must not be presented as evidence that no action exists',
+  );
 }
 
 {

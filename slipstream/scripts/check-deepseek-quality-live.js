@@ -92,6 +92,7 @@ async function runCase({
       provider: 'deepseek',
       model: modelLabel(model),
       processingTimeMs: response.processingTimeMs,
+      taskReview: response.taskReview,
     });
     const score = scoreBenchmarkCase({
       testCase,

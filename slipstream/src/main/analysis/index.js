@@ -15,6 +15,7 @@ function analyzeModelOutput({
   officialSources = [],
   sourceId = null,
   generatedAt,
+  taskReview = null,
 } = {}) {
   assertSourceText(sourceText);
   const parsed = parseStrictJsonOutput(rawOutput);
@@ -28,6 +29,7 @@ function analyzeModelOutput({
       sourceId,
       generatedAt,
       parserWarnings: parsed.warnings,
+      taskReview,
     }));
   }
 

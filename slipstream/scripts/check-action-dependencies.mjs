@@ -12,6 +12,7 @@ import {
 const require = createRequire(import.meta.url);
 const { analyzeModelOutput, buildActionBriefPrompt } = require('../src/main/analysis');
 const { validateActionBrief } = require('../src/shared/action-brief.cjs');
+const { createFixtureTaskReview } = require('./task-review-fixture.cjs');
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(scriptDir, '..');
@@ -107,6 +108,7 @@ const outOfOrderCandidate = candidateWith([
 const brief = analyzeModelOutput({
   sourceText,
   rawOutput: outOfOrderCandidate,
+  taskReview: createFixtureTaskReview(sourceText, outOfOrderCandidate),
   provider: 'deepseek',
   model: 'dependency-test',
   generatedAt: '2026-07-27T12:00:00.000Z',
@@ -146,26 +148,19 @@ assert.equal(validateActionBrief(forgedDuplicateId, { sourceText }).valid, false
 
 const cyclicCandidate = structuredClone(outOfOrderCandidate);
 cyclicCandidate.nextSteps[1].prerequisiteStepIndices = [0];
-const cycleSafeBrief = analyzeModelOutput({
-  sourceText,
-  rawOutput: cyclicCandidate,
-  generatedAt: '2026-07-27T12:00:00.000Z',
-});
-assert.equal(cycleSafeBrief.status, 'partial');
-assert(cycleSafeBrief.nextSteps.every((step) => step.prerequisiteStepIds.length === 0));
-assert(cycleSafeBrief.warnings.some((warning) => warning.code === 'CYCLIC_STEP_DEPENDENCIES_DROPPED'));
-assert.equal(validateActionBrief(cycleSafeBrief, { sourceText }).valid, true);
+assert.throws(
+  () => createFixtureTaskReview(sourceText, cyclicCandidate),
+  /TASK_REVIEW_INVALID_PREREQUISITE/,
+  'a cyclic authoritative review must fail closed',
+);
 
 const missingReferenceCandidate = structuredClone(outOfOrderCandidate);
 missingReferenceCandidate.nextSteps[0].prerequisiteStepIndices = [99];
-const missingReferenceBrief = analyzeModelOutput({
-  sourceText,
-  rawOutput: missingReferenceCandidate,
-  generatedAt: '2026-07-27T12:00:00.000Z',
-});
-assert.equal(missingReferenceBrief.status, 'partial');
-assert.deepEqual(missingReferenceBrief.nextSteps.find((step) => step.action.startsWith('在 2026')).prerequisiteStepIds, []);
-assert(missingReferenceBrief.warnings.some((warning) => warning.code === 'INVALID_STEP_DEPENDENCY_REFERENCE'));
+assert.throws(
+  () => createFixtureTaskReview(sourceText, missingReferenceCandidate),
+  /TASK_REVIEW_INVALID_PREREQUISITE/,
+  'an unknown authoritative prerequisite must fail closed',
+);
 
 const prompt = buildActionBriefPrompt(sourceText).userMessage;
 assert.match(prompt, /prerequisiteStepIndices/);
