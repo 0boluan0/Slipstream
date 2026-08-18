@@ -66,6 +66,11 @@ if (!pkg.build.mac.target.includes('zip')) {
   process.exit(1);
 }
 
+if (pkg.build.mac.signIgnore !== '\\.pak$') {
+  console.error('macOS signing must leave Electron data packs to the enclosing bundle seal');
+  process.exit(1);
+}
+
 const expectedDmgConfig = {
   writeUpdateInfo: false,
   title: 'Install Slipstream',
@@ -283,8 +288,8 @@ if (signedArguments.some((argument) => argument.includes('entitlements.adhoc.pli
   process.exit(1);
 }
 
-if (!signedArguments.includes('-c.mac.notarize=true') || !signedArguments.includes('-c.forceCodeSigning=true')) {
-  console.error('signed build must enable notarization and require a signing identity');
+if (!signedArguments.includes('-c.mac.notarize=false') || !signedArguments.includes('-c.forceCodeSigning=true')) {
+  console.error('signed build must reserve app notarization for the verified afterSign hook');
   process.exit(1);
 }
 
@@ -297,7 +302,7 @@ const notarizationArgumentChecks = [
       APPLE_API_ISSUER: 'api-issuer',
     },
     [
-      'notarytool', 'submit', stagedDmgPath, '--wait',
+      'notarytool', 'submit', stagedDmgPath, '--wait', '--no-s3-acceleration',
       '--key', '/tmp/AuthKey.p8', '--key-id', 'api-key-id', '--issuer', 'api-issuer',
     ],
   ],
@@ -308,7 +313,7 @@ const notarizationArgumentChecks = [
       APPLE_TEAM_ID: 'team-id',
     },
     [
-      'notarytool', 'submit', stagedDmgPath, '--wait',
+      'notarytool', 'submit', stagedDmgPath, '--wait', '--no-s3-acceleration',
       '--apple-id', 'release@example.invalid', '--password', 'app-password', '--team-id', 'team-id',
     ],
   ],
@@ -318,7 +323,7 @@ const notarizationArgumentChecks = [
       APPLE_KEYCHAIN_PROFILE: 'notary-profile',
     },
     [
-      'notarytool', 'submit', stagedDmgPath, '--wait',
+      'notarytool', 'submit', stagedDmgPath, '--wait', '--no-s3-acceleration',
       '--keychain', '/tmp/release.keychain-db', '--keychain-profile', 'notary-profile',
     ],
   ],
@@ -357,6 +362,18 @@ if (!rejectedAmbiguousDeveloperIds) {
 }
 
 const macBuildSource = fs.readFileSync(path.join(__dirname, 'build-macos.js'), 'utf8');
+const afterSignSource = fs.readFileSync(path.join(__dirname, 'after-sign.js'), 'utf8');
+for (const marker of [
+  "'--sequesterRsrc', '--keepParent'",
+  'notarizationArguments(submissionPath, process.env)',
+  "['stapler', 'staple', appPath]",
+  "['stapler', 'validate', appPath]",
+]) {
+  if (!afterSignSource.includes(marker)) {
+    console.error(`signed apps must use the non-accelerated afterSign notarization path: ${marker}`);
+    process.exit(1);
+  }
+}
 const stagedDmgStepIndexes = [
   macBuildSource.indexOf("['--force', '--sign', signingIdentity, '--timestamp', dmgPath]"),
   macBuildSource.indexOf("execFileSync('xcrun', notarizationArguments(dmgPath, env)"),
