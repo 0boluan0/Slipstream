@@ -55,7 +55,7 @@ function buildArguments(signed, stagingDir) {
     `-c.extraMetadata.slipstreamBuildIdentity=${buildIdentity}`,
   ];
   if (signed) {
-    return [...args, '-c.mac.notarize=true', '-c.forceCodeSigning=true'];
+    return [...args, '-c.mac.notarize=false', '-c.forceCodeSigning=true'];
   }
   return [
     ...args,
@@ -76,7 +76,7 @@ function artifactNames() {
 }
 
 function notarizationArguments(dmgPath, env = process.env) {
-  const args = ['notarytool', 'submit', dmgPath, '--wait'];
+  const args = ['notarytool', 'submit', dmgPath, '--wait', '--no-s3-acceleration'];
   if (env.APPLE_API_KEY && env.APPLE_API_KEY_ID && env.APPLE_API_ISSUER) {
     return [
       ...args,
