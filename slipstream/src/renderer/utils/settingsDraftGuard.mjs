@@ -125,7 +125,7 @@ export function describeSettingsDraftIntent(intent, {
       ? '删除当前凭据并改用基础翻译'
       : '保留当前凭据并改用基础翻译';
   } else if (intent?.kind === 'activate-mode') {
-    actionLabel = '启用完整分析';
+    actionLabel = '启用专业阅读';
   }
 
   const draftSubject = hasConnectionDraft && hasPromptDraft

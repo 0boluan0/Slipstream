@@ -714,13 +714,13 @@ function assertRuntimeProof(proof, networkTrap, expectedEvidenceDirectory) {
     'Saved Terms import completion must expose the outcome exactly once',
   );
   assertAx(proof.ax.setupBefore, 'main', null, 'setup');
-  assertAx(proof.ax.setupBefore, 'heading', '先选择你希望获得哪种帮助', 'setup');
-  assertAx(proof.ax.setupBefore, 'button', '我明确选择只用基础翻译', 'setup');
+  assertAx(proof.ax.setupBefore, 'heading', '从下一段英文开始', 'setup');
+  assertAx(proof.ax.setupBefore, 'button', '先用基础翻译', 'setup');
   assertAx(proof.ax.setupAfter, 'main', null, 'capture handoff');
   assertAx(proof.ax.setupAfter, 'textbox', '要解释的完整原文', 'capture handoff');
   assertAx(proof.ax.processing, 'heading', '把原文整理成可追溯的行动结论', 'processing');
   assertAx(proof.ax.processing, 'status', null, 'processing');
-  assertAx(proof.ax.settingsSaveRetry, 'button', '验证完整分析能力', 'Settings save retry');
+  assertAx(proof.ax.settingsSaveRetry, 'button', '验证专业阅读能力', 'Settings save retry');
   assert.equal(
     proof.ax.settingsSaveRetry.some((entry) => (
       ['alert', 'status', 'statictext'].includes(entry.role.toLowerCase())
@@ -1677,7 +1677,7 @@ function setupHandoffProbe() {
   return (async () => {
     const wait = (milliseconds) => new Promise((resolveWait) => window.setTimeout(resolveWait, milliseconds));
     const button = [...document.querySelectorAll('button')].find((candidate) => (
-      candidate.textContent.replace(/\s+/gu, ' ').trim().includes('我明确选择只用基础翻译')
+      candidate.textContent.replace(/\s+/gu, ' ').trim().includes('先用基础翻译')
     ));
     if (!button) throw new Error('Basic translation setup action is unavailable');
     button.click();

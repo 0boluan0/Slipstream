@@ -221,8 +221,8 @@ async function main() {
     { kind: 'activate-mode', value: SETUP_MODES.FULL },
     { guidedSetup: true, hasPromptDraft: true },
   );
-  assert.equal(activateModeDraftIntent.actionLabel, '启用完整分析');
-  assert.equal(activateModeDraftIntent.confirmLabel, '放弃草稿并启用完整分析');
+  assert.equal(activateModeDraftIntent.actionLabel, '启用专业阅读');
+  assert.equal(activateModeDraftIntent.confirmLabel, '放弃草稿并启用专业阅读');
   assert.equal(
     describeSettingsDraftIntent({ kind: 'close' }, { guidedSetup: true }).actionLabel,
     '返回首次使用选择',
@@ -435,8 +435,8 @@ async function main() {
     /event\.key === 'Escape'[\s\S]*?setView\(setupComplete \? 'panel' : 'setup'\)/,
     'App must not bypass the settings draft guard on Escape',
   );
-  assert.match(gateSource, /我明确选择只用基础翻译/);
-  assert.match(gateSource, /不包含行动步骤、材料清单、截止日期、术语解释或流程说明/);
+  assert.match(gateSource, /先用基础翻译/);
+  assert.match(gateSource, /专业概念解释需要配置模型；基础模式中的选词查询提供翻译/);
   assert.match(gateSource, /已有 API Key，或已安装并准备好 Ollama；在线服务可能收费/,
     'the recommended choice must disclose its prerequisites and possible cost before selection');
   assert.match(gateSource, /Google \/ MyMemory/, 'the first choice must disclose where basic translation sends text');
@@ -461,7 +461,7 @@ async function main() {
     'secondary preferences should not compete with the first-run connection task');
   assert.match(settingsSource, /const isGuidedSetup = settings\.setupMode === SETUP_MODES\.UNCONFIGURED/,
     'an incomplete setup must have an explicit focused state');
-  assert.match(settingsSource, /配置完整分析/,
+  assert.match(settingsSource, /配置专业阅读/,
     'the focused setup header must name the task instead of presenting generic settings');
   assert.match(settingsSource, /遇到问题？查看应用状态与支持/,
     'support must remain reachable from the focused setup without dominating the flow');

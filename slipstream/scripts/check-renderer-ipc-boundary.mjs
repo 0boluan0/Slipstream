@@ -58,8 +58,8 @@ assert.match(demoAdapter, /function invokeDemo/u,
   'development IPC adapter must retain deterministic fixture behavior');
 
 const productionPreviewData = fs.readFileSync(productionPreviewDataPath, 'utf8');
-assert.match(productionPreviewData, /SAFE_SAMPLE_SOURCE_TEXT/u,
-  'production preview data must retain the user-facing safe sample source');
+assert.match(productionPreviewData, /READING_SAMPLE_SOURCE_TEXT/u,
+  'production preview data must retain the authored reading sample');
 assert.match(productionPreviewData, /PREVIEW_ACTION_BRIEF = null/u,
   'production preview data must replace the development result fixture with a null sentinel');
 assert.match(productionPreviewData, /PREVIEW_CAPTURE = null/u,
@@ -72,10 +72,12 @@ const demoPreviewData = fs.readFileSync(demoPreviewDataPath, 'utf8');
 assert.match(demoPreviewData, /const PREVIEW_ACTION_BRIEF = \{/u,
   'development preview data must retain the deterministic result fixture');
 assert.match(demoPreviewData, /SAFE_SAMPLE_SOURCE_TEXT/u,
-  'development preview data must share the production-safe sample source');
+  'development compatibility data must retain its grounded historical fixture');
 const safeSampleSource = fs.readFileSync(safeSampleSourcePath, 'utf8');
 assert.match(safeSampleSource, /const SAFE_SAMPLE_SOURCE_TEXT = `Dear Student,/u,
-  'the user-facing safe sample source must remain available in production');
+  'the historical sample remains available for compatibility fixtures');
+assert.match(safeSampleSource, /const READING_SAMPLE_SOURCE_TEXT = `Correlation/u,
+  'the reading sample must remain separate from the historical result fixture');
 
 const floatingPanelPath = path.join(rendererRoot, 'components', 'FloatingPanel.jsx');
 const floatingPanelSource = fs.readFileSync(floatingPanelPath, 'utf8');

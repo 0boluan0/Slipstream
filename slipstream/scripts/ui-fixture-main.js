@@ -4676,8 +4676,8 @@ async function finishUiFixtureRuntimeCheck() {
           const setupCard = setupGate.querySelector('.setup-card');
           const setupChoices = [...setupGate.querySelectorAll('.setup-choice')];
           const firstUseTitle = setupGate.querySelector('#setup-title')?.textContent || '';
-          const fullChoiceButton = findButton(setupGate, '配置完整分析');
-          const basicChoiceButton = findButton(setupGate, '我明确选择只用基础翻译');
+          const fullChoiceButton = findButton(setupGate, '配置阅读服务');
+          const basicChoiceButton = findButton(setupGate, '先用基础翻译');
           const setupPrivacy = setupGate.querySelector('.setup-privacy');
           ensure(setupCard, 'First-use choice card is missing');
           ensure(setupChoices.length === 2, 'First-use screen must expose exactly two choices');
@@ -4747,7 +4747,7 @@ async function finishUiFixtureRuntimeCheck() {
             'First-use privacy disclosure is not vertically reachable without horizontal clipping',
           );
           ensure(
-            setupPrivacy.textContent.includes('基础翻译会发送给 Google / MyMemory')
+            setupPrivacy.textContent.includes('基础翻译使用 Google / MyMemory')
               && setupPrivacy.textContent.includes('剪贴板自动检测默认关闭'),
             'First-use privacy disclosure lost its destination or default-state explanation',
           );
@@ -8873,7 +8873,7 @@ async function finishUiFixtureRuntimeCheck() {
           const readCounter = (name) => Number(document.documentElement.dataset[name]);
           const openPromptEditor = async () => {
             const settingsEntry = document.querySelector('[aria-label="打开设置"]');
-            const setupEntry = findButton(document, '配置完整分析');
+            const setupEntry = findButton(document, '配置阅读服务');
             const entry = [settingsEntry, setupEntry].find((candidate) => (
               candidate
               && !candidate.disabled
@@ -9825,7 +9825,7 @@ async function finishUiFixtureRuntimeCheck() {
           );
           const savedConfigurationPreserved = JSON.stringify(savedConfigurationAfter)
             === JSON.stringify(savedConfigurationBefore);
-          const successVisible = connectedResult.textContent?.includes('完整分析能力验证通过');
+          const successVisible = connectedResult.textContent?.includes('服务与模型验证通过');
           ensure(requestCount === 2, 'provider retry did not issue exactly two test requests');
           ensure(savedConfigurationPreserved, 'provider retry changed the saved configuration');
           ensure(successVisible, 'provider retry did not show the successful result');

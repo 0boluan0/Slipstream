@@ -1139,6 +1139,8 @@ function resolveFreeTranslateLanguages(text, languageHint) {
 }
 
 module.exports = {
+  recognizeReadingFormulas: require('./formula-recognition').createFormulaRecognizer(processLlmBackend),
+  processReadingText: require('./reading-service').createReadingProcessor(processLlmBackend),
   CUSTOM_PROVIDER_MAX_RESPONSE_BYTES,
   CUSTOM_PROVIDER_ERROR_CODES,
   FREE_TRANSLATE_CHUNK_TIMEOUT_MS,

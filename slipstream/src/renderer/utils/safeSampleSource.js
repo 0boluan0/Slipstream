@@ -14,4 +14,8 @@ All items must be received within two days of this email.
 Best regards,
 University Services`;
 
-export { SAFE_SAMPLE_SOURCE_TEXT };
+const READING_SAMPLE_SOURCE_TEXT = `Correlation does not imply causation. An observed association between two variables may be explained by a common cause.
+
+A confounder influences both a treatment and an outcome. This can create an association even when the treatment has no causal effect.`;
+
+export { SAFE_SAMPLE_SOURCE_TEXT, READING_SAMPLE_SOURCE_TEXT };

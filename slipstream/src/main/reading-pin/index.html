@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Slipstream · 阅读卡片</title>
+  <link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="../../../node_modules/katex/dist/katex.min.css">
+<link rel="stylesheet" href="../reading-math/style.css">
+</head>
+<body>
+  <header class="titlebar" id="titlebar">
+    <span class="brand">Slipstream <span id="card-label">阅读</span></span>
+    <div class="window-actions">
+      <button id="collapse" class="icon-button" title="收起卡片 · 双击顶部" aria-label="收起卡片" aria-expanded="true"><img src="./icons/Minus.svg" alt=""></button>
+      <button id="pin" class="icon-button" title="取消置顶" aria-label="置顶" aria-pressed="true"><img src="./icons/PushPin.svg" alt=""></button>
+      <button id="close" class="icon-button" title="关闭卡片 · Esc" aria-label="关闭这张卡片"><img src="./icons/X.svg" alt=""></button>
+    </div>
+  </header>
+  <div class="toolbar">
+    <div class="tabs" role="tablist" aria-label="阅读方式">
+      <button id="tab-translation" role="tab" aria-selected="true" aria-controls="reading-content" data-mode="translation">译文</button>
+      <button id="tab-parallel" role="tab" aria-selected="false" aria-controls="reading-content" data-mode="parallel" tabindex="-1">对照</button>
+      <button id="tab-image" role="tab" aria-selected="false" aria-controls="original" data-mode="image" tabindex="-1">截图</button>
+    </div>
+    <div class="type-controls" aria-label="阅读字号"><button id="smaller" aria-label="缩小字号" title="缩小字号">A−</button><button id="larger" aria-label="放大字号" title="放大字号">A+</button></div>
+  </div>
+  <main id="scroll-area">
+    <p id="notice" role="alert" hidden></p>
+    <section id="review" aria-labelledby="review-title" hidden>
+      <h2 id="review-title" tabindex="-1">核对识别文字</h2>
+      <p class="muted">对照截图，检查文字和阅读顺序。</p>
+      <label for="source-editor" class="sr-only">识别出的英文原文</label>
+      <textarea id="source-editor" lang="en" maxlength="10000" spellcheck="false"></textarea>
+      <details id="formula-preview"><summary>公式排版预览</summary><p class="muted">行内用 $...$，独立公式用 $$...$$。公式可在上方文字中校正。</p><div id="source-preview"></div></details>
+      <div class="review-actions"><button id="confirm" class="primary">确认并翻译</button><button id="review-image">查看截图</button></div>
+    </section>
+    <div id="reading-content" role="tabpanel" aria-labelledby="tab-translation" tabindex="0">
+      <p id="reading-hint" class="muted" hidden>选中英文词句，查看这一处的意思。</p>
+      <div id="loading" aria-hidden="true"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton short"></div></div>
+      <div id="translation" lang="zh-CN"></div>
+    </div>
+    <section id="original" role="tabpanel" aria-labelledby="tab-image" tabindex="0" hidden>
+      <img id="source-image" alt="本次框选的原始截图">
+      <div class="source-caption"><span>原始截图 · 可放大核对符号</span><button id="image-zoom" aria-pressed="false">原始尺寸</button></div>
+      <p id="source-text" lang="en" hidden></p>
+      <button id="edit-source">校正识别文字</button>
+    </section>
+    <div id="recovery" hidden><button id="retry" class="primary"><img src="./icons/ArrowClockwise.svg" alt="">重试未完成段落</button><button id="retake">重新框选</button><button id="settings">设置</button></div>
+    <details id="formula-tools" hidden><summary>识别公式</summary><p class="muted" id="formula-destination">使用 DeepSeek 视觉实验模型转写本次截图，保留 LaTeX 结构。识别结果需要对照原图核对。</p><button id="recognize-formulas">发送截图到 DeepSeek，识别公式</button><p id="formula-unavailable" class="muted" hidden>截图公式识别目前需要配置 DeepSeek；也可在“校正识别文字”中输入 LaTeX。</p><p id="formula-notice" role="status" class="muted"></p></details>
+    <div id="selection-bar" hidden><span id="selection-preview" lang="en"></span><button id="lookup-selection" class="primary"><img src="./icons/MagnifyingGlass.svg" alt="">解释所选</button></div>
+  </main>
+  <aside id="lookup-panel" aria-labelledby="lookup-title" hidden>
+    <div class="lookup-heading"><h2 id="lookup-title">术语解释</h2><button id="lookup-close" class="icon-button" aria-label="收起词句解释"><img src="./icons/X.svg" alt=""></button></div>
+    <blockquote id="lookup-quote" lang="en"></blockquote>
+    <div id="lookup-result" aria-live="polite"><p class="lookup-label" id="meaning-label">概念是什么</p><p id="lookup-meaning"></p><p class="lookup-label" id="note-label">放在这段里</p><p id="lookup-note" class="muted"></p><p id="lookup-notice" role="alert" hidden></p></div>
+    <button id="lookup-retry" hidden>重试这一处</button><button id="lookup-settings" class="text-button" hidden>配置模型，获取概念与上下文解释</button>
+    <div class="term-save-row"><span id="save-note" class="muted">保留解释与这段原文</span><button id="save-term">存为卡片</button></div>
+  </aside>
+  <footer>
+    <span id="status" role="status" aria-live="polite">正在本机识别…</span>
+    <div class="footer-actions">
+      <button id="library" class="text-button">卡片盒</button>
+      <details id="processing-info"><summary title="查看处理位置" aria-label="查看处理位置">处理位置</summary><div class="info-popover"><p id="destination">截图文字识别在本机完成</p><button id="footer-settings"><img src="./icons/GearSix.svg" alt="">打开设置</button></div></details>
+      <button id="copy" class="icon-button" title="复制完整译文" aria-label="复制完整译文" disabled><img src="./icons/Copy.svg" alt=""></button>
+    </div>
+  </footer>
+  <script src="../../../node_modules/katex/dist/katex.min.js"></script>
+<script src="../../shared/reading-math.cjs"></script>
+<script src="../reading-math/view.js"></script>
+<script src="./view.js"></script>
+</body>
+</html>

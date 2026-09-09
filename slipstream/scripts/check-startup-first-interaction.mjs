@@ -23,7 +23,7 @@ const require = createRequire(import.meta.url);
 const { Parser } = require('acorn');
 
 const legacyQueuedRevealPattern = /if \(!uiFixtureMode\.enabled && !mainWindowInitialLoadReady\) \{[\s\S]*?mainWindowRevealRequested = true;[\s\S]*?return;/;
-const legacyInitialLoadPattern = /webContents\.once\('did-finish-load',[\s\S]*?mainWindowInitialLoadReady = true;[\s\S]*?const shouldStartVisible = !store\.isStoreReady\(\)[\s\S]*?store\.getSettings\('startMinimized'\) !== true[\s\S]*?\|\| !tray;[\s\S]*?showMainWindow\(\)/;
+const legacyInitialLoadPattern = /webContents\.once\('did-finish-load',[\s\S]*?mainWindowInitialLoadReady = true;[\s\S]*?const shouldStartVisible = !store\.isStoreReady\(\)[\s\S]*?\|\| !tray[\s\S]*?!launchedAtLogin[\s\S]*?store\.getSettings\('startMinimized'\) !== true[\s\S]*?showMainWindow\(\)/;
 const legacyProductionFailurePattern = /startupWindow\.loadFile\(indexPath\)\.catch\(\(\) => \{[\s\S]*?dialog\.showMessageBox\(\{[\s\S]*?title: 'Slipstream 无法启动'[\s\S]*?buttons: \['重新尝试', '退出 Slipstream'\][\s\S]*?cancelId: 1[\s\S]*?performConfirmedQuit\(\)/;
 
 function visit(node, visitor, ancestors = []) {
@@ -147,11 +147,19 @@ function assertShortcutCaptureUsesQueuedStartupPath(source) {
       let mainWindowInitialLoadReady = false;
       let mainWindowRevealRequested = false;
       let captureIngressSenderId = null;
+      let readingPins = null;
+      let readingSetupMode = 'translation-only';
+      const IPC_CHANNELS = { SCREENSHOT_REQUESTED: 'screenshot:requested' };
+      const store = { isStoreReady: () => true, getAllSettings: () => ({ setupMode: readingSetupMode }) };
+      const quitRequestRegistry = { hasPending: () => false };
+      const userDataResetRegistry = { isLocked: () => false };
       ${showSource}
       ${dispatchSource}
       return {
         run: dispatchCaptureIngress,
         revealRequested: () => mainWindowRevealRequested,
+        setReadingPins: (manager) => { readingPins = manager; },
+        setReadingSetupMode: (mode) => { readingSetupMode = mode; },
       };
     `,
   )(
@@ -205,6 +213,17 @@ function assertShortcutCaptureUsesQueuedStartupPath(source) {
     'committed quit must not queue another capture event');
   assert.deepEqual(calls, { clear: 0, focus: 0, refresh: 0, restore: 0, show: 0 },
     'committed quit must not reveal or focus the app window');
+  app.isQuitting = false;
+  let readingCaptures = 0;
+  harness.setReadingPins({ capture: async () => { readingCaptures += 1; } });
+  assert.equal(harness.run(event), true);
+  assert.equal(readingCaptures, 1, 'configured screenshots must create independent reading cards');
+  assert.equal(dispatched.length, 2, 'reading captures must not replace a renderer-owned task');
+  assert.deepEqual(calls, { clear: 0, focus: 0, refresh: 0, restore: 0, show: 0 },
+    'reading shortcuts must open selection without revealing the main workspace');
+  harness.setReadingSetupMode('unconfigured');
+  assert.deepEqual(harness.run(event), { delivered: false, queued: true });
+  assert.equal(readingCaptures, 1, 'first use must still finish setup before reading capture');
 }
 
 function runInitialLoadCallback(source, {
@@ -212,6 +231,7 @@ function runInitialLoadCallback(source, {
   destroyed = false,
   revealRequested = false,
   startMinimized = true,
+  wasOpenedAtLogin = false,
   storageReady = true,
   trayAvailable = true,
   windowStillOwned = true,
@@ -226,6 +246,7 @@ function runInitialLoadCallback(source, {
     'mainWindow',
     'store',
     'tray',
+    'launchedAtLogin',
     'showMainWindow',
     'initialRevealRequested',
     `
@@ -250,6 +271,7 @@ function runInitialLoadCallback(source, {
       },
     },
     trayAvailable ? {} : null,
+    wasOpenedAtLogin,
     () => { showCalls += 1; },
     revealRequested,
   );
@@ -267,6 +289,11 @@ function assertInitialLoadRevealPolicy(source) {
     revealRequested: false,
     showCalls: 0,
   }, 'start-minimized must stay hidden after a successful first load when tray recovery exists');
+  assert.equal(
+    runInitialLoadCallback(source, { startMinimized: false, wasOpenedAtLogin: true }).showCalls,
+    0,
+    'a login launch must stay in the menu bar instead of interrupting the user',
+  );
   for (const scenario of [
     { startMinimized: false },
     { storageReady: false },
@@ -395,6 +422,11 @@ assert.match(
   mainSource,
   legacyInitialLoadPattern,
   'the first completed renderer load must be the single formal startup reveal gate',
+);
+assert.match(
+  mainSource,
+  /const launchedAtLogin = wasOpenedAtLogin;\s*wasOpenedAtLogin = false;/,
+  'only the first window created after a login launch may consume the hidden-start signal',
 );
 assert.match(
   mainSource,

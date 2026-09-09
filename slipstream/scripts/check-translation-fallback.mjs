@@ -52,7 +52,7 @@ assert.match(resultSource, /配置完整分析/);
 assert.match(resultSource, /retryLabel/);
 assert.match(panelSource, /setupMode === 'unconfigured'/,
   'an incomplete upgrade must prevent further processing');
-assert.match(panelSource, /完整分析配置尚未完成/);
+assert.match(panelSource, /阅读服务配置尚未完成/);
 assert.match(panelSource, /handleConfigureFullAnalysis/);
 assert.match(panelSource, /用完整分析重新处理/,
   'a completed upgrade must offer a full-analysis retry');

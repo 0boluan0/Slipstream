@@ -25,6 +25,7 @@ const { isHttpLoopbackEndpoint } = require('../shared/endpoint-location.cjs');
  * @property {number|null} windowX
  * @property {number|null} windowY
  * @property {boolean} startMinimized
+ * @property {boolean} openAtLogin
  * @property {boolean} clipboardMonitoring
  * @property {'local-only'|'ask'|'official-auto'} verificationPolicy
  * @property {'action-first'|'translation-first'} resultOrder
@@ -59,6 +60,8 @@ const schema = {
   windowX: { type: ['number', 'null'], default: null },
   windowY: { type: ['number', 'null'], default: null },
   startMinimized: { type: 'boolean', default: false },
+  openAtLogin: { type: 'boolean', default: DEFAULTS.OPEN_AT_LOGIN },
+  openAtLoginInitialized: { type: 'boolean', default: false },
   clipboardMonitoring: { type: 'boolean', default: false },
   verificationPolicy: {
     type: 'string',

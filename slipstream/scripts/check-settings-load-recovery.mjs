@@ -171,8 +171,11 @@ assert.match(mainSource, /process\.platform === 'darwin' && store\.isStoreReady\
   'a blocked recovery window must not disappear into a tray that was never created');
 assert.match(mainSource, /process\.platform === 'darwin' && store\.isStoreReady\(\) && tray/,
   'a window must not hide when no menu-bar entry exists');
-assert.match(mainSource, /store\.getSettings\('startMinimized'\) !== true \|\| !tray/,
-  'start minimized must fail open when the menu-bar entry is unavailable');
+assert.match(
+  mainSource,
+  /\|\| !tray\s*\|\| \(!launchedAtLogin && store\.getSettings\('startMinimized'\) !== true\)/,
+  'login and start-minimized launches must fail open when the menu-bar entry is unavailable',
+);
 assert.match(mainSource, /persistentRuntimeStatus\.clipboardMonitoringDisabled = true/,
   'failed startup monitoring must be persisted off and disclosed safely');
 assert.match(mainSource, /persistentRuntimeStatus\.clipboardMonitoringDisablePersistFailed = true/,

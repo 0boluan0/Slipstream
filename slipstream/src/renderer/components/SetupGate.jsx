@@ -129,7 +129,7 @@ export default function SetupGate({
     } catch {
       releaseSetupChoice(choiceLockRef, claim);
       setSwitchingToFull(false);
-      setLocalError('暂时无法打开完整分析设置，请重试。');
+      setLocalError('暂时无法打开阅读服务设置，请重试。');
     }
   }, [discardFailedSettings, onConfigureFull]);
 
@@ -214,8 +214,8 @@ export default function SetupGate({
       <section className="setup-card" aria-labelledby="setup-title">
         <header className="setup-header">
           <span className="setup-eyebrow">首次使用</span>
-          <h1 id="setup-title">先选择你希望获得哪种帮助</h1>
-          <p>Slipstream V1 读取英文并用中文说明。开始前，请明确选择完整分析或只做基础翻译。</p>
+          <h1 id="setup-title">从下一段英文开始</h1>
+          <p>截图读译文，按需解释专业概念，把值得留下的理解存成本地卡片。</p>
         </header>
 
         {recoveryNotice && (
@@ -269,14 +269,14 @@ export default function SetupGate({
             <span className="setup-choice-badge">推荐</span>
             <div className="setup-choice-icon" aria-hidden="true"><Check size={22} weight="bold" /></div>
             <div>
-              <h2>完整分析</h2>
-              <p>不只翻译，还会告诉你接下来具体该做什么。</p>
+              <h2>专业阅读</h2>
+              <p>读英文教材、论文和专业文章时，随手查清概念。</p>
             </div>
             <ul>
               <li><Check size={15} />完整中文翻译</li>
-              <li><Check size={15} />行动步骤、材料与日期</li>
-              <li><Check size={15} />陌生术语与社会流程解释</li>
-              <li><Check size={15} />每条结论指回英文原文</li>
+              <li><Check size={15} />结合原文的术语解释</li>
+              <li><Check size={15} />可编辑、关联的本地概念卡片</li>
+              <li><Check size={15} />LaTeX 公式排版与原文对照</li>
             </ul>
             <div className="setup-requirements" role="note">
               开始前需已有 API Key，或已安装并准备好 Ollama；在线服务可能收费。
@@ -289,7 +289,7 @@ export default function SetupGate({
               onPointerEnter={onPrepareFull}
               onClick={configureFullAnalysis}
             >
-              配置完整分析 <ArrowRight size={17} />
+              配置阅读服务 <ArrowRight size={17} />
             </button>
           </article>
 
@@ -297,10 +297,10 @@ export default function SetupGate({
             <div className="setup-choice-icon" aria-hidden="true"><Translate size={22} /></div>
             <div>
               <h2>只用基础翻译</h2>
-              <p>无需配置即可翻译，但不会生成完整行动简报。</p>
+              <p>先体验截图阅读和中文译文，无需填写模型密钥。</p>
             </div>
             <div className="setup-limit" role="note">
-              不包含行动步骤、材料清单、截止日期、术语解释或流程说明。
+              专业概念解释需要配置模型；基础模式中的选词查询提供翻译。
             </div>
             <button
               type="button"
@@ -308,7 +308,7 @@ export default function SetupGate({
               disabled={choiceBusy}
               onClick={chooseTranslationOnly}
             >
-              {saving ? '正在保存…' : '我明确选择只用基础翻译'}
+              {saving ? '正在保存…' : '先用基础翻译'}
             </button>
           </article>
         </div>
@@ -328,7 +328,7 @@ export default function SetupGate({
 
         <footer className="setup-privacy">
           <LockKey size={15} />
-          <span>完整分析会发送给你选择的服务；基础翻译会发送给 Google / MyMemory。只有你主动处理的内容才会发送，剪贴板自动检测默认关闭。</span>
+          <span>专业阅读使用你选择的服务；基础翻译使用 Google / MyMemory。截图默认留在本机，剪贴板自动检测默认关闭。</span>
         </footer>
       </section>
     </main>

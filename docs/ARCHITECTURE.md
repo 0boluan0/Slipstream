@@ -1,6 +1,31 @@
 # Architecture and trust boundaries
 
-Slipstream is an Electron application with four explicit boundaries:
+## Current reading workflow
+
+```text
+screenshot → local Apple Vision OCR → review when needed ┐
+pasted / copied English ────────────────────────────────┤
+                                                       ↓
+                                      independent reading card
+                                                       ↓
+                             paragraph translation + optional term suggestions
+                                                       ↓ on explicit lookup
+                                      contextual concept explanation
+                                                       ↓ on explicit save
+                               local Markdown card store ↔ card-box window
+```
+
+`reading-pins.js` owns independent native windows, source revision, per-window cancellation and temporary state. The trusted main-window IPC exposes `reading:open-text` and `reading:library-open`; screenshot capture uses the same reading manager. Text capture bypasses screen permission and OCR. Window-specific sandboxed preloads accept only their bounded actions.
+
+`reading-service.js` owns translation and lookup contracts. Model output is untrusted: professional terms must match complete source words, may be empty, and have bounded counts and lengths. Explanations are requested only after a user selects a term or phrase. `reading-document.js` retains segment progress and standalone source equations. There is no action extraction or official lookup in this path.
+
+`reading-pin/` renders translation first, parallel source on demand, and screenshot review when an image exists. Hidden image tabs are excluded from keyboard navigation for pasted text. `reading-math.cjs` and bundled KaTeX assets render math locally. Explicit vision transcription has its own image-transfer disclosure and returns to source review.
+
+`term-card-store.js` writes explicitly saved explanations and source passages to Markdown under the system Documents folder. It uses revision checks for external edits and stores links as local Markdown links. `term-library.js` provides a separate sandboxed window for search, editing, links and backlinks; the reading home opens this same library.
+
+The shared provider, credential, IPC, storage recovery, and endpoint checks remain in force. The provider readiness probe and restored historical results still use the compatibility pipeline below.
+
+## Compatibility action workspace
 
 ```text
 capture → structured analysis → optional official verification → evidence-first renderer

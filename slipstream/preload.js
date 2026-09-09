@@ -33,6 +33,8 @@ const ALLOWED_INVOKE_CHANNELS = [
   'app:clipboard-residue-risk-ack',
   'capture:listener-ready',
   'screenshot:capture',
+  'reading:open-text',
+  'reading:library-open',
   'window:set-mode',
   'window:hide',
   'system:open-screen-recording-settings',

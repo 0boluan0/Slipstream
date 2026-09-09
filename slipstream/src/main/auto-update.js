@@ -129,7 +129,7 @@ function createAutoUpdateManager({
     }
   }
 
-  function start() {
+  function start({ silentAutomaticCheck = false } = {}) {
     if (started) return;
     started = true;
     resetMenu();
@@ -156,11 +156,12 @@ function createAutoUpdateManager({
     });
     updater.on('update-available', (info) => {
       if (phase !== 'checking') return;
+      const shouldPrompt = manualCheck || !silentAutomaticCheck;
       version = safeVersion(info?.version);
       manualCheck = false;
       phase = 'available';
       setMenu(version ? `下载 Slipstream ${version}…` : '下载可用更新…');
-      void promptDownload();
+      if (shouldPrompt) void promptDownload();
     });
     updater.on('download-progress', (progress) => {
       if (phase !== 'downloading') return;

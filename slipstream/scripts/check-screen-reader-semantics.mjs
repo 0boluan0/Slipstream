@@ -282,7 +282,7 @@ assert.match(
 );
 assert.match(
   floatingPanel,
-  /aria-label=\{savedTermsTriggerLabel\}[\s\S]*?aria-busy=\{savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS\.LOADING\}/u,
+  /aria-label=\{readingStart \? '打开本地术语卡片盒' : savedTermsTriggerLabel\}[\s\S]*?aria-busy=\{!readingStart && savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS\.LOADING\}/u,
   'the Saved Terms trigger must publish its loading state to assistive technology',
 );
 assert.match(

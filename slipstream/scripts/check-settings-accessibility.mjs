@@ -54,7 +54,7 @@ assert.match(
 );
 assert.match(
   settingsSource,
-  /<h1 id="settings-title"[^>]*>\s*\{isGuidedSetup \? '配置完整分析' : '设置'\}\s*<\/h1>/,
+  /<h1 id="settings-title"[^>]*>\s*\{isGuidedSetup \? '配置专业阅读' : '设置'\}\s*<\/h1>/,
   'the existing visible Settings title must be the page h1',
 );
 assert.match(

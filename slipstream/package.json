@@ -1,7 +1,7 @@
 {
   "name": "slipstream",
-  "version": "1.0.6",
-  "description": "A privacy-first macOS assistant that turns consequential English into source-backed actions.",
+  "version": "1.1.0",
+  "description": "A macOS English reading companion for Chinese speakers, with contextual term explanations and local concept cards.",
   "author": "Slipstream",
   "license": "MIT",
   "repository": {
@@ -18,8 +18,8 @@
   "packageManager": "npm@11.7.0",
   "main": "src/main/main.js",
   "overrides": {
-    "fast-uri": "3.1.5",
-    "js-yaml": "4.3.1",
+    "fast-uri": "3.1.6",
+    "js-yaml": "4.3.2",
     "nanoid": "3.3.18",
     "undici@>=7 <8": "7.29.0"
   },
@@ -103,6 +103,7 @@
     "check:build-identity": "node scripts/check-build-identity.js",
     "check:file-provider-conflicts": "node scripts/check-file-provider-conflicts.js",
     "check:support-diagnostics": "node scripts/check-support-diagnostics.js",
+    "check:login-item": "node scripts/check-login-item.js",
     "check:auto-update": "node scripts/check-auto-update.js",
     "check:settings-load-recovery": "node scripts/check-settings-load-recovery.mjs",
     "check:full-data-reset": "node scripts/check-full-data-reset.mjs",
@@ -138,19 +139,25 @@
     "check:release-artifacts": "node scripts/check-release-artifacts.js",
     "check:release-manifest": "node scripts/check-release-artifacts.js --manifest-only",
     "check:macos-metadata": "node scripts/check-macos-metadata.js",
-    "test": "npm run check:core && npm run check:electron-ui-fixture && npm run check:electron-ui-fixture-runtime && npm run check:startup-benchmark-mode && npm run check:renderer-startup-harness && npm run check:startup-evidence-harness && npm run check:startup-first-interaction && npm run check:capture-ingress-readiness && npm run check:first-run && npm run check:renderer-icons && npm run check:renderer-ipc-boundary && npm run check:renderer-lazy-boundaries && npm run check:renderer-lazy-file-runtime && npm run check:saved-terms-deferral-runtime && npm run check:result-stylesheet-deferral-runtime && npm run check:endpoint-boundary && npm run check:endpoint-location && npm run check:endpoint-validation-invariant && npm run check:custom-analysis-boundary && npm run check:ollama-analysis-boundary && npm run check:shortcut-readiness && npm run check:processing-recovery && npm run check:translation-fallback && npm run check:credential-exit && npm run check:credential-removal-dialog && npm run check:settings-transition-dialog && npm run check:settings-accessibility && npm run check:screen-reader-semantics && npm run check:reduced-motion && npm run check:contrast-preferences && npm run check:credential-visibility && npm run check:settings-load-recovery && npm run check:full-data-reset && npm run check:clear-undo && npm run check:manual-clipboard-read && npm run check:session-recovery && npm run check:action-progress && npm run check:task-closure && npm run check:background-task-status && npm run check:background-task-handoff && npm run check:task-cancellation && npm run check:quit-safety && npm run check:settings-menu && npm run check:modal-ownership && npm run check:settings-reset-dialog && npm run check:clipboard-quit-safety && npm run check:clipboard-monitor-consent && npm run check:clipboard-monitor-visibility && npm run check:clipboard-monitor-collisions && npm run check:active-capture-collisions && npm run check:foreground-capture-guard && npm run check:guided-reply-capture-ownership && npm run check:settings-capture-guard && npm run check:first-use-capture-intent && npm run check:clipboard-privacy && npm run check:clipboard-residue-risk && npm run check:reply-clipboard-lifecycle && npm run check:clipboard-exit-privacy && npm run check:source-actions && npm run check:provider-connection && npm run check:user-errors && npm run check:capture-integrity && npm run check:ocr-environment && npm run check:ocr-runtime && npm run check:ocr-review && npm run check:action-brief && npm run check:action-dependencies && npm run check:reply-progress-consistency && npm run check:action-brief-service && npm run check:renderer-evidence && npm run check:deadline-urgency && npm run check:action-progress && npm run check:task-closure && npm run check:verification && npm run check:storage-startup && npm run check:storage-privacy && npm run check:term-transfer && npm run check:saved-term-trust && npm run check:saved-term-removal && npm run check:build-identity && npm run check:file-provider-conflicts && npm run check:support-diagnostics && npm run check:auto-update && npm run check:redaction && npm run check:prompts && npm run check:model-quality-benchmark && npm run check:long-text && npm run check:screenshot-shortcut && npm run check:ocr-languages && npm run check:truncation && npm run check:progress-feedback && npm run check:macos-metadata && npm run check:dev-dependency-security",
+    "test": "npm run check:core && npm run check:electron-ui-fixture && npm run check:electron-ui-fixture-runtime && npm run check:startup-benchmark-mode && npm run check:renderer-startup-harness && npm run check:startup-evidence-harness && npm run check:startup-first-interaction && npm run check:capture-ingress-readiness && npm run check:first-run && npm run check:renderer-icons && npm run check:renderer-ipc-boundary && npm run check:renderer-lazy-boundaries && npm run check:renderer-lazy-file-runtime && npm run check:saved-terms-deferral-runtime && npm run check:result-stylesheet-deferral-runtime && npm run check:endpoint-boundary && npm run check:endpoint-location && npm run check:endpoint-validation-invariant && npm run check:custom-analysis-boundary && npm run check:ollama-analysis-boundary && npm run check:shortcut-readiness && npm run check:processing-recovery && npm run check:translation-fallback && npm run check:credential-exit && npm run check:credential-removal-dialog && npm run check:settings-transition-dialog && npm run check:settings-accessibility && npm run check:screen-reader-semantics && npm run check:reduced-motion && npm run check:contrast-preferences && npm run check:credential-visibility && npm run check:settings-load-recovery && npm run check:full-data-reset && npm run check:clear-undo && npm run check:manual-clipboard-read && npm run check:session-recovery && npm run check:action-progress && npm run check:task-closure && npm run check:background-task-status && npm run check:background-task-handoff && npm run check:task-cancellation && npm run check:quit-safety && npm run check:settings-menu && npm run check:modal-ownership && npm run check:settings-reset-dialog && npm run check:clipboard-quit-safety && npm run check:clipboard-monitor-consent && npm run check:clipboard-monitor-visibility && npm run check:clipboard-monitor-collisions && npm run check:active-capture-collisions && npm run check:foreground-capture-guard && npm run check:guided-reply-capture-ownership && npm run check:settings-capture-guard && npm run check:first-use-capture-intent && npm run check:clipboard-privacy && npm run check:clipboard-residue-risk && npm run check:reply-clipboard-lifecycle && npm run check:clipboard-exit-privacy && npm run check:source-actions && npm run check:provider-connection && npm run check:user-errors && npm run check:capture-integrity && npm run check:ocr-environment && npm run check:ocr-runtime && npm run check:ocr-review && npm run check:action-brief && npm run check:action-dependencies && npm run check:reply-progress-consistency && npm run check:action-brief-service && npm run check:renderer-evidence && npm run check:deadline-urgency && npm run check:action-progress && npm run check:task-closure && npm run check:verification && npm run check:storage-startup && npm run check:storage-privacy && npm run check:term-transfer && npm run check:saved-term-trust && npm run check:saved-term-removal && npm run check:build-identity && npm run check:file-provider-conflicts && npm run check:support-diagnostics && npm run check:login-item && npm run check:auto-update && npm run check:redaction && npm run check:prompts && npm run check:model-quality-benchmark && npm run check:long-text && npm run check:screenshot-shortcut && npm run check:ocr-languages && npm run check:truncation && npm run check:progress-feedback && npm run check:macos-metadata && npm run check:dev-dependency-security && npm run check:reading-pins && npm run check:reading-home",
     "check:release": "npm run check:package-config && npm run check:runtime-dependencies && npm run check:release-info && npm run check:release-artifacts && npm test && npm run lint && npm run check:history && npm run check:release-manifest",
     "check:signing": "node scripts/check-signing-readiness.js",
     "check:notarization-env": "node scripts/check-notarization-env.js",
     "check:distribution": "node scripts/check-distribution-trust.js",
     "diagnose:screen-permission": "electron scripts/check-screen-permission-runtime.js",
     "release:checksums": "node scripts/write-release-checksums.js",
-    "format": "prettier --write 'src/**/*.{js,jsx,css,html}'"
+    "format": "prettier --write 'src/**/*.{js,jsx,css,html}'",
+    "check:reading-pins": "node scripts/check-reading-service.js && node scripts/check-term-cards.js && electron scripts/check-reading-pins-native.js && electron scripts/check-term-library-native.js && npm run check:reading-math && npm run check:reading-preview-config",
+    "check:reading-math": "node scripts/check-reading-math.js && electron scripts/check-reading-math-native.js",
+    "build:reading-preview": "npm run build:renderer && node scripts/build-reading-preview.js",
+    "check:reading-preview-config": "node scripts/check-reading-preview-config.js",
+    "check:reading-home": "npm run build:renderer && electron scripts/check-reading-home-native.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
     "electron-store": "^8.1.0",
     "electron-updater": "6.8.9",
+    "katex": "0.18.7",
     "openai": "^4.20.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
@@ -207,7 +214,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "signIgnore": "\\.pak$",
       "extendInfo": {
-        "NSScreenCaptureUsageDescription": "Slipstream 仅在你主动框选时读取该屏幕区域，并在本机完成截图与文字识别。 Slipstream only captures the region you select and runs OCR locally."
+        "NSScreenCaptureUsageDescription": "Slipstream \u4ec5\u5728\u4f60\u4e3b\u52a8\u6846\u9009\u65f6\u8bfb\u53d6\u8be5\u5c4f\u5e55\u533a\u57df\uff0c\u5e76\u5728\u672c\u673a\u5b8c\u6210\u622a\u56fe\u4e0e\u6587\u5b57\u8bc6\u522b\u3002 Slipstream only captures the region you select and runs OCR locally."
       },
       "notarize": false,
       "artifactName": "${productName}-${version}-${arch}.${ext}"
@@ -247,7 +254,7 @@
     "eslint": "^8.50.0",
     "eslint-plugin-react": "^7.33.0",
     "eslint-plugin-react-hooks": "^4.6.0",
-    "js-yaml": "4.3.1",
+    "js-yaml": "4.3.2",
     "prettier": "^3.1.0",
     "vite": "^8.1.4"
   }
