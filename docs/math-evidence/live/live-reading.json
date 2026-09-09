@@ -1,0 +1,225 @@
+{
+  "date": "2026-09-09T15:34:27.722Z",
+  "capture": "Authored source rendered to PNG in an Electron window; native system selection is checked separately.",
+  "cases": [
+    {
+      "term": "conditional expectation",
+      "source": "Let Y denote future demand and X the information available today. The conditional expectation E[Y | X] is a random variable determined by X. It differs from the unconditional expectation E[Y], which is a single average over all possible values of X.",
+      "translation": "设 $Y$ 表示未来需求，$X$ 表示今天可用的信息。条件期望 $E[Y | X]$ 是由 $X$ 决定的随机变量。它与无条件期望 $E[Y]$ 不同，后者是对 $X$ 所有可能取值的一个单一平均值。",
+      "terms": [
+        {
+          "quote": "conditional expectation",
+          "label": "条件期望",
+          "start": 70,
+          "end": 93
+        },
+        {
+          "quote": "unconditional expectation",
+          "label": "无条件期望",
+          "start": 161,
+          "end": 186
+        },
+        {
+          "quote": "random variable",
+          "label": "随机变量",
+          "start": 108,
+          "end": 123
+        },
+        {
+          "quote": "future demand",
+          "label": "未来需求",
+          "start": 13,
+          "end": 26
+        }
+      ],
+      "lookup": {
+        "quote": "conditional expectation",
+        "meaning": "条件期望是指在已知某些信息（如变量 X 的取值）的情况下，对另一个随机变量（如 Y）的平均值或期望的预测。它不是一个固定的数，而是随 X 变化而变化的函数，因此本身也是一个随机变量。",
+        "note": "在此摘录中，条件期望 E[Y | X] 被用来表示基于当前信息 X 对未来需求 Y 的最佳平均预测。关键区别在于：无条件期望 E[Y] 是对所有可能 X 取值的整体平均，而条件期望则针对每个具体的 X 值给出不同的预测，反映了信息对预测的影响。",
+        "contextual": true
+      },
+      "translationMs": 1547,
+      "lookupMs": 2298
+    },
+    {
+      "term": "confounder",
+      "source": "A confounder is a variable that influences both a treatment and an outcome. An association between treatment and outcome may therefore persist even when the treatment has no causal effect.",
+      "translation": "混杂变量是同时影响治疗和结局的变量。因此，即使治疗没有因果效应，治疗与结局之间的关联也可能持续存在。",
+      "terms": [
+        {
+          "quote": "confounder",
+          "label": "混杂变量",
+          "start": 2,
+          "end": 12
+        },
+        {
+          "quote": "treatment",
+          "label": "治疗",
+          "start": 50,
+          "end": 59
+        },
+        {
+          "quote": "outcome",
+          "label": "结局",
+          "start": 67,
+          "end": 74
+        },
+        {
+          "quote": "association",
+          "label": "关联",
+          "start": 79,
+          "end": 90
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 174,
+          "end": 187
+        }
+      ],
+      "lookup": {
+        "quote": "confounder",
+        "meaning": "混杂变量是指同时影响处理（或暴露）和结局（或结果）的变量。由于它同时与两者相关，即使处理本身对结局没有因果效应，也可能导致处理与结局之间出现虚假的关联。",
+        "note": "在本段中，混杂变量用于解释为何观察到的关联可能不代表因果关系。关键假设是混杂变量确实同时影响处理与结局，且这种影响未被控制或调整。若未识别或调整混杂变量，关联分析可能产生误导性结论。",
+        "contextual": true
+      },
+      "translationMs": 1130,
+      "lookupMs": 1823
+    }
+  ],
+  "readingCalls": [
+    {
+      "kind": "translate",
+      "source": "**Conditional expectation**",
+      "translation": "**条件期望**",
+      "terms": [
+        {
+          "quote": "Conditional expectation",
+          "label": "条件期望",
+          "start": 2,
+          "end": 25
+        }
+      ],
+      "elapsedMs": 915
+    },
+    {
+      "kind": "translate",
+      "source": "Conditional expectation can be expressed using a conditional density:",
+      "translation": "条件期望可以用条件密度来表示：",
+      "terms": [
+        {
+          "quote": "Conditional expectation",
+          "label": "条件期望",
+          "start": 0,
+          "end": 23
+        },
+        {
+          "quote": "conditional density",
+          "label": "条件密度",
+          "start": 49,
+          "end": 68
+        }
+      ],
+      "elapsedMs": 1222
+    },
+    {
+      "kind": "translate",
+      "source": "The sample mean and a symmetric matrix are:",
+      "translation": "样本均值和一个对称矩阵为：",
+      "terms": [
+        {
+          "quote": "sample mean",
+          "label": "样本均值",
+          "start": 4,
+          "end": 15
+        },
+        {
+          "quote": "symmetric matrix",
+          "label": "对称矩阵",
+          "start": 22,
+          "end": 38
+        }
+      ],
+      "elapsedMs": 697
+    },
+    {
+      "kind": "lookup",
+      "source": "**Conditional expectation**\n\nConditional expectation can be expressed using a conditional density:\n\n$$\\mathbb{E}[Y \\mid X = x] = \\int_{-\\infty}^{\\infty} y f_{Y|X}(y \\mid x) \\, \\mathrm{d}y.$$\n\nThe sample mean and a symmetric matrix are:\n\n$$\\bar{x} = \\frac{1}{n} \\sum_{i=1}^{n} x_i, \\qquad A = \\begin{pmatrix} a & b \\\\ b & c \\end{pmatrix}.$$",
+      "selection": "Conditional expectation",
+      "lookup": {
+        "quote": "Conditional expectation",
+        "meaning": "条件期望是指在给定另一个随机变量（或事件）取某个特定值的条件下，某个随机变量的期望值。它表示在已知部分信息后，对该随机变量平均水平的预测。",
+        "note": "在本段中，条件期望被定义为通过条件密度函数 $f_{Y|X}(y \\mid x)$ 对 $y$ 进行积分得到的表达式，即 $\\mathbb{E}[Y \\mid X = x] = \\int_{-\\infty}^{\\infty} y f_{Y|X}(y \\mid x) \\, \\mathrm{d}y$。这里 $X=x$ 是给定的条件，$Y$ 的分布由条件密度描述。注意，条件期望是 $x$ 的函数，而不是随机变量本身；若未固定 $X$，则 $\\mathbb{E}[Y \\mid X]$ 是 $X$ 的函数，但此处公式针对固定观测值 $x$。",
+        "contextual": true
+      },
+      "elapsedMs": 2033
+    }
+  ],
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "formulaSource": "Conditional expectation can be expressed using a conditional density:\n\n$$\\mathbb{E}[Y\\mid X=x]=\\int_{-\\infty}^{\\infty}y f_{Y\\mid X}(y\\mid x)\\,\\mathrm{d}y.$$\n\nThe sample mean and a symmetric matrix are:\n\n$$\\bar{x}=\\frac{1}{n}\\sum_{i=1}^{n}x_i,\\qquad A=\\begin{pmatrix}a & b\\\\b & c\\end{pmatrix}.$$",
+  "localOcr": {
+    "text": "Conditional expectation\nConditional expectation can be expressed using a conditional density:\nThe sample mean and a symmetric matrix are:\ni=1\n1 = (6 °).",
+    "confidence": 0.9,
+    "blocks": [
+      {
+        "boundingBox": {
+          "h": 0.06469941139221191,
+          "w": 0.34583333333333327,
+          "x": 0.04166667243055537,
+          "y": 0.838709679552638
+        },
+        "confidence": 1,
+        "text": "Conditional expectation"
+      },
+      {
+        "boundingBox": {
+          "h": 0.042613636363636465,
+          "w": 0.6613372204350491,
+          "x": 0.04360465110757228,
+          "y": 0.7272727279580116
+        },
+        "confidence": 1,
+        "text": "Conditional expectation can be expressed using a conditional density:"
+      },
+      {
+        "boundingBox": {
+          "h": 0.044943820346485475,
+          "w": 0.44622093649471506,
+          "x": 0.040697669679604705,
+          "y": 0.45505617943349885
+        },
+        "confidence": 1,
+        "text": "The sample mean and a symmetric matrix are:"
+      },
+      {
+        "boundingBox": {
+          "h": 0.030898874456232295,
+          "w": 0.03343023038377946,
+          "x": 0.39825581514968006,
+          "y": 0.2584269675237565
+        },
+        "confidence": 1,
+        "text": "i=1"
+      },
+      {
+        "boundingBox": {
+          "h": 0.12078651514920324,
+          "w": 0.16279069489123776,
+          "x": 0.5188953512462415,
+          "y": 0.27247191101739265
+        },
+        "confidence": 0.5,
+        "text": "1 = (6 °)."
+      }
+    ]
+  },
+  "ocrPhase": "review",
+  "formulaTranscription": {
+    "text": "**Conditional expectation**\n\nConditional expectation can be expressed using a conditional density:\n\n$$\\mathbb{E}[Y \\mid X = x] = \\int_{-\\infty}^{\\infty} y f_{Y|X}(y \\mid x) \\, \\mathrm{d}y.$$\n\nThe sample mean and a symmetric matrix are:\n\n$$\\bar{x} = \\frac{1}{n} \\sum_{i=1}^{n} x_i, \\qquad A = \\begin{pmatrix} a & b \\\\ b & c \\end{pmatrix}.$$",
+    "uncertain": [],
+    "elapsedMs": 2095
+  },
+  "savedAndReopened": true,
+  "completed": true
+}

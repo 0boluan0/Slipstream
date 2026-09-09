@@ -57,6 +57,9 @@ const {
 const { createCaptureIngressRegistry } = require('./capture-ingress-registry');
 const { sameShortcutAccelerator } = require('../shared/shortcut-accelerator.cjs');
 const ScreenshotService = require('./screenshot-service');
+const { createReadingPins } = require('./reading-pins');
+const { createTermCardStore } = require('./term-card-store');
+const { createTermLibrary } = require('./term-library');
 const OCRService = require('./ocr-service');
 const ClipboardMonitor = require('./clipboard-monitor');
 const LLMService = uiFixtureMode.enabled ? null : require('./llm-service');
@@ -82,6 +85,11 @@ const { resolvePublicAddresses } = require('./verification/url-safety');
 const { createSupportDiagnostics } = require('./support-diagnostics');
 const { autoUpdater } = require('electron-updater');
 const { createAutoUpdateManager } = require('./auto-update');
+const {
+  getOpenAtLoginState,
+  initializeOpenAtLogin,
+  setOpenAtLogin,
+} = require('./login-item');
 const appPackageMetadata = require('../../package.json');
 const {
   BUILD_IDENTITIES,
@@ -92,6 +100,11 @@ const runtimeBuildIdentity = resolveBuildIdentity({
   isPackaged: app.isPackaged,
   declaredIdentity: appPackageMetadata.slipstreamBuildIdentity,
 });
+const isReadingPreview = appPackageMetadata.slipstreamReadingPreview === true;
+const openAtLoginSupported = process.platform === 'darwin'
+  && app.isPackaged
+  && !isReadingPreview
+  && runtimeBuildIdentity === BUILD_IDENTITIES.DEVELOPER_ID;
 const {
   createBackgroundTaskPresentation,
   createCompletedTaskState,
@@ -386,6 +399,8 @@ async function requestScreenRecordingAccessForCapture() {
 // --------------- State ---------------
 
 let mainWindow = null;
+let readingPins = null;
+let termLibrary = null;
 let mainWindowInitialLoadReady = false;
 let mainWindowRevealRequested = false;
 let captureIngressSenderId = null;
@@ -425,6 +440,7 @@ let rendererRecoveryReloadTimer = null;
 let rendererRecoveryReloadStarted = false;
 let autoUpdateManager = null;
 let updateInstallRequested = false;
+let wasOpenedAtLogin = false;
 let shortcutRegistrationStatus = createShortcutRegistrationStatus();
 let persistentRuntimeActive = false;
 let shortcutsRuntimeActivated = false;
@@ -561,6 +577,14 @@ function deliverCaptureIngress(senderId, event) {
 function dispatchCaptureIngress(event) {
   if (app.isQuitting) return false;
   const explicitShortcut = event?.payload?.source === 'shortcut';
+  if (explicitShortcut && event.channel === IPC_CHANNELS.SCREENSHOT_REQUESTED
+    && readingPins && store.isStoreReady()
+    && store.getAllSettings().setupMode !== 'unconfigured'
+    && !quitRequestRegistry.hasPending(mainWindow?.webContents?.id)
+    && !userDataResetRegistry.isLocked(mainWindow?.webContents?.id)) {
+    void readingPins.capture();
+    return true;
+  }
   if (explicitShortcut && (!mainWindow || mainWindow.isDestroyed())) {
     createMainWindow(getStartupSettings());
   }
@@ -845,6 +869,14 @@ function createTrayMenuTemplate(presentation) {
   template.push(
     { type: 'separator' },
     {
+      label: '截图阅读',
+      click: () => dispatchCaptureIngress({
+        channel: IPC_CHANNELS.SCREENSHOT_REQUESTED,
+        payload: { source: 'shortcut' },
+      }),
+    },
+    { label: '术语卡片盒', click: () => termLibrary?.open() },
+    {
       label: mainWindow?.isVisible() ? '隐藏窗口' : '显示 Slipstream',
       click: toggleMainWindow,
     },
@@ -1016,9 +1048,25 @@ function finishBackgroundTask(task, outcome) {
   }
 }
 
+function syncOpenAtLoginPreference() {
+  if (!store.isStoreReady()) return;
+  try {
+    initializeOpenAtLogin({ app, store, supported: openAtLoginSupported });
+  } catch {
+    console.error('[LoginItem] Could not synchronize the login item preference.');
+  }
+}
+
 function getSafeSettings() {
+  const safeSettings = redactSettingsForRenderer(store.getAllSettings());
+  const loginItemState = getOpenAtLoginState({ app, supported: openAtLoginSupported });
+  if (loginItemState.status !== 'not-found') {
+    safeSettings.openAtLogin = loginItemState.openAtLogin;
+  }
+  safeSettings.openAtLoginStatus = loginItemState.status;
+  delete safeSettings.openAtLoginInitialized;
   return {
-    ...redactSettingsForRenderer(store.getAllSettings()),
+    ...safeSettings,
     runtimeStatus: { ...persistentRuntimeStatus },
   };
 }
@@ -1031,6 +1079,8 @@ function createBlockedStartupSettings() {
     windowX: null,
     windowY: null,
     startMinimized: false,
+    openAtLogin: DEFAULTS.OPEN_AT_LOGIN,
+    openAtLoginStatus: 'unknown',
     clipboardMonitoring: false,
     clipboardShortcut: DEFAULTS.CLIPBOARD_SHORTCUT,
     screenshotShortcut: DEFAULTS.SCREENSHOT_SHORTCUT,
@@ -1276,6 +1326,8 @@ function createMainWindow(settings = getStartupSettings()) {
   mainWindowInitialLoadReady = uiFixtureMode.enabled;
   mainWindowRevealRequested = false;
   if (!uiFixtureMode.enabled) {
+    const launchedAtLogin = wasOpenedAtLogin;
+    wasOpenedAtLogin = false;
     const startupWindow = mainWindow;
     startupWindow.webContents.once('did-finish-load', () => {
       if (
@@ -1287,7 +1339,8 @@ function createMainWindow(settings = getStartupSettings()) {
       const revealWasRequested = mainWindowRevealRequested;
       mainWindowRevealRequested = false;
       const shouldStartVisible = !store.isStoreReady()
-        || store.getSettings('startMinimized') !== true || !tray;
+        || !tray
+        || (!launchedAtLogin && store.getSettings('startMinimized') !== true);
       if (revealWasRequested || shouldStartVisible) showMainWindow();
     });
   }
@@ -1934,6 +1987,7 @@ function promoteRecoveredWindow(settings) {
 }
 
 function applyRecoveredSettings(settings) {
+  syncOpenAtLoginPreference();
   activatePersistentRuntime(settings, { broadcast: true });
   promoteRecoveredWindow(settings);
 }
@@ -2048,6 +2102,7 @@ function registerIpcHandlers() {
       }
       recoveredNow = true;
     }
+    syncOpenAtLoginPreference();
     const settings = store.getAllSettings();
     if (recoveredNow) applyRecoveredSettings(settings);
     else if (!persistentRuntimeActive) activatePersistentRuntime(settings, { broadcast: true });
@@ -2261,6 +2316,8 @@ function registerIpcHandlers() {
     providerConnectionAbortController?.abort();
     llmAbortController?.abort();
     store.resetUserDataAndSettings();
+    readingPins?.clear();
+    syncOpenAtLoginPreference();
     clipboardResidueRegistry.clearSender(event.sender.id);
     stopClipboardMonitoring();
     unregisterAll();
@@ -2370,6 +2427,9 @@ function registerIpcHandlers() {
     if (settingChanged && LLM_PROCESSING_SETTING_KEYS.has(key)) {
       llmAbortController?.abort();
     }
+    if (settingChanged && (LLM_PROCESSING_SETTING_KEYS.has(key) || key === 'setupMode')) {
+      readingPins?.invalidateProcessing();
+    }
     if (settingChanged && key === 'verificationPolicy') {
       verificationApprovalRegistry.revokeSender(event.sender.id);
       verificationAbortController?.abort();
@@ -2422,6 +2482,22 @@ function registerIpcHandlers() {
       persistentRuntimeStatus.clipboardMonitoringDisabled = false;
       persistentRuntimeStatus.clipboardMonitoringDisablePersistFailed = false;
       return { status: 'saved', key, customEndpointApiKeyCleared: false };
+    }
+
+    if (key === 'openAtLogin') {
+      const loginItemState = setOpenAtLogin({
+        app,
+        store,
+        supported: openAtLoginSupported,
+        openAtLogin: value,
+      });
+      return {
+        status: 'saved',
+        key,
+        value: loginItemState.openAtLogin,
+        openAtLoginStatus: loginItemState.status,
+        customEndpointApiKeyCleared: false,
+      };
     }
 
     if (key === 'customEndpointUrl') {
@@ -2768,9 +2844,26 @@ function registerIpcHandlers() {
     }
   });
 
-  // Screenshot capture flow: capture region -> OCR -> LLM
+  ipcMain.handle(IPC_CHANNELS.READING_OPEN_TEXT, (event, text) => {
+    assertTrustedIpc(event);
+    if (providerConnectionInFlight || llmRequestInFlight || verificationRequestInFlight || !readingPins) {
+      return { success: false, errorCode: 'reading-busy' };
+    }
+    return readingPins.openText(text);
+  });
+  ipcMain.handle(IPC_CHANNELS.READING_LIBRARY_OPEN, (event) => {
+    assertTrustedIpc(event);
+    if (app.isQuitting || userDataResetRegistry.isLocked(event.sender.id) || !termLibrary) return false;
+    termLibrary.open();
+    return true;
+  });
+
+  // Screenshot capture flow: capture region -> OCR -> reading card
   ipcMain.handle(IPC_CHANNELS.SCREENSHOT_CAPTURE, async (event) => {
     assertTrustedIpc(event);
+    if (readingPins && store.getAllSettings().setupMode !== 'unconfigured') {
+      return readingPins.capture();
+    }
     if (providerConnectionInFlight || llmRequestInFlight || verificationRequestInFlight) {
       return userError(USER_ERRORS.SCREENSHOT_BUSY);
     }
@@ -2787,6 +2880,10 @@ app.on('second-instance', () => {
 
 app.on('ready', () => {
   const storageStatus = store.initializeStore();
+  const launchedAtLogin = getOpenAtLoginState({ app, supported: openAtLoginSupported })
+    .wasOpenedAtLogin;
+  wasOpenedAtLogin = launchedAtLogin;
+  if (storageStatus.state === 'ready') syncOpenAtLoginPreference();
   const settings = getStartupSettings();
   installAboutPanel();
   installApplicationMenu();
@@ -2795,15 +2892,44 @@ app.on('ready', () => {
   if (!uiFixtureMode.enabled) registerIpcHandlers();
   createMainWindow(settings);
   if (uiFixtureMode.enabled) return;
+  const termCardStore = createTermCardStore(path.join(app.getPath('documents'), 'Slipstream', '术语卡片'));
+  termLibrary = createTermLibrary({ BrowserWindow, ipcMain, shell, dialog, store: termCardStore });
+  readingPins = createReadingPins({
+    BrowserWindow, ipcMain, screen,
+    captureAppName: isReadingPreview ? 'Slipstream 阅读预览' : 'Slipstream',
+    copyText: (text) => {
+      if (app.isQuitting || userDataResetRegistry.isLocked(mainWindow?.webContents?.id)) throw new Error('reading-copy-unavailable');
+      clipboardMonitor?.suppressNextText(text);
+      clipboard.writeText(text);
+    },
+    saveTermCard: (input) => termCardStore.save(input),
+    onOpenLibrary: (id) => termLibrary.open(id),
+    getSettings: () => store.isStoreReady() ? store.getAllSettings() : null,
+    getMainWindow: () => mainWindow,
+    captureRegion: ScreenshotService.captureSelectedRegion,
+    performOCR: OCRService.performOCR,
+    processReadingText: LLMService.processReadingText,
+    recognizeReadingFormulas: LLMService.recognizeReadingFormulas,
+    requestCapturePermission: requestScreenRecordingAccessForCapture,
+    canCapture: () => !app.isQuitting && !captureRequestInFlight
+      && !quitRequestRegistry.hasPending(mainWindow?.webContents?.id)
+      && !userDataResetRegistry.isLocked(mainWindow?.webContents?.id),
+    onOpenSettings: requestAppSettings,
+    onError: (message) => dialog.showMessageBox({
+      type: 'info', title: 'Slipstream · 截图阅读', message,
+      buttons: ['好'], noLink: true,
+    }).catch(() => {}),
+    classifyError: (error, backend) => classifyProcessingError(error, backend).message,
+  });
   autoUpdateManager = createAutoUpdateManager({
     updater: autoUpdater,
-    enabled: app.isPackaged && runtimeBuildIdentity === BUILD_IDENTITIES.DEVELOPER_ID,
+    enabled: app.isPackaged && !isReadingPreview && runtimeBuildIdentity === BUILD_IDENTITIES.DEVELOPER_ID,
     getMenuItem: () => Menu.getApplicationMenu()?.getMenuItemById('app-check-for-updates'),
     onInstallFailed: () => app.quit(),
     onInstallRequested: requestUpdateInstall,
     showMessageBox: showUpdateMessageBox,
   });
-  autoUpdateManager.start();
+  autoUpdateManager.start({ silentAutomaticCheck: launchedAtLogin });
   if (storageStatus.state === 'ready') activatePersistentRuntime(settings);
 
   // Send settings to renderer once ready (strip sensitive keys)
@@ -2867,12 +2993,14 @@ app.on('before-quit', (event) => {
   userDataResetRegistry.clearAll();
   clipboardResidueRegistry.clearAll();
   unregisterAll();
+  readingPins?.dispose();
   ScreenshotService.cleanup();
   OCRService.cleanup();
   uiFixtureRuntime?.recordCommandQSafeExitLifecycle?.({ cleanupComplete: true });
 });
 
 app.on('will-quit', () => {
+  termLibrary?.dispose();
   uiFixtureRuntime?.emitCommandQSafeExitProof?.();
 });
 }

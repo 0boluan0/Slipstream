@@ -1,0 +1,7 @@
+Conditional expectation can be expressed using a conditional density:
+
+$$\mathbb{E}[Y\mid X=x]=\int_{-\infty}^{\infty} y f_{Y\mid X}(y\mid x)\,\mathrm{d}y.$$
+
+The sample mean and a symmetric matrix are:
+
+$$\bar{x}=\frac{1}{n}\sum_{i=1}^{n} x_i,\qquad A=\begin{pmatrix}a & b\\b & c\end{pmatrix}.$$

@@ -156,7 +156,7 @@ const settingsSource = readSource('src/renderer/hooks/useSettings.js');
 const floatingPanelSource = readSource('src/renderer/components/FloatingPanel.jsx');
 const demoSource = readSource('src/renderer/hooks/useIpc.js');
 const projectReadme = readSource('../README.md');
-const developmentReadme = readSource('README.md');
+const developmentReadme = readSource('../docs/action-workspace-development.md');
 const privacyDoc = readSource('../docs/PRIVACY.md');
 const releaseDoc = readSource('../docs/RELEASE.md');
 
@@ -196,7 +196,7 @@ assert.match(demoSource, /get\('monitor'\)/);
 assert.match(demoSource, /demoClipboardMonitoringCode === 'on'/);
 assert.match(demoSource, /clipboardMonitoring: true/);
 
-assert.match(projectReadme, /Clipboard monitoring requires a destination-specific confirmation/);
+assert.match(projectReadme, /开启前确认处理去向/);
 assert.match(developmentReadme, /last confirmed state stays visible/);
 assert.match(privacyDoc, /Clipboard monitoring is off by default/);
 assert.match(privacyDoc, /passwords, one-time codes, identifiers/);

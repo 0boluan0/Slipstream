@@ -1,0 +1,86 @@
+{
+  "text": "Conditional expectation\nConditional expectation can be expressed using a conditional density:\nThe sample mean and a symmetric matrix are:\nn\n= =1\nn\ni=1\n1= (= °)",
+  "confidence": 0.875,
+  "blocks": [
+    {
+      "boundingBox": {
+        "h": 0.05619041486219922,
+        "w": 0.338662779564951,
+        "x": 0.04360465390696256,
+        "y": 0.77808988887218
+      },
+      "confidence": 1,
+      "text": "Conditional expectation"
+    },
+    {
+      "boundingBox": {
+        "h": 0.04869256958816981,
+        "w": 0.6666666666666667,
+        "x": 0.04166667499999981,
+        "y": 0.6609848487715452
+      },
+      "confidence": 1,
+      "text": "Conditional expectation can be expressed using a conditional density:"
+    },
+    {
+      "boundingBox": {
+        "h": 0.04866202311082324,
+        "w": 0.4458333333333333,
+        "x": 0.041666674097221995,
+        "y": 0.39488636285641876
+      },
+      "confidence": 1,
+      "text": "The sample mean and a symmetric matrix are:"
+    },
+    {
+      "boundingBox": {
+        "h": 0.022471910173242793,
+        "w": 0.014534883873135451,
+        "x": 0.4069767442552927,
+        "y": 0.3174157304189965
+      },
+      "confidence": 1,
+      "text": "n"
+    },
+    {
+      "boundingBox": {
+        "h": 0.07584269841512048,
+        "w": 0.07703487919826135,
+        "x": 0.31686046814796237,
+        "y": 0.2528089882924397
+      },
+      "confidence": 0.5,
+      "text": "= =1"
+    },
+    {
+      "boundingBox": {
+        "h": 0.03370786435676343,
+        "w": 0.01889534931556852,
+        "x": 0.3720930228591731,
+        "y": 0.21910112386094405
+      },
+      "confidence": 1,
+      "text": "n"
+    },
+    {
+      "boundingBox": {
+        "h": 0.02808988636190235,
+        "w": 0.03197674470789291,
+        "x": 0.3982558138742512,
+        "y": 0.1966292144735432
+      },
+      "confidence": 1,
+      "text": "i=1"
+    },
+    {
+      "boundingBox": {
+        "h": 0.12641512986385461,
+        "w": 0.15552324781230853,
+        "x": 0.5145348884993689,
+        "y": 0.20786517199401155
+      },
+      "confidence": 0.5,
+      "text": "1= (= °)"
+    }
+  ]
+}

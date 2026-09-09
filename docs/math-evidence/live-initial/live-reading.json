@@ -1,0 +1,233 @@
+{
+  "date": "2026-09-09T15:29:49.236Z",
+  "capture": "Authored source rendered to PNG in an Electron window; native system selection is checked separately.",
+  "cases": [
+    {
+      "term": "conditional expectation",
+      "source": "Let Y denote future demand and X the information available today. The conditional expectation E[Y | X] is a random variable determined by X. It differs from the unconditional expectation E[Y], which is a single average over all possible values of X.",
+      "translation": "设 $Y$ 表示未来需求，$X$ 表示今天可获得的信息。条件期望 $E[Y | X]$ 是由 $X$ 决定的随机变量。它与无条件期望 $E[Y]$ 不同，后者是对 $X$ 所有可能取值的一个单一平均值。",
+      "terms": [
+        {
+          "quote": "conditional expectation",
+          "label": "条件期望",
+          "start": 70,
+          "end": 93
+        },
+        {
+          "quote": "unconditional expectation",
+          "label": "无条件期望",
+          "start": 161,
+          "end": 186
+        },
+        {
+          "quote": "random variable",
+          "label": "随机变量",
+          "start": 108,
+          "end": 123
+        }
+      ],
+      "lookup": {
+        "quote": "conditional expectation",
+        "meaning": "条件期望是指在给定某些信息（如变量X的取值）的情况下，对另一个变量（如Y）的平均值的预测。它不是一个固定的数，而是随X变化而变化的随机变量，反映了在已知X时对Y的最佳平均估计。",
+        "note": "在此摘录中，条件期望E[Y | X]被定义为由X决定的随机变量，与无条件期望E[Y]（对所有X取值的单一平均值）形成对比。其核心区别在于条件期望利用了X的信息，从而能针对不同的X给出不同的预测，而无条件期望则忽略了X的差异。",
+        "contextual": true
+      },
+      "translationMs": 1299,
+      "lookupMs": 2241
+    },
+    {
+      "term": "confounder",
+      "source": "A confounder is a variable that influences both a treatment and an outcome. An association between treatment and outcome may therefore persist even when the treatment has no causal effect.",
+      "translation": "混杂变量是同时影响治疗和结局的变量。因此，即使治疗没有因果效应，治疗与结局之间的关联也可能持续存在。",
+      "terms": [
+        {
+          "quote": "confounder",
+          "label": "混杂变量",
+          "start": 2,
+          "end": 12
+        },
+        {
+          "quote": "treatment",
+          "label": "治疗",
+          "start": 50,
+          "end": 59
+        },
+        {
+          "quote": "outcome",
+          "label": "结局",
+          "start": 67,
+          "end": 74
+        },
+        {
+          "quote": "association",
+          "label": "关联",
+          "start": 79,
+          "end": 90
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 174,
+          "end": 187
+        }
+      ],
+      "lookup": {
+        "quote": "confounder",
+        "meaning": "混杂变量是指同时影响处理（或暴露）和结果的变量。由于它的存在，即使处理本身对结果没有因果效应，处理与结果之间也可能表现出统计关联，这种关联是虚假的，并非由处理直接引起。",
+        "note": "在本段中，混杂变量被用来解释为何观察到的处理与结果之间的关联可能误导因果推断。关键假设是混杂变量必须同时与处理和结果相关，且不在因果路径上。若忽略混杂变量，可能错误地认为处理有效，而实际上关联完全或部分由混杂变量造成。",
+        "contextual": true
+      },
+      "translationMs": 2137,
+      "lookupMs": 1729
+    }
+  ],
+  "readingCalls": [
+    {
+      "kind": "translate",
+      "source": "Conditional expectation can be expressed using a conditional density:",
+      "translation": "条件期望可以用条件密度来表示：",
+      "terms": [
+        {
+          "quote": "Conditional expectation",
+          "label": "条件期望",
+          "start": 0,
+          "end": 23
+        },
+        {
+          "quote": "conditional density",
+          "label": "条件密度",
+          "start": 49,
+          "end": 68
+        }
+      ],
+      "elapsedMs": 1054
+    },
+    {
+      "kind": "translate",
+      "source": "**Conditional expectation**",
+      "translation": "**条件期望**",
+      "terms": [
+        {
+          "quote": "Conditional expectation",
+          "label": "条件期望",
+          "start": 2,
+          "end": 25
+        }
+      ],
+      "elapsedMs": 1219
+    },
+    {
+      "kind": "translate",
+      "source": "$$\\mathbb{E}[Y \\mid X = x] = \\int_{-\\infty}^{\\infty} y f_{Y|X}(y \\mid x) \\, \\mathrm{d}y.$$",
+      "translation": "$$\\mathbb{E}[Y \\mid X = x] = \\int_{-\\infty}^{\\infty} y f_{Y|X}(y \\mid x) \\, \\mathrm{d}y.$$",
+      "terms": [],
+      "elapsedMs": 1229
+    },
+    {
+      "kind": "translate",
+      "source": "The sample mean and a symmetric matrix are:",
+      "translation": "样本均值和对称矩阵为：",
+      "terms": [
+        {
+          "quote": "sample mean",
+          "label": "样本均值",
+          "start": 4,
+          "end": 15
+        },
+        {
+          "quote": "symmetric matrix",
+          "label": "对称矩阵",
+          "start": 22,
+          "end": 38
+        }
+      ],
+      "elapsedMs": 1251
+    },
+    {
+      "kind": "translate",
+      "source": "$$\\bar{x} = \\frac{1}{n} \\sum_{i=1}^{n} x_i, \\qquad A = \\begin{pmatrix} a & b \\\\ b & c \\end{pmatrix}.$$",
+      "translation": "$$\\bar{x} = \\frac{1}{n} \\sum_{i=1}^{n} x_i, \\qquad A = \\begin{pmatrix} a & b \\\\ b & c \\end{pmatrix}.$$",
+      "terms": [],
+      "elapsedMs": 1437
+    },
+    {
+      "kind": "lookup",
+      "source": "**Conditional expectation**\n\nConditional expectation can be expressed using a conditional density:\n\n$$\\mathbb{E}[Y \\mid X = x] = \\int_{-\\infty}^{\\infty} y f_{Y|X}(y \\mid x) \\, \\mathrm{d}y.$$\n\nThe sample mean and a symmetric matrix are:\n\n$$\\bar{x} = \\frac{1}{n} \\sum_{i=1}^{n} x_i, \\qquad A = \\begin{pmatrix} a & b \\\\ b & c \\end{pmatrix}.$$",
+      "selection": "Conditional expectation",
+      "lookup": {
+        "quote": "Conditional expectation",
+        "meaning": "条件期望是指在给定另一个随机变量（或事件）取特定值的条件下，某个随机变量的期望值。它是对条件分布求平均的结果，反映了在已知部分信息后对该变量的平均预测。",
+        "note": "在此摘录中，条件期望被定义为通过条件密度函数 $f_{Y|X}(y \\mid x)$ 对 $y$ 进行积分得到的表达式，即 $\\mathbb{E}[Y \\mid X = x] = \\int y f_{Y|X}(y \\mid x) dy$。这要求 $X$ 和 $Y$ 是连续型随机变量，且条件密度存在。该公式用于计算给定 $X=x$ 时 $Y$ 的平均值。",
+        "contextual": true
+      },
+      "elapsedMs": 1660
+    }
+  ],
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "formulaSource": "Conditional expectation can be expressed using a conditional density:\n\n$$\\mathbb{E}[Y\\mid X=x]=\\int_{-\\infty}^{\\infty}y f_{Y\\mid X}(y\\mid x)\\,\\mathrm{d}y.$$\n\nThe sample mean and a symmetric matrix are:\n\n$$\\bar{x}=\\frac{1}{n}\\sum_{i=1}^{n}x_i,\\qquad A=\\begin{pmatrix}a & b\\\\b & c\\end{pmatrix}.$$",
+  "localOcr": {
+    "text": "Conditional expectation\nConditional expectation can be expressed using a conditional density:\nThe sample mean and a symmetric matrix are:\ni=1\n1 = (6 °).",
+    "confidence": 0.9,
+    "blocks": [
+      {
+        "boundingBox": {
+          "h": 0.06469941139221191,
+          "w": 0.34583333333333327,
+          "x": 0.04166667243055537,
+          "y": 0.838709679552638
+        },
+        "confidence": 1,
+        "text": "Conditional expectation"
+      },
+      {
+        "boundingBox": {
+          "h": 0.042613636363636465,
+          "w": 0.6613372204350491,
+          "x": 0.04360465110757228,
+          "y": 0.7272727279580116
+        },
+        "confidence": 1,
+        "text": "Conditional expectation can be expressed using a conditional density:"
+      },
+      {
+        "boundingBox": {
+          "h": 0.044943820346485475,
+          "w": 0.44622093649471506,
+          "x": 0.040697669679604705,
+          "y": 0.45505617943349885
+        },
+        "confidence": 1,
+        "text": "The sample mean and a symmetric matrix are:"
+      },
+      {
+        "boundingBox": {
+          "h": 0.030898874456232295,
+          "w": 0.03343023038377946,
+          "x": 0.39825581514968006,
+          "y": 0.2584269675237565
+        },
+        "confidence": 1,
+        "text": "i=1"
+      },
+      {
+        "boundingBox": {
+          "h": 0.12078651514920324,
+          "w": 0.16279069489123776,
+          "x": 0.5188953512462415,
+          "y": 0.27247191101739265
+        },
+        "confidence": 0.5,
+        "text": "1 = (6 °)."
+      }
+    ]
+  },
+  "ocrPhase": "review",
+  "formulaTranscription": {
+    "text": "**Conditional expectation**\n\nConditional expectation can be expressed using a conditional density:\n\n$$\\mathbb{E}[Y \\mid X = x] = \\int_{-\\infty}^{\\infty} y f_{Y|X}(y \\mid x) \\, \\mathrm{d}y.$$\n\nThe sample mean and a symmetric matrix are:\n\n$$\\bar{x} = \\frac{1}{n} \\sum_{i=1}^{n} x_i, \\qquad A = \\begin{pmatrix} a & b \\\\ b & c \\end{pmatrix}.$$",
+    "uncertain": [],
+    "elapsedMs": 2113
+  },
+  "savedAndReopened": true,
+  "completed": true
+}

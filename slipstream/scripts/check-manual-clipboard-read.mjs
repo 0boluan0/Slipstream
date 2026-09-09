@@ -175,7 +175,7 @@ assert.ok(
 );
 
 assert.match(panelSource, /disabled=\{isReadingClipboard \|\| manualClipboardReadPending\}/);
-assert.match(panelSource, /\|\| manualClipboardReadPending\n\s+\}/);
+assert.match(panelSource, /\|\| manualClipboardReadPending\n\s+\|\| isOpeningReading\n\s+\}/);
 assert.match(panelSource,
   /useLayoutEffect\(\(\) => \{\s*const focusToken = pendingManualClipboardFocusTokenRef\.current;[\s\S]*?focusAvailableElement\(pendingClipboardStatusRef\.current\)[\s\S]*?focusedManualClipboardTokenRef\.current = focusToken/,
   'a committed manual replacement decision must synchronously claim focus exactly once per read');

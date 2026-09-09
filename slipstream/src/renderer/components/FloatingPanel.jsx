@@ -41,6 +41,7 @@ import {
   createRequestCoordinator,
 } from '../hooks/requestCoordinator.mjs';
 import { PREVIEW_ACTION_BRIEF, PREVIEW_CAPTURE, PREVIEW_SOURCE_TEXT } from '@preview-data';
+import { READING_SAMPLE_SOURCE_TEXT } from '../utils/safeSampleSource';
 import { getReplyProgressConsistencyForBrief } from '../utils/replyProgress.mjs';
 import {
   hasSavedTerm,
@@ -371,6 +372,9 @@ function ResultWorkspaceFallback() {
 
 const RESULT_DEMO = import.meta.env.DEV
   && new URLSearchParams(window.location.search).get('demo') === 'result';
+// Existing development scenarios exercise recovery of the earlier text workspace.
+const LEGACY_WORKSPACE_DEMO = import.meta.env.DEV
+  && Boolean(new URLSearchParams(window.location.search).get('demo'));
 const RESULT_DEMO_APPROVAL_ID = 'a'.repeat(64);
 const PROCESSING_PHASE = Object.freeze({
   CAPTURE: 'capture',
@@ -547,6 +551,8 @@ export default function FloatingPanel({
   const [captureMeta, setCaptureMeta] = useState({ confidence: null, blocks: [] });
   const [ocrReview, setOcrReview] = useState(null);
   const [isConfirmingOcrReview, setIsConfirmingOcrReview] = useState(false);
+  const [isOpeningReading, setIsOpeningReading] = useState(false);
+  const readingOpenRef = useRef(false);
   const [sourceMeta, setSourceMeta] = useState({ truncated: false, originalLength: null });
   const [isVerifying, setIsVerifying] = useState(false);
   const [isCancellingVerification, setIsCancellingVerification] = useState(false);
@@ -2256,7 +2262,7 @@ export default function FloatingPanel({
     if (settings.setupMode === 'unconfigured') {
       settingsReturnFocusRef.current = status === STATUS.DONE ? 'result' : 'source';
       onOpenSettings(
-        '完整分析配置尚未完成；当前原文和上一份结果仍在主面板。完成验证并启用后，返回即可继续处理。',
+        '阅读服务配置尚未完成；当前原文和上一份结果仍在主面板。完成验证并启用后，返回即可继续处理。',
         'full-analysis',
       );
       return;
@@ -2362,6 +2368,42 @@ export default function FloatingPanel({
       return;
     }
 
+    if (!LEGACY_WORKSPACE_DEMO && !lastGoodRef.current && !isEditingSource) {
+      if (readingOpenRef.current) return;
+      readingOpenRef.current = true;
+      setIsOpeningReading(true);
+      const revision = sourceRevisionRef.current;
+      void invoke(IPC_CHANNELS.READING_OPEN_TEXT, textToProcess).then((response) => {
+        if (!response?.pinned) {
+          setError({
+            'reading-busy': '请先完成当前操作，再开始阅读。',
+            'reading-capture-pending': '请先完成框选或按 Esc 取消。',
+            'reading-card-limit': '请先关闭几张不用的阅读卡片。',
+            'reading-setup-required': '请先配置阅读服务。',
+            'reading-invalid-input': `请放入 1–${DEFAULTS.MAX_TEXT_LENGTH} 个字符的英文。`,
+          }[response?.errorCode] || '阅读卡片没有打开，请重试。');
+          return;
+        }
+        if (sourceRevisionRef.current === revision) {
+          setInputText('');
+          setSourceType('manual');
+          setSourceMeta({ truncated: false, originalLength: null });
+          setCaptureMeta({ confidence: null, blocks: [] });
+          setOcrReview(null);
+          setError(null);
+          setWarning('');
+          setStatus(STATUS.IDLE);
+          clearSessionRecovery(getSessionRecoveryStorage());
+        }
+      }).catch(() => {
+        setError('阅读卡片没有打开，请重试。');
+      }).finally(() => {
+        readingOpenRef.current = false;
+        setIsOpeningReading(false);
+      });
+      return;
+    }
+
     const retainedAttempt = failedProcessingAttemptRef.current;
     if (!failedProcessingAttemptMatches(retainedAttempt, textToProcess, normalizedOptions)) {
       const nextAttempt = createFailedProcessingAttempt({
@@ -2435,7 +2477,7 @@ export default function FloatingPanel({
       };
     }
     if (task) runProcessing(task);
-  }, [captureMeta, inputText, invalidateVerification, onOpenSettings, processingConfigGenerationRef, processingConfigRevision, processingConfigSignature, replaceSessionRecoveryWithLastGood, revokeDelayedCaptureDispatch, runProcessing, setFailedProcessingAttempt, setWindowMode, settings, sourceMeta.originalLength, sourceMeta.truncated, sourceType, status]);
+  }, [captureMeta, inputText, invalidateVerification, invoke, isEditingSource, onOpenSettings, processingConfigGenerationRef, processingConfigRevision, processingConfigSignature, replaceSessionRecoveryWithLastGood, revokeDelayedCaptureDispatch, runProcessing, setFailedProcessingAttempt, setWindowMode, settings, sourceMeta.originalLength, sourceMeta.truncated, sourceType, status]);
 
   useEffect(() => {
     triggerProcessingRef.current = triggerProcessing;
@@ -2527,6 +2569,17 @@ export default function FloatingPanel({
       if (screenshotRunRef.current.token !== token) return;
       const screenshot = await invoke(IPC_CHANNELS.SCREENSHOT_CAPTURE);
       if (screenshotRunRef.current.token !== token) return;
+      if (screenshot?.pinned) {
+        settleFailedScreenshotCancellation(token);
+        if (!restoreLastGood()) {
+          setError(null);
+          statusRef.current = STATUS.IDLE;
+          setStatus(STATUS.IDLE);
+          setWindowMode('capture');
+        }
+        await invoke(IPC_CHANNELS.WINDOW_HIDE);
+        return;
+      }
       if (screenshot?.cancelled) {
         settleFailedScreenshotCancellation(token);
         if (!restoreLastGood()) {
@@ -2864,17 +2917,18 @@ export default function FloatingPanel({
   }, [handleScreenshot, inputText, sourceMeta.originalLength, sourceMeta.truncated, sourceType]);
 
   const handleLoadExample = useCallback(() => {
+    const sampleText = LEGACY_WORKSPACE_DEMO ? PREVIEW_SOURCE_TEXT : READING_SAMPLE_SOURCE_TEXT;
     revokeDelayedCaptureDispatch({ sourceReplaced: true });
     discardClearedSession();
     setCaptureErrorCode(null);
     setProcessingErrorCode(null);
     setOcrReview(null);
     setIsConfirmingOcrReview(false);
-    setInputText(PREVIEW_SOURCE_TEXT);
+    setInputText(sampleText);
     setSourceLimitActionNotice('');
     setSourceType('sample');
     setCaptureMeta({ confidence: null, blocks: [] });
-    setSourceMeta({ truncated: false, originalLength: PREVIEW_SOURCE_TEXT.length });
+    setSourceMeta({ truncated: false, originalLength: sampleText.length });
     setWarning('');
     setError(null);
     setStatus(STATUS.IDLE);
@@ -4525,10 +4579,20 @@ export default function FloatingPanel({
   const privacyDisclosure = getProcessingPrivacyDisclosure(privacyProvider, {
     processingLocation: privacyProcessingLocation,
   });
+  const readingStart = !LEGACY_WORKSPACE_DEMO && !isEditingSource && !lastGoodRef.current;
+  const readingPrivacyDisclosure = { ...privacyDisclosure,
+    detail: privacyProvider === 'free_translate'
+      ? '原文发送至 Google Translate，必要时使用 MyMemory。截图留在本机。'
+      : privacyProcessingLocation === PROCESSING_LOCATIONS.LOCAL
+        ? '译文和按需术语解释由本机模型处理。'
+        : privacyProcessingLocation === PROCESSING_LOCATIONS.LOCAL_LOOPBACK
+          ? '文字交给本机兼容服务；该服务可能继续联网。截图留在本机。'
+          : '原文交给所选服务翻译；点击术语时再请求解释。截图默认留在本机。',
+  };
   const capturePrivacyDisclosure = status === STATUS.PROCESSING
     && processingPhase === PROCESSING_PHASE.CAPTURE
     ? SCREENSHOT_CAPTURE_PRIVACY_DISCLOSURE
-    : privacyDisclosure;
+    : readingStart ? readingPrivacyDisclosure : privacyDisclosure;
   const ocrReviewCopy = ocrReview
     ? describeOcrReview({
         source: 'ocr',
@@ -4620,7 +4684,7 @@ export default function FloatingPanel({
         : '';
   const capturePlaceholder = settings.clipboardMonitoring
     ? '粘贴英文，或复制后等待自动检测…'
-    : '粘贴英文邮件、网页段落或课程材料…';
+    : '也可以粘贴教材、论文或专业文章中的一段英文…';
   const sourceDescriptionIds = [
     ocrReviewCopy ? 'ocr-review-detail' : null,
     ocrReviewCopy ? 'ocr-review-destination' : null,
@@ -4841,19 +4905,19 @@ export default function FloatingPanel({
           <button
             ref={savedTermsTriggerRef}
             type="button"
-            className={`saved-terms-trigger saved-terms-trigger--${savedTermsLoadStatus}`}
-            onPointerEnter={prepareSavedTermsAccess}
-            onFocus={prepareSavedTermsAccess}
-            onClick={openSavedTerms}
-            aria-haspopup="dialog"
-            aria-expanded={savedTermsDrawerOpen}
-            aria-controls="saved-terms-drawer"
-            aria-label={savedTermsTriggerLabel}
-            aria-busy={savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS.LOADING}
+            className={`saved-terms-trigger saved-terms-trigger--${savedTermsLoadStatus}${readingStart ? ' reading-library-trigger' : ''}`}
+            onPointerEnter={readingStart ? undefined : prepareSavedTermsAccess}
+            onFocus={readingStart ? undefined : prepareSavedTermsAccess}
+            onClick={readingStart ? () => invoke(IPC_CHANNELS.READING_LIBRARY_OPEN).catch(() => setError('卡片盒没有打开，请重试。')) : openSavedTerms}
+            aria-haspopup={readingStart ? undefined : 'dialog'}
+            aria-expanded={readingStart ? undefined : savedTermsDrawerOpen}
+            aria-controls={readingStart ? undefined : 'saved-terms-drawer'}
+            aria-label={readingStart ? '打开本地术语卡片盒' : savedTermsTriggerLabel}
+            aria-busy={!readingStart && savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS.LOADING}
           >
             <BookOpen size={18} weight="fill" />
-            <span>术语库</span>
-            <strong aria-hidden="true">
+            <span>{readingStart ? '卡片盒' : '术语库'}</span>
+            {!readingStart && <strong aria-hidden="true">
               {savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS.READY
                 ? savedTerms.length
                 : savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS.LOADING
@@ -4861,7 +4925,7 @@ export default function FloatingPanel({
                   : savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS.ERROR
                     ? <WarningCircle size={12} weight="fill" />
                     : '—'}
-            </strong>
+            </strong>}
           </button>
           <button
             ref={settingsTriggerRef}
@@ -5363,7 +5427,7 @@ export default function FloatingPanel({
               phase={processingPhase}
             />
           ) : (
-            <section className="capture-card">
+            <section className={`capture-card${readingStart ? ' reading-start' : ''}`}>
               <div className="capture-heading">
                 <span className="capture-heading__icon">
                   {isEditingSource
@@ -5371,23 +5435,31 @@ export default function FloatingPanel({
                     : <FileText size={24} weight="fill" />}
                 </span>
                 <div>
-                  <p className="eyebrow">{isEditingSource ? '修正原文' : '捕获英文'}</p>
+                  <p className="eyebrow">{isEditingSource ? '修正原文' : '英文教材 · 论文 · 专业阅读'}</p>
                   <h1>{isEditingSource
                     ? '核对并修正识别文本'
-                    : isFreeTranslate ? '快速翻译完整原文' : '在当前工作流里，直接看懂并行动'}</h1>
+                    : isFreeTranslate ? '让英文阅读继续下去' : '读懂原文，留下概念'}</h1>
                   <p>{isEditingSource
                     ? '上一份结果仍在内存保留；只有修正后的原文生成成功，才会替换它。'
                     : isFreeTranslate
-                      ? '在线基础翻译会发送原文，只按顺序返回翻译，不生成行动路径、术语解释或官方核验。'
-                      : '保留完整原文，把翻译、术语和行动结论逐条连回证据。'}</p>
+                      ? '框选一段英文，把中文译文贴在阅读位置旁。'
+                      : '框选正在读的内容，看中文译文；遇到不懂的概念，再展开解释、存成卡片。'}</p>
                 </div>
               </div>
 
-              {!inputText.trim() && !isEditingSource && !isFreeTranslate && (
+              {readingStart && !ocrReviewCopy && (
+                <button type="button" className="reading-capture-primary" onClick={handleScreenshot}>
+                  <Camera size={24} aria-hidden="true" />
+                  <span><strong>截图阅读</strong><small>框选一段，译文贴在屏幕旁</small></span>
+                  <kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT)}</kbd>
+                </button>
+              )}
+
+              {!readingStart && !inputText.trim() && !isEditingSource && !isFreeTranslate && (
                 <ol className="capture-start-steps" aria-label="第一次使用步骤">
-                  <li>放入一段完整英文</li>
-                  <li>确认下方发送位置</li>
-                  <li>生成后点彩色原文核对依据</li>
+                  <li>框选原文</li>
+                  <li>按需解释术语</li>
+                  <li>留下概念卡片</li>
                 </ol>
               )}
 
@@ -5485,7 +5557,7 @@ export default function FloatingPanel({
 
               <label className="capture-input">
                 <span className="capture-input__label-row">
-                  <span>原文</span>
+                  <span>{readingStart ? '或粘贴一段英文' : '原文'}</span>
                   {inputText && (
                     <small className={sourceLimitState.blocked ? 'is-over-limit' : ''} aria-hidden="true">
                       {sourceLimitState.countLabel}
@@ -5608,17 +5680,19 @@ export default function FloatingPanel({
                 <div className="capture-sample" role="note">
                   <span className="capture-sample__icon"><FileText size={19} /></span>
                   <span>
-                    <strong>先用安全示例体验</strong>
-                    <small>载入一封虚构英文邮件先看看效果；不会读取剪贴板，也不会自动处理。</small>
+                    <strong>{LEGACY_WORKSPACE_DEMO ? '先用安全示例体验' : '从一段教材风格示例开始'}</strong>
+                    <small>{LEGACY_WORKSPACE_DEMO ? '载入一封虚构英文邮件先看看效果；不会读取剪贴板，也不会自动处理。' : '相关关系与因果关系 · 自拟英文，载入后再开始阅读。'}</small>
                   </span>
-                  <button type="button" onClick={handleLoadExample}>载入安全示例（不会生成）</button>
+                  <button type="button" onClick={handleLoadExample}>{LEGACY_WORKSPACE_DEMO ? '载入安全示例（不会生成）' : '载入阅读示例'}</button>
                 </div>
               )}
 
               {sourceType === 'sample' && inputText.trim() && (
                 <p className="capture-sample-loaded" role="status" aria-live="polite">
                   <ShieldCheck size={16} weight="fill" />
-                  虚构示例已载入，不包含你的数据。你可以先阅读或修改；只有点击生成才会开始处理。
+                  {LEGACY_WORKSPACE_DEMO
+                    ? '虚构示例已载入，不包含你的数据。只有点击生成才会开始处理。'
+                    : '自拟阅读示例已载入。可先阅读或修改，点击“开始阅读”后才会交给所选服务。'}
                 </p>
               )}
 
@@ -5640,8 +5714,8 @@ export default function FloatingPanel({
                 <div className="setup-incomplete-notice" role="alert">
                   <WarningCircle size={19} weight="fill" aria-hidden="true" />
                   <span>
-                    <strong>完整分析配置尚未完成</strong>
-                    <small>原文已保留。完成服务与模型验证前，不会发送或生成新的分析结果。</small>
+                    <strong>阅读服务配置尚未完成</strong>
+                    <small>原文已保留。完成服务与模型验证后，即可开始阅读。</small>
                   </span>
                   <button type="button" onClick={handleConfigureFullAnalysis}>继续配置</button>
                 </div>
@@ -5649,11 +5723,11 @@ export default function FloatingPanel({
 
               {!ocrReviewCopy && (
                 <div className="capture-methods">
-                  <button type="button" onClick={handleScreenshot}>
+                  {!readingStart && <button type="button" onClick={handleScreenshot}>
                     <span><Camera size={23} /></span>
                     <strong>框选截图</strong>
                     <small>按 {displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT)} · 本地 OCR</small>
-                  </button>
+                  </button>}
                   <button
                     ref={clipboardReadButtonRef}
                     type="button"
@@ -5666,7 +5740,7 @@ export default function FloatingPanel({
                         ? <CircleNotch size={23} className="spin" aria-hidden="true" />
                         : <ClipboardText size={23} />}
                     </span>
-                    <strong>{isReadingClipboard ? '正在读取剪贴板…' : '读取剪贴板'}</strong>
+                    <strong>{isReadingClipboard ? '正在读取剪贴板…' : LEGACY_WORKSPACE_DEMO ? '读取剪贴板' : '读取已复制的英文'}</strong>
                     <small>
                       {manualClipboardReadPending
                         ? '先选择替换或保留当前原文'
@@ -5679,7 +5753,7 @@ export default function FloatingPanel({
               {!ocrReviewCopy && (
                 <p className="capture-permission-note" role="note">
                   <ShieldCheck size={16} weight="fill" aria-hidden="true" />
-                  <span>首次框选截图时，macOS 可能请求屏幕录制权限；截图和 OCR 都在本机进行。直接粘贴或读取剪贴板无需此权限。</span>
+                  <span>首次截图需要屏幕录制权限。文字识别在本机完成；粘贴阅读无需此权限。</span>
                 </p>
               )}
 
@@ -5711,11 +5785,12 @@ export default function FloatingPanel({
                     || isSourceTooLong
                     || setupIncomplete
                     || manualClipboardReadPending
+                    || isOpeningReading
                   }
                 >
-                  {isEditingSource
+                  {isOpeningReading ? '正在打开阅读卡片…' : isEditingSource
                     ? isFreeTranslate ? '用修正原文重新翻译' : '用修正原文重新生成'
-                    : isFreeTranslate ? '生成完整翻译' : '生成可追溯解释'}
+                    : readingStart ? '开始阅读' : isFreeTranslate ? '生成完整翻译' : '生成可追溯解释'}
                   <ArrowRight size={19} />
                 </button>
               )}

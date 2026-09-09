@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; font-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Slipstream · 术语卡片盒</title><link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="../../../node_modules/katex/dist/katex.min.css">
+<link rel="stylesheet" href="../reading-math/style.css">
+</head>
+<body>
+<header><div><span class="eyebrow">SLIPSTREAM</span><h1>术语卡片盒 <span id="count">0</span></h1></div><div class="actions"><button id="refresh">重新载入</button><button id="folder">打开本地文件夹</button></div></header>
+<p id="message" role="status" aria-live="polite" hidden></p>
+<button id="discard" hidden>放弃当前编辑并重新载入</button>
+<div class="workspace">
+<aside><label for="search">查找概念</label><input id="search" type="search" placeholder="英文、中文、解释或笔记" autocomplete="off"><div id="card-list" aria-label="已保存的术语"></div><p class="storage-note">每张卡片都是一个 Markdown 文件。<br>保存的卡片可离线阅读。</p></aside>
+<main>
+<div id="empty"><span class="eyebrow">从一次阅读，积累一个概念</span><h2>把遇见的术语留下来</h2><p>框选英文，点开译文下面的术语，再选择“存为卡片”。概念解释和当时的原文会一起保存在这里。</p></div>
+<article id="card" hidden>
+<div class="card-heading"><div><p class="eyebrow" id="card-kind">概念卡片</p><h2 id="term" lang="en"></h2><p id="date" class="muted"></p></div><div class="actions"><button id="edit">编辑卡片</button><button id="reveal">显示文件</button></div></div>
+<label for="label" class="edit-label">中文名称</label><input id="label" maxlength="180"><p id="label-reading" class="read-value chinese-name"></p>
+<label for="meaning">概念解释</label><textarea id="meaning" maxlength="40000"></textarea><p id="meaning-reading" class="read-value"></p>
+<label for="context">在原文中的用法</label><textarea id="context" maxlength="4000"></textarea><p id="context-reading" class="read-value"></p>
+<details open><summary>当时的原文</summary><blockquote id="source" lang="en"></blockquote></details>
+<label for="notes">我的理解</label><textarea id="notes" maxlength="20000" placeholder="用自己的话写下理解、问题或例子…"></textarea><p id="notes-reading" class="read-value personal-note"></p>
+<section class="connections"><h3>关联卡片</h3><div id="connections"></div><div class="connect-row"><label for="connect" class="sr-only">选择关联卡片</label><select id="connect"><option value="">选择另一个概念…</option></select><button id="add-link">建立关联</button></div><p class="muted">关联会在两张卡片里显示，便于沿着概念继续阅读。</p></section>
+<div class="save-row"><span id="edit-status" class="muted">已保存在本地</span><button id="save" class="primary" disabled>保存修改</button></div>
+</article>
+</main>
+</div><script src="../../../node_modules/katex/dist/katex.min.js"></script>
+<script src="../../shared/reading-math.cjs"></script>
+<script src="../reading-math/view.js"></script>
+<script src="./view.js"></script>
+</body></html>

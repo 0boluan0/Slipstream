@@ -1355,6 +1355,48 @@ svg {
   margin-bottom: 19px;
 }
 
+.reading-capture-primary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 72px;
+  margin: 2px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-fill);
+  border-radius: 12px;
+  background: var(--accent-fill);
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+.reading-capture-primary:hover { background: var(--accent-fill-hover); }
+.reading-capture-primary:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.reading-capture-primary > svg { flex: 0 0 auto; }
+.reading-capture-primary > span { display: grid; min-width: 0; gap: 3px; flex: 1; }
+.reading-capture-primary strong { font-size: 17px; }
+.reading-capture-primary small { font-size: 11px; line-height: 1.5; }
+.reading-capture-primary kbd { flex: 0 0 auto; font: inherit; font-size: 10px; color: #fff; }
+.reading-start .capture-heading { margin-bottom: 16px; }
+.reading-start .capture-input textarea { min-height: 80px; }
+.reading-start .capture-sample { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 0; border: 0; background: transparent; }
+.reading-start .capture-sample__icon { display: none; }
+.reading-start .capture-sample > span:nth-child(2) { flex: 1; min-width: 190px; }
+.reading-start .capture-sample button { width: auto; padding: 7px 10px; background: var(--surface-soft); color: var(--accent-ink); border: 1px solid var(--border-secondary); }
+.reading-start .capture-methods { grid-template-columns: 1fr; margin-top: 4px; }
+.reading-start .capture-methods > button { min-height: 46px; padding: 8px 10px; }
+.reading-start .capture-permission-note { margin-block: 9px; }
+.reading-start .processing-privacy-disclosure { margin-top: 9px; }
+.reading-start .shortcut-help { margin-top: 10px; }
+.saved-terms-trigger.reading-library-trigger > span { display: inline; }
+@media (max-width: 400px) {
+  .reading-capture-primary { flex-wrap: wrap; }
+  .reading-capture-primary kbd { margin-left: 36px; }
+}
+@media (max-width: 280px) {
+  .saved-terms-trigger.reading-library-trigger > span { display: none; }
+}
+
 .capture-heading > div {
   min-width: 0;
 }

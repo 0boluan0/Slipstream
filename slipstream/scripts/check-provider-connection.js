@@ -1393,7 +1393,7 @@ async function main() {
     'saving a replacement credential or endpoint must leave full mode until the new configuration is retested');
   assert.match(rendererSource, /handleCustomApiKeyChange[\s\S]*settings\.setupMode === SETUP_MODES\.FULL[\s\S]*SETUP_MODES\.UNCONFIGURED/,
     'saving a custom credential must leave full mode until the new configuration is retested');
-  assert.match(rendererSource, /完整分析能力验证通过/);
+  assert.match(rendererSource, /服务与模型验证通过/);
   assert.match(rendererSource, /当前模型能力不兼容/);
   assert.match(rendererSource, /没有连接到本机 Ollama/);
   assert.match(rendererSource, /inputId="provider-connection-input"/);

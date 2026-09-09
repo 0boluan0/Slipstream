@@ -246,12 +246,12 @@ assert.match(ipcSource, /demoCaptureCode === 'ocr-fail'[\s\S]*?demoCaptureFailur
 assert.match(ipcSource, /if \(demoScreenshotPending\)[\s\S]*?pending\.resolve\(\{ success: false, cancelled: true \}\)/,
   'the delayed screenshot fixture must preserve the production cancellation contract');
 assert.match(rendererSource, /载入安全示例/);
-assert.match(rendererSource, /虚构示例已载入，不包含你的数据/);
+assert.match(rendererSource, /自拟阅读示例已载入/);
 const exampleHandler = rendererSource.match(
   /const handleLoadExample = useCallback\(\(\) => \{[\s\S]*?\n\s*\}, \[[^\]]*\]\);/,
 )?.[0] || '';
 assert.ok(exampleHandler, 'the safe example handler must remain statically inspectable');
-assert.match(exampleHandler, /setInputText\(PREVIEW_SOURCE_TEXT\)/,
+assert.match(exampleHandler, /const sampleText = LEGACY_WORKSPACE_DEMO \? PREVIEW_SOURCE_TEXT : READING_SAMPLE_SOURCE_TEXT;[\s\S]*setInputText\(sampleText\)/,
   'the example must use the grounded preview source');
 assert.match(exampleHandler, /setSourceType\('sample'\)/);
 assert.match(exampleHandler, /setSelectionRange\(0, 0\)[\s\S]*?scrollTop = 0/,

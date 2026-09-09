@@ -1,0 +1,632 @@
+{
+  "replayedAt": "2026-09-09T16:22:23.560Z",
+  "source": "run-4/live-reading.json",
+  "mode": "Offline replay of the same live model outputs through the corrected term-position parser; no new model requests.",
+  "cases": [
+    {
+      "id": "academic-transition",
+      "repetition": 1,
+      "translation": "下一节描述结果。随后我们讨论主要发现，并提出未来研究的主题。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "ordinary-procedure",
+      "repetition": 1,
+      "translation": "我们要求每位参与者阅读说明并回答三个问题。问卷大约需要十分钟完成。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "everyday-senses",
+      "repetition": 1,
+      "translation": "电力恢复后，房间恢复了正常温度。我们打开窗户，继续开会。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "plain-description",
+      "repetition": 1,
+      "translation": "去年销售额增长了。我们预计未来需求会上升，因此公司计划再开两家门店。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "conditional-expectation",
+      "repetition": 1,
+      "translation": "设 $Y$ 表示未来需求，$X$ 表示当前可用的信息。条件期望 $E[Y | X]$ 是由 $X$ 确定的随机变量。它与无条件期望 $E[Y]$ 不同，后者是对 $X$ 所有可能取值的一个单一平均值。",
+      "terms": [
+        {
+          "quote": "conditional expectation",
+          "label": "条件期望",
+          "start": 70,
+          "end": 93
+        },
+        {
+          "quote": "unconditional expectation",
+          "label": "无条件期望",
+          "start": 161,
+          "end": 186
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "technical-power",
+      "repetition": 1,
+      "translation": "增加样本量可以提高统计功效，即在原假设为假时拒绝原假设的概率。",
+      "terms": [
+        {
+          "quote": "statistical power",
+          "label": "统计功效",
+          "start": 39,
+          "end": 56
+        },
+        {
+          "quote": "null hypothesis",
+          "label": "原假设",
+          "start": 91,
+          "end": 106
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "estimation",
+      "repetition": 1,
+      "translation": "最大似然估计量在有限样本中不必是无偏的。其一致性需要合适的正则条件和可识别性。",
+      "terms": [
+        {
+          "quote": "maximum likelihood estimator",
+          "label": "最大似然估计量",
+          "start": 4,
+          "end": 32
+        },
+        {
+          "quote": "unbiased",
+          "label": "无偏的",
+          "start": 45,
+          "end": 53
+        },
+        {
+          "quote": "consistency",
+          "label": "一致性",
+          "start": 77,
+          "end": 88
+        },
+        {
+          "quote": "regularity conditions",
+          "label": "正则条件",
+          "start": 107,
+          "end": 128
+        },
+        {
+          "quote": "identifiability",
+          "label": "可识别性",
+          "start": 133,
+          "end": 148
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "technical-normal",
+      "repetition": 1,
+      "translation": "正规子群在共轭作用下保持不变；这一条件使得商群可以被定义。",
+      "terms": [
+        {
+          "quote": "normal subgroup",
+          "label": "正规子群",
+          "start": 2,
+          "end": 17
+        },
+        {
+          "quote": "conjugation",
+          "label": "共轭",
+          "start": 37,
+          "end": 48
+        },
+        {
+          "quote": "quotient group",
+          "label": "商群",
+          "start": 76,
+          "end": 90
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "confounding",
+      "repetition": 1,
+      "translation": "混杂因素是一种既影响治疗又影响结局的变量。因此，即使治疗没有因果效应，治疗与结局之间的关联也可能持续存在。",
+      "terms": [
+        {
+          "quote": "confounder",
+          "label": "混杂因素",
+          "start": 2,
+          "end": 12
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 174,
+          "end": 187
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "collider",
+      "repetition": 1,
+      "translation": "碰撞变量是同时受暴露和结局影响的变量。对碰撞变量进行条件化可以引入选择偏倚，即使暴露没有因果效应。",
+      "terms": [
+        {
+          "quote": "collider",
+          "label": "碰撞变量",
+          "start": 2,
+          "end": 10
+        },
+        {
+          "quote": "selection bias",
+          "label": "选择偏倚",
+          "start": 121,
+          "end": 135
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 166,
+          "end": 179
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "mediation",
+      "repetition": 1,
+      "translation": "中介变量传递处理对结果的部分效应。间接效应通过中介变量起作用，而直接效应则经由其他路径。",
+      "terms": [
+        {
+          "quote": "mediator",
+          "label": "中介变量",
+          "start": 2,
+          "end": 10
+        },
+        {
+          "quote": "indirect effect",
+          "label": "间接效应",
+          "start": 74,
+          "end": 89
+        },
+        {
+          "quote": "direct effect",
+          "label": "直接效应",
+          "start": 131,
+          "end": 144
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "academic-transition",
+      "repetition": 2,
+      "translation": "下一节描述结果。随后我们讨论主要发现，并提出未来研究的主题。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "ordinary-procedure",
+      "repetition": 2,
+      "translation": "我们要求每位参与者阅读说明并回答三个问题。问卷大约需要十分钟完成。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "everyday-senses",
+      "repetition": 2,
+      "translation": "电力恢复后，房间恢复了正常温度。我们打开窗户，继续开会。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "plain-description",
+      "repetition": 2,
+      "translation": "去年销售额增长了。我们预计未来需求将上升，因此公司计划再开两家门店。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "conditional-expectation",
+      "repetition": 2,
+      "translation": "设 $Y$ 表示未来需求，$X$ 表示当前可用的信息。条件期望 $E[Y | X]$ 是由 $X$ 确定的随机变量。它与无条件期望 $E[Y]$ 不同，后者是对 $X$ 所有可能取值的一个单一平均值。",
+      "terms": [
+        {
+          "quote": "conditional expectation",
+          "label": "条件期望",
+          "start": 70,
+          "end": 93
+        },
+        {
+          "quote": "unconditional expectation",
+          "label": "无条件期望",
+          "start": 161,
+          "end": 186
+        },
+        {
+          "quote": "random variable",
+          "label": "随机变量",
+          "start": 108,
+          "end": 123
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "technical-power",
+      "repetition": 2,
+      "translation": "增加样本量可以提高统计功效，即在原假设为假时拒绝原假设的概率。",
+      "terms": [
+        {
+          "quote": "statistical power",
+          "label": "统计功效",
+          "start": 39,
+          "end": 56
+        },
+        {
+          "quote": "null hypothesis",
+          "label": "原假设",
+          "start": 91,
+          "end": 106
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "estimation",
+      "repetition": 2,
+      "translation": "最大似然估计量在有限样本中不必是无偏的。其一致性需要合适的正则条件和可识别性。",
+      "terms": [
+        {
+          "quote": "maximum likelihood estimator",
+          "label": "最大似然估计量",
+          "start": 4,
+          "end": 32
+        },
+        {
+          "quote": "unbiased",
+          "label": "无偏",
+          "start": 45,
+          "end": 53
+        },
+        {
+          "quote": "consistency",
+          "label": "一致性",
+          "start": 77,
+          "end": 88
+        },
+        {
+          "quote": "regularity conditions",
+          "label": "正则条件",
+          "start": 107,
+          "end": 128
+        },
+        {
+          "quote": "identifiability",
+          "label": "可识别性",
+          "start": 133,
+          "end": 148
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "technical-normal",
+      "repetition": 2,
+      "translation": "正规子群在共轭作用下保持不变；这一条件使得商群可以被定义。",
+      "terms": [
+        {
+          "quote": "normal subgroup",
+          "label": "正规子群",
+          "start": 2,
+          "end": 17
+        },
+        {
+          "quote": "conjugation",
+          "label": "共轭",
+          "start": 37,
+          "end": 48
+        },
+        {
+          "quote": "quotient group",
+          "label": "商群",
+          "start": 76,
+          "end": 90
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "confounding",
+      "repetition": 2,
+      "translation": "混杂因素是一种既影响治疗又影响结局的变量。因此，即使治疗没有因果效应，治疗与结局之间的关联也可能持续存在。",
+      "terms": [
+        {
+          "quote": "confounder",
+          "label": "混杂因素",
+          "start": 2,
+          "end": 12
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 174,
+          "end": 187
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "collider",
+      "repetition": 2,
+      "translation": "碰撞变量是同时受暴露和结局影响的变量。即使暴露没有因果效应，对碰撞变量进行条件化也可能引入选择偏倚。",
+      "terms": [
+        {
+          "quote": "collider",
+          "label": "碰撞变量",
+          "start": 2,
+          "end": 10
+        },
+        {
+          "quote": "selection bias",
+          "label": "选择偏倚",
+          "start": 121,
+          "end": 135
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 166,
+          "end": 179
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "mediation",
+      "repetition": 2,
+      "translation": "中介变量传递处理对结果的部分效应。间接效应通过中介变量起作用，而直接效应则沿其他路径进行。",
+      "terms": [
+        {
+          "quote": "mediator",
+          "label": "中介变量",
+          "start": 2,
+          "end": 10
+        },
+        {
+          "quote": "indirect effect",
+          "label": "间接效应",
+          "start": 74,
+          "end": 89
+        },
+        {
+          "quote": "direct effect",
+          "label": "直接效应",
+          "start": 131,
+          "end": 144
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "academic-transition",
+      "repetition": 3,
+      "translation": "下一节描述结果。随后我们讨论主要发现，并提出未来研究的主题。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "ordinary-procedure",
+      "repetition": 3,
+      "translation": "我们要求每位参与者阅读说明并回答三个问题。问卷大约需要十分钟完成。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "everyday-senses",
+      "repetition": 3,
+      "translation": "电力恢复后，房间恢复了正常温度。我们打开窗户，继续开会。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "plain-description",
+      "repetition": 3,
+      "translation": "去年销售额增长了。我们预计未来需求会上升，因此公司计划再开两家店。",
+      "terms": [],
+      "passed": true
+    },
+    {
+      "id": "conditional-expectation",
+      "repetition": 3,
+      "translation": "设 $Y$ 表示未来需求，$X$ 表示当前可用的信息。条件期望 $E[Y | X]$ 是由 $X$ 确定的随机变量。它与无条件期望 $E[Y]$ 不同，后者是对 $X$ 所有可能取值的一个单一平均值。",
+      "terms": [
+        {
+          "quote": "conditional expectation",
+          "label": "条件期望",
+          "start": 70,
+          "end": 93
+        },
+        {
+          "quote": "unconditional expectation",
+          "label": "无条件期望",
+          "start": 161,
+          "end": 186
+        },
+        {
+          "quote": "random variable",
+          "label": "随机变量",
+          "start": 108,
+          "end": 123
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "technical-power",
+      "repetition": 3,
+      "translation": "增加样本量可以提高统计功效，即在原假设为假时拒绝原假设的概率。",
+      "terms": [
+        {
+          "quote": "statistical power",
+          "label": "统计功效",
+          "start": 39,
+          "end": 56
+        },
+        {
+          "quote": "null hypothesis",
+          "label": "原假设",
+          "start": 91,
+          "end": 106
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "estimation",
+      "repetition": 3,
+      "translation": "最大似然估计量在有限样本中不必是无偏的。其一致性需要合适的正则条件和可识别性。",
+      "terms": [
+        {
+          "quote": "maximum likelihood estimator",
+          "label": "最大似然估计量",
+          "start": 4,
+          "end": 32
+        },
+        {
+          "quote": "unbiased",
+          "label": "无偏",
+          "start": 45,
+          "end": 53
+        },
+        {
+          "quote": "consistency",
+          "label": "一致性",
+          "start": 77,
+          "end": 88
+        },
+        {
+          "quote": "regularity conditions",
+          "label": "正则条件",
+          "start": 107,
+          "end": 128
+        },
+        {
+          "quote": "identifiability",
+          "label": "可识别性",
+          "start": 133,
+          "end": 148
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "technical-normal",
+      "repetition": 3,
+      "translation": "正规子群在共轭作用下保持不变；这一条件使得商群可以被定义。",
+      "terms": [
+        {
+          "quote": "normal subgroup",
+          "label": "正规子群",
+          "start": 2,
+          "end": 17
+        },
+        {
+          "quote": "conjugation",
+          "label": "共轭作用",
+          "start": 37,
+          "end": 48
+        },
+        {
+          "quote": "quotient group",
+          "label": "商群",
+          "start": 76,
+          "end": 90
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "confounding",
+      "repetition": 3,
+      "translation": "混杂因素是一种既影响治疗又影响结局的变量。因此，即使治疗没有因果效应，治疗与结局之间的关联也可能持续存在。",
+      "terms": [
+        {
+          "quote": "confounder",
+          "label": "混杂因素",
+          "start": 2,
+          "end": 12
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 174,
+          "end": 187
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "collider",
+      "repetition": 3,
+      "translation": "碰撞变量是同时受暴露和结局影响的变量。即使暴露没有因果效应，对碰撞变量进行条件化也可能引入选择偏倚。",
+      "terms": [
+        {
+          "quote": "collider",
+          "label": "碰撞变量",
+          "start": 2,
+          "end": 10
+        },
+        {
+          "quote": "selection bias",
+          "label": "选择偏倚",
+          "start": 121,
+          "end": 135
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 166,
+          "end": 179
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "mediation",
+      "repetition": 3,
+      "translation": "中介变量传递处理对结果的部分效应。间接效应通过中介变量起作用，而直接效应则经由其他路径。",
+      "terms": [
+        {
+          "quote": "mediator",
+          "label": "中介变量",
+          "start": 2,
+          "end": 10
+        },
+        {
+          "quote": "indirect effect",
+          "label": "间接效应",
+          "start": 74,
+          "end": 89
+        },
+        {
+          "quote": "direct effect",
+          "label": "直接效应",
+          "start": 131,
+          "end": 144
+        }
+      ],
+      "passed": true
+    }
+  ],
+  "passed": 33
+}

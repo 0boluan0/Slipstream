@@ -1,0 +1,633 @@
+{
+  "date": "2026-09-09T16:15:23.872Z",
+  "capture": "No screenshots. Only the authored term-selection excerpts below are submitted.",
+  "cases": [
+    {
+      "id": "academic-transition",
+      "source": "The next section describes the results. We then discuss the main findings and suggest topics for future research.",
+      "empty": true,
+      "repetition": 1,
+      "translation": "下一节描述结果。随后我们讨论主要发现，并提出未来研究的主题。",
+      "terms": [],
+      "elapsedMs": 1349,
+      "passed": true
+    },
+    {
+      "id": "ordinary-procedure",
+      "source": "We asked each participant to read the instructions and answer three questions. The questionnaire took about ten minutes to complete.",
+      "empty": true,
+      "repetition": 1,
+      "translation": "我们要求每位参与者阅读说明并回答三个问题。问卷大约需要十分钟完成。",
+      "terms": [],
+      "elapsedMs": 788,
+      "passed": true
+    },
+    {
+      "id": "everyday-senses",
+      "source": "The room returned to its normal temperature once the power was restored. We opened the windows and continued the meeting.",
+      "empty": true,
+      "repetition": 1,
+      "translation": "电力恢复后，房间恢复了正常温度。我们打开窗户，继续开会。",
+      "terms": [],
+      "elapsedMs": 1399,
+      "passed": true
+    },
+    {
+      "id": "plain-description",
+      "source": "Sales increased last year. We expect future demand to rise, so the company plans to open two more shops.",
+      "empty": true,
+      "repetition": 1,
+      "translation": "去年销售额增长了。我们预计未来需求会上升，因此公司计划再开两家门店。",
+      "terms": [],
+      "elapsedMs": 901,
+      "passed": true
+    },
+    {
+      "id": "conditional-expectation",
+      "source": "Let Y denote future demand and X the information available today. The conditional expectation E[Y | X] is a random variable determined by X. It differs from the unconditional expectation E[Y], which is a single average over all possible values of X.",
+      "required": "conditional expectation",
+      "excluded": [
+        "future demand",
+        "information",
+        "average"
+      ],
+      "repetition": 1,
+      "translation": "设 $Y$ 表示未来需求，$X$ 表示今天可用的信息。条件期望 $E[Y | X]$ 是由 $X$ 决定的随机变量。它与无条件期望 $E[Y]$ 不同，后者是对 $X$ 所有可能取值的一个单一平均值。",
+      "terms": [
+        {
+          "quote": "conditional expectation",
+          "label": "条件期望",
+          "start": 70,
+          "end": 93
+        },
+        {
+          "quote": "unconditional expectation",
+          "label": "无条件期望",
+          "start": 161,
+          "end": 186
+        },
+        {
+          "quote": "random variable",
+          "label": "随机变量",
+          "start": 108,
+          "end": 123
+        }
+      ],
+      "elapsedMs": 1311,
+      "passed": true
+    },
+    {
+      "id": "technical-power",
+      "source": "Increasing the sample size can improve statistical power, the probability of rejecting the null hypothesis when it is false.",
+      "required": "statistical power",
+      "repetition": 1,
+      "translation": "增加样本量可以提高统计功效，即在原假设为假时拒绝原假设的概率。",
+      "terms": [
+        {
+          "quote": "statistical power",
+          "label": "统计功效",
+          "start": 39,
+          "end": 56
+        },
+        {
+          "quote": "null hypothesis",
+          "label": "原假设",
+          "start": 91,
+          "end": 106
+        }
+      ],
+      "elapsedMs": 936,
+      "passed": true
+    },
+    {
+      "id": "estimation",
+      "source": "The maximum likelihood estimator need not be unbiased in finite samples. Its consistency requires suitable regularity conditions and identifiability.",
+      "required": "maximum likelihood estimator",
+      "repetition": 1,
+      "translation": "最大似然估计量在有限样本中不必是无偏的。其一致性需要适当的正则性条件和可识别性。",
+      "terms": [
+        {
+          "quote": "maximum likelihood estimator",
+          "label": "最大似然估计量",
+          "start": 4,
+          "end": 32
+        },
+        {
+          "quote": "unbiased",
+          "label": "无偏",
+          "start": 45,
+          "end": 53
+        },
+        {
+          "quote": "consistency",
+          "label": "一致性",
+          "start": 77,
+          "end": 88
+        },
+        {
+          "quote": "regularity conditions",
+          "label": "正则性条件",
+          "start": 107,
+          "end": 128
+        },
+        {
+          "quote": "identifiability",
+          "label": "可识别性",
+          "start": 133,
+          "end": 148
+        }
+      ],
+      "elapsedMs": 1429,
+      "passed": true
+    },
+    {
+      "id": "technical-normal",
+      "source": "A normal subgroup is invariant under conjugation; this condition allows the quotient group to be defined.",
+      "required": "normal subgroup",
+      "repetition": 1,
+      "translation": "正规子群在共轭作用下保持不变；这一条件使得商群可以被定义。",
+      "terms": [
+        {
+          "quote": "normal subgroup",
+          "label": "正规子群",
+          "start": 2,
+          "end": 17
+        },
+        {
+          "quote": "conjugation",
+          "label": "共轭",
+          "start": 37,
+          "end": 48
+        },
+        {
+          "quote": "quotient group",
+          "label": "商群",
+          "start": 76,
+          "end": 90
+        }
+      ],
+      "elapsedMs": 1055,
+      "passed": true
+    },
+    {
+      "id": "confounding",
+      "source": "A confounder is a variable that influences both a treatment and an outcome. An association between treatment and outcome may therefore persist even when the treatment has no causal effect.",
+      "required": "confounder",
+      "excluded": [
+        "treatment",
+        "outcome",
+        "variable"
+      ],
+      "repetition": 1,
+      "translation": "混杂变量是既影响处理又影响结局的变量。因此，即使处理没有因果效应，处理与结局之间的关联也可能持续存在。",
+      "terms": [
+        {
+          "quote": "confounder",
+          "label": "混杂变量",
+          "start": 2,
+          "end": 12
+        },
+        {
+          "quote": "treatment",
+          "label": "处理",
+          "start": 50,
+          "end": 59
+        },
+        {
+          "quote": "outcome",
+          "label": "结局",
+          "start": 67,
+          "end": 74
+        },
+        {
+          "quote": "association",
+          "label": "关联",
+          "start": 79,
+          "end": 90
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 174,
+          "end": 187
+        }
+      ],
+      "elapsedMs": 1298,
+      "passed": false
+    },
+    {
+      "id": "academic-transition",
+      "source": "The next section describes the results. We then discuss the main findings and suggest topics for future research.",
+      "empty": true,
+      "repetition": 2,
+      "translation": "下一节描述结果。随后我们讨论主要发现，并提出未来研究的主题。",
+      "terms": [],
+      "elapsedMs": 1250,
+      "passed": true
+    },
+    {
+      "id": "ordinary-procedure",
+      "source": "We asked each participant to read the instructions and answer three questions. The questionnaire took about ten minutes to complete.",
+      "empty": true,
+      "repetition": 2,
+      "translation": "我们要求每位参与者阅读说明并回答三个问题。问卷大约需要十分钟完成。",
+      "terms": [],
+      "elapsedMs": 974,
+      "passed": true
+    },
+    {
+      "id": "everyday-senses",
+      "source": "The room returned to its normal temperature once the power was restored. We opened the windows and continued the meeting.",
+      "empty": true,
+      "repetition": 2,
+      "translation": "电力恢复后，房间恢复了正常温度。我们打开窗户，继续开会。",
+      "terms": [],
+      "elapsedMs": 750,
+      "passed": true
+    },
+    {
+      "id": "plain-description",
+      "source": "Sales increased last year. We expect future demand to rise, so the company plans to open two more shops.",
+      "empty": true,
+      "repetition": 2,
+      "translation": "去年销售额增长了。我们预计未来需求会上升，因此公司计划再开两家门店。",
+      "terms": [],
+      "elapsedMs": 1132,
+      "passed": true
+    },
+    {
+      "id": "conditional-expectation",
+      "source": "Let Y denote future demand and X the information available today. The conditional expectation E[Y | X] is a random variable determined by X. It differs from the unconditional expectation E[Y], which is a single average over all possible values of X.",
+      "required": "conditional expectation",
+      "excluded": [
+        "future demand",
+        "information",
+        "average"
+      ],
+      "repetition": 2,
+      "translation": "设 $Y$ 表示未来需求，$X$ 表示今天可获得的信息。条件期望 $E[Y | X]$ 是由 $X$ 决定的随机变量。它与无条件期望 $E[Y]$ 不同，后者是对 $X$ 所有可能取值的一个单一平均值。",
+      "terms": [
+        {
+          "quote": "conditional expectation",
+          "label": "条件期望",
+          "start": 70,
+          "end": 93
+        },
+        {
+          "quote": "unconditional expectation",
+          "label": "无条件期望",
+          "start": 161,
+          "end": 186
+        },
+        {
+          "quote": "random variable",
+          "label": "随机变量",
+          "start": 108,
+          "end": 123
+        }
+      ],
+      "elapsedMs": 1353,
+      "passed": true
+    },
+    {
+      "id": "technical-power",
+      "source": "Increasing the sample size can improve statistical power, the probability of rejecting the null hypothesis when it is false.",
+      "required": "statistical power",
+      "repetition": 2,
+      "translation": "增加样本量可以提高统计功效，即在原假设为假时拒绝原假设的概率。",
+      "terms": [
+        {
+          "quote": "statistical power",
+          "label": "统计功效",
+          "start": 39,
+          "end": 56
+        },
+        {
+          "quote": "null hypothesis",
+          "label": "原假设",
+          "start": 91,
+          "end": 106
+        }
+      ],
+      "elapsedMs": 765,
+      "passed": true
+    },
+    {
+      "id": "estimation",
+      "source": "The maximum likelihood estimator need not be unbiased in finite samples. Its consistency requires suitable regularity conditions and identifiability.",
+      "required": "maximum likelihood estimator",
+      "repetition": 2,
+      "translation": "最大似然估计量在有限样本中不必是无偏的。其一致性需要适当的正则性条件和可识别性。",
+      "terms": [
+        {
+          "quote": "maximum likelihood estimator",
+          "label": "最大似然估计量",
+          "start": 4,
+          "end": 32
+        },
+        {
+          "quote": "unbiased",
+          "label": "无偏",
+          "start": 45,
+          "end": 53
+        },
+        {
+          "quote": "consistency",
+          "label": "一致性",
+          "start": 77,
+          "end": 88
+        },
+        {
+          "quote": "regularity conditions",
+          "label": "正则性条件",
+          "start": 107,
+          "end": 128
+        },
+        {
+          "quote": "identifiability",
+          "label": "可识别性",
+          "start": 133,
+          "end": 148
+        }
+      ],
+      "elapsedMs": 1279,
+      "passed": true
+    },
+    {
+      "id": "technical-normal",
+      "source": "A normal subgroup is invariant under conjugation; this condition allows the quotient group to be defined.",
+      "required": "normal subgroup",
+      "repetition": 2,
+      "translation": "正规子群在共轭作用下保持不变；这一条件使得商群可以被定义。",
+      "terms": [
+        {
+          "quote": "normal subgroup",
+          "label": "正规子群",
+          "start": 2,
+          "end": 17
+        },
+        {
+          "quote": "conjugation",
+          "label": "共轭",
+          "start": 37,
+          "end": 48
+        },
+        {
+          "quote": "quotient group",
+          "label": "商群",
+          "start": 76,
+          "end": 90
+        }
+      ],
+      "elapsedMs": 935,
+      "passed": true
+    },
+    {
+      "id": "confounding",
+      "source": "A confounder is a variable that influences both a treatment and an outcome. An association between treatment and outcome may therefore persist even when the treatment has no causal effect.",
+      "required": "confounder",
+      "excluded": [
+        "treatment",
+        "outcome",
+        "variable"
+      ],
+      "repetition": 2,
+      "translation": "混杂变量是同时影响治疗和结局的变量。因此，即使治疗没有因果效应，治疗与结局之间的关联也可能持续存在。",
+      "terms": [
+        {
+          "quote": "confounder",
+          "label": "混杂变量",
+          "start": 2,
+          "end": 12
+        }
+      ],
+      "elapsedMs": 860,
+      "passed": true
+    },
+    {
+      "id": "academic-transition",
+      "source": "The next section describes the results. We then discuss the main findings and suggest topics for future research.",
+      "empty": true,
+      "repetition": 3,
+      "translation": "下一节描述结果。随后我们讨论主要发现，并提出未来研究的主题。",
+      "terms": [],
+      "elapsedMs": 879,
+      "passed": true
+    },
+    {
+      "id": "ordinary-procedure",
+      "source": "We asked each participant to read the instructions and answer three questions. The questionnaire took about ten minutes to complete.",
+      "empty": true,
+      "repetition": 3,
+      "translation": "我们要求每位参与者阅读说明并回答三个问题。问卷大约需要十分钟完成。",
+      "terms": [],
+      "elapsedMs": 863,
+      "passed": true
+    },
+    {
+      "id": "everyday-senses",
+      "source": "The room returned to its normal temperature once the power was restored. We opened the windows and continued the meeting.",
+      "empty": true,
+      "repetition": 3,
+      "translation": "电力恢复后，房间恢复了正常温度。我们打开窗户，继续开会。",
+      "terms": [],
+      "elapsedMs": 905,
+      "passed": true
+    },
+    {
+      "id": "plain-description",
+      "source": "Sales increased last year. We expect future demand to rise, so the company plans to open two more shops.",
+      "empty": true,
+      "repetition": 3,
+      "translation": "去年销售额增长了。我们预计未来需求会上升，因此公司计划再开两家门店。",
+      "terms": [],
+      "elapsedMs": 944,
+      "passed": true
+    },
+    {
+      "id": "conditional-expectation",
+      "source": "Let Y denote future demand and X the information available today. The conditional expectation E[Y | X] is a random variable determined by X. It differs from the unconditional expectation E[Y], which is a single average over all possible values of X.",
+      "required": "conditional expectation",
+      "excluded": [
+        "future demand",
+        "information",
+        "average"
+      ],
+      "repetition": 3,
+      "translation": "设 $Y$ 表示未来需求，$X$ 表示今天可获得的信息。条件期望 $E[Y | X]$ 是由 $X$ 决定的随机变量。它与无条件期望 $E[Y]$ 不同，后者是对 $X$ 所有可能取值的一个单一平均值。",
+      "terms": [
+        {
+          "quote": "conditional expectation",
+          "label": "条件期望",
+          "start": 70,
+          "end": 93
+        },
+        {
+          "quote": "unconditional expectation",
+          "label": "无条件期望",
+          "start": 161,
+          "end": 186
+        },
+        {
+          "quote": "random variable",
+          "label": "随机变量",
+          "start": 108,
+          "end": 123
+        }
+      ],
+      "elapsedMs": 1536,
+      "passed": true
+    },
+    {
+      "id": "technical-power",
+      "source": "Increasing the sample size can improve statistical power, the probability of rejecting the null hypothesis when it is false.",
+      "required": "statistical power",
+      "repetition": 3,
+      "translation": "增加样本量可以提高统计功效，即在原假设为假时拒绝原假设的概率。",
+      "terms": [
+        {
+          "quote": "statistical power",
+          "label": "统计功效",
+          "start": 39,
+          "end": 56
+        },
+        {
+          "quote": "null hypothesis",
+          "label": "原假设",
+          "start": 91,
+          "end": 106
+        }
+      ],
+      "elapsedMs": 816,
+      "passed": true
+    },
+    {
+      "id": "estimation",
+      "source": "The maximum likelihood estimator need not be unbiased in finite samples. Its consistency requires suitable regularity conditions and identifiability.",
+      "required": "maximum likelihood estimator",
+      "repetition": 3,
+      "translation": "最大似然估计量在有限样本中不必是无偏的。其一致性需要适当的正则条件和可识别性。",
+      "terms": [
+        {
+          "quote": "maximum likelihood estimator",
+          "label": "最大似然估计量",
+          "start": 4,
+          "end": 32
+        },
+        {
+          "quote": "unbiased",
+          "label": "无偏",
+          "start": 45,
+          "end": 53
+        },
+        {
+          "quote": "consistency",
+          "label": "一致性",
+          "start": 77,
+          "end": 88
+        },
+        {
+          "quote": "regularity conditions",
+          "label": "正则条件",
+          "start": 107,
+          "end": 128
+        },
+        {
+          "quote": "identifiability",
+          "label": "可识别性",
+          "start": 133,
+          "end": 148
+        }
+      ],
+      "elapsedMs": 1176,
+      "passed": true
+    },
+    {
+      "id": "technical-normal",
+      "source": "A normal subgroup is invariant under conjugation; this condition allows the quotient group to be defined.",
+      "required": "normal subgroup",
+      "repetition": 3,
+      "translation": "正规子群在共轭作用下保持不变；这一条件使得商群可以被定义。",
+      "terms": [
+        {
+          "quote": "normal subgroup",
+          "label": "正规子群",
+          "start": 2,
+          "end": 17
+        },
+        {
+          "quote": "conjugation",
+          "label": "共轭",
+          "start": 37,
+          "end": 48
+        },
+        {
+          "quote": "quotient group",
+          "label": "商群",
+          "start": 76,
+          "end": 90
+        }
+      ],
+      "elapsedMs": 1201,
+      "passed": true
+    },
+    {
+      "id": "confounding",
+      "source": "A confounder is a variable that influences both a treatment and an outcome. An association between treatment and outcome may therefore persist even when the treatment has no causal effect.",
+      "required": "confounder",
+      "excluded": [
+        "treatment",
+        "outcome",
+        "variable"
+      ],
+      "repetition": 3,
+      "translation": "混杂变量是既影响处理又影响结果的变量。因此，即使处理没有因果效应，处理与结果之间的关联也可能持续存在。",
+      "terms": [
+        {
+          "quote": "confounder",
+          "label": "混杂变量",
+          "start": 2,
+          "end": 12
+        },
+        {
+          "quote": "treatment",
+          "label": "处理",
+          "start": 50,
+          "end": 59
+        },
+        {
+          "quote": "outcome",
+          "label": "结果",
+          "start": 67,
+          "end": 74
+        },
+        {
+          "quote": "association",
+          "label": "关联",
+          "start": 79,
+          "end": 90
+        },
+        {
+          "quote": "causal effect",
+          "label": "因果效应",
+          "start": 174,
+          "end": 187
+        }
+      ],
+      "elapsedMs": 1204,
+      "passed": false
+    }
+  ],
+  "readingCalls": [],
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "repetitions": 3,
+  "summary": {
+    "total": 27,
+    "passed": 25,
+    "emptyCases": 12,
+    "correctEmpty": 12
+  },
+  "completed": true,
+  "passed": false
+}

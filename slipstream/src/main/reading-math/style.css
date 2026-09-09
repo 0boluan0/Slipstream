@@ -1,0 +1,6 @@
+.math-block { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0; white-space: normal; }
+.math-block .katex-display { margin: .65em 0; text-align: left; }
+.math-block .katex-display > .katex { text-align: left; }
+.math-inline { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden; vertical-align: middle; white-space: nowrap; }
+.math-fallback { white-space: pre-wrap; overflow-wrap: anywhere; font: .9em/1.65 ui-monospace, monospace; }
+.katex { font-size: 1.06em; }

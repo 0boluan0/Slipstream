@@ -37,6 +37,8 @@ const IPC_CHANNELS = {
   APP_CLIPBOARD_RESIDUE_RISK_ACK: 'app:clipboard-residue-risk-ack',
   CAPTURE_INGRESS_LISTENER_READY: 'capture:listener-ready',
   SCREENSHOT_CAPTURE: 'screenshot:capture',
+  READING_OPEN_TEXT: 'reading:open-text',
+  READING_LIBRARY_OPEN: 'reading:library-open',
   SCREENSHOT_REQUESTED: 'screenshot:requested',
   WINDOW_SET_MODE: 'window:set-mode',
   WINDOW_HIDE: 'window:hide',
@@ -74,6 +76,7 @@ const DEFAULTS = {
   RESULT_WINDOW_HEIGHT: 820,
   CLIPBOARD_POLL_INTERVAL: 1000, // ms
   CLIPBOARD_MONITORING: false,
+  OPEN_AT_LOGIN: true,
   CLIPBOARD_SHORTCUT: 'Alt+C',
   SCREENSHOT_SHORTCUT: 'Alt+Shift+S',
   MAX_TEXT_LENGTH: 10000,

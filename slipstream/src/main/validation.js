@@ -14,7 +14,12 @@ const {
 
 const BACKENDS = new Set(Object.values(LLM_BACKENDS));
 const LANGUAGE_HINTS = new Set(Object.values(LANGUAGES));
-const BOOLEAN_SETTINGS = new Set(['startMinimized', 'clipboardMonitoring', 'privacyNoticeSeen']);
+const BOOLEAN_SETTINGS = new Set([
+  'startMinimized',
+  'openAtLogin',
+  'clipboardMonitoring',
+  'privacyNoticeSeen',
+]);
 const SECRET_SETTINGS = new Set(['anthropicApiKey', 'openaiApiKey', 'deepseekApiKey', 'customEndpointApiKey']);
 const TEXT_SETTINGS = new Set(['activeModel', 'customPrompt', 'clipboardShortcut', 'screenshotShortcut']);
 const URL_SETTINGS = new Set(['ollamaBaseUrl', 'customEndpointUrl']);

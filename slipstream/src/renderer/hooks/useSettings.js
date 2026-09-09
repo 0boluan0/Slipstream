@@ -67,6 +67,19 @@ function hasProcessingConfigChange(settings, key, value) {
 export function applyConfirmedSettingWrite(settings, key, value, response) {
   const nextSettings = applyRendererSettingUpdate(settings, key, value);
   if (
+    key === 'openAtLogin'
+    && response?.status === 'saved'
+    && response?.key === key
+    && typeof response.value === 'boolean'
+    && typeof response.openAtLoginStatus === 'string'
+  ) {
+    return {
+      ...nextSettings,
+      openAtLogin: response.value,
+      openAtLoginStatus: response.openAtLoginStatus,
+    };
+  }
+  if (
     key !== 'customEndpointUrl'
     || response?.status !== 'saved'
     || response?.key !== key
@@ -99,6 +112,8 @@ const defaultSettings = {
   windowX: null,
   windowY: null,
   startMinimized: false,
+  openAtLogin: DEFAULTS.OPEN_AT_LOGIN,
+  openAtLoginStatus: 'unknown',
   clipboardMonitoring: DEFAULTS.CLIPBOARD_MONITORING,
   verificationPolicy: 'ask',
   resultOrder: 'action-first',

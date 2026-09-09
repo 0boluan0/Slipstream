@@ -140,6 +140,8 @@ function checkValidMigration(rootPath) {
   assertSanitizedStatus(store.initializeStore(), { state: 'ready', reason: null });
   assert.equal(store.isStoreReady(), true);
   assert.equal(store.getSettings('clipboardMonitoring'), false);
+  assert.equal(store.getSettings('openAtLogin'), true);
+  assert.equal(store.getSettings('openAtLoginInitialized'), false);
   assert.equal(store.getSettings('privacyVersion'), 1);
   assert.equal(store.getSettings('openaiApiKey'), 'legacy-openai-secret');
 
@@ -270,6 +272,8 @@ function checkRecoveryAndFullReset(rootPath) {
   const resetSettings = store.resetUserDataAndSettings();
   assert.equal(resetSettings.customPrompt, '');
   assert.equal(resetSettings.clipboardMonitoring, false);
+  assert.equal(resetSettings.openAtLogin, true);
+  assert.equal(resetSettings.openAtLoginInitialized, false);
   assert.equal(resetSettings.privacyVersion, 1);
   assert.equal(fs.existsSync(archivePath), false);
   assert.equal(fs.existsSync(secondArchivePath), false);
@@ -332,6 +336,8 @@ function checkFreshInstall(rootPath) {
   const store = loadStore(profilePath);
   assertSanitizedStatus(store.initializeStore(), { state: 'ready', reason: null });
   assert.equal(store.getSettings('clipboardMonitoring'), false);
+  assert.equal(store.getSettings('openAtLogin'), true);
+  assert.equal(store.getSettings('openAtLoginInitialized'), false);
   assert.equal(store.getSettings('privacyVersion'), 1);
   assertPrivateFile(settingsPath(profilePath));
 }

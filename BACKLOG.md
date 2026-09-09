@@ -2,6 +2,17 @@
 
 Priority order: bugs > UX > beauty > error-handling > code-quality > docs
 
+## 当前阅读预览
+
+- [x] 中文默认 README 与英文入口，展示截图阅读、上下文术语、本地卡片盒和公式支持。
+- [x] 阅读首页、首次设置、教材示例与粘贴阅读入口统一。
+- [x] 首页卡片盒接入本地 Markdown 卡片。
+- [ ] 公开阅读版安装包与相应发行验收。
+
+## 历史迭代记录
+
+以下保留原有工作记录；当前产品方向以 SPEC.md 为准。
+
 ## Active Items
 
 - [x] Verify app starts and runs end-to-end (clipboard monitoring work + no crash on startup)
@@ -55,4 +66,173 @@ Priority order: bugs > UX > beauty > error-handling > code-quality > docs
 - [x] Add signed release command gated by signing/notarization readiness
 - [x] Document signed release env vars without storing credentials
 - [x] Wire `APPLE_TEAM_ID` into signed notarization build config
+- [x] Replace raw reply placeholders with a guided, fact-confirmed reply preparation flow
+- [x] Prevent guided replies with unresolved template placeholders from being copied and distinguish edited drafts from older clipboard versions
+- [x] Turn trustworthy source dates into explicit today/tomorrow/remaining/overdue urgency without inventing a time or hiding the exact date
+- [x] Prioritize the earliest trustworthy deadline tied to a mandatory user action and keep every other deadline directly inspectable
+- [x] Make first-run full-analysis setup start with local-vs-online intent before provider details
+- [x] Turn first-run connection failures into actionable local and online recovery paths
+- [x] Let users reach a first grounded result with a clearly fictional, non-auto-submitted sample
+- [x] Recover screenshot permission denial directly without discarding the last valid result
+- [x] Distinguish macOS Screen Recording denial from ordinary selection cancellation
+- [x] Gate releases on production runtime dependency advisories and provide a read-only permission diagnostic
+- [x] Let first-run users retry the complete intended settings transaction after a partial save failure
+- [x] Keep official-source lookup status truthful after approval and preserve separate analysis/verification timing
+- [x] Make irreversible data reset a fail-closed renderer/main transaction that clears the live task and recovery copies, returns only to first use after full confirmation, and requires an explicit system-clipboard choice
+- [x] Turn saved terms into a deduplicated, inspectable library with safe failure feedback and undo
+- [x] Make the saved-term library searchable across terms, explanations, and retained evidence with honest counts and recovery states
+- [x] Make saved terms directly reusable with explicit copy scopes, privacy-boundary feedback, and clipboard failure recovery
+- [x] Promote the saved-term library to a global capture/result drawer with keyboard-safe state preservation
+- [x] Make Saved Terms data truth explicit across loading, malformed, failed, ready-empty, mutation-uncertain, retry, import, and reset states without presenting unknown data as zero or a confirmed no-op
+- [x] Add privacy-minimized saved-term export and preview-before-merge import without evicting local terms
+- [x] Add a privacy-safe application status and preview-before-copy support summary with permission recovery
+- [x] Prevent startup settings read failures from masquerading as first use or overwriting existing configuration
+- [x] Add a privacy-safe, memory-only undo window for accidentally cleared drafts and results
+- [x] Let analysis and verification continue behind a hidden window with privacy-safe menu-bar and completion feedback
+- [x] Keep screenshot selection, local OCR, and analysis under one privacy-safe background task, with truthful stage copy, cancellation, bounded handoff, and no intermediate false-completion notice
+- [x] Keep copied-result, action-list, and reply clipboard consequences visible after task transitions and Undo, with explicit manual-overwrite guidance and no automatic clearing
+- [x] Verify full structured action-brief compatibility before first-run activation, with privacy disclosure, cancellation, and model recovery
+- [x] Turn pending official-source claims into a direct preview-and-approve path with cancellable lookup, preserved results, focus recovery, and honest retrieved-vs-verified status
+- [x] Make official-source open and copy actions confirm actual outcomes, recover from failure, and carry the same preserve-only clipboard consequence guidance without promoting retrieval to verification
+- [x] Make official-source open and copy controls visually actionable, target-size safe, keyboard-visible, and wrap-safe across source-card widths and failure labels
+- [x] Keep submitted source content out of the processing surface while preserving source type, exact retained count, and full cancellation recovery
+- [x] Keep first-use full-analysis configuration focused, with lazy on-demand diagnostics and destructive reset removed from the unfinished setup path
+- [x] Prevent repeated validation with a rejected online credential until a replacement API key is explicitly saved
+- [x] Keep action-checklist copying available when a result also requires a guided reply
+- [x] Make result exit consequences explicit and show an honest live undo countdown
+- [x] Make result-order preferences semantically accessible, truthful on narrow screens, and recoverable after persistence failure
+- [x] Let users correct OCR or pasted source text without losing the last valid result or a failed correction draft
+- [x] Keep the selected processing destination and full-source transfer consequence visible beside submit at every supported capture size
+- [x] Classify custom/Ollama endpoints fail-closed; carry one non-sensitive task/result location snapshot through Settings, submit, processing, recovery, cancellation/quit, tray, and diagnostics; clear unsafe legacy Ollama values; reject redirect escape and unbounded/compressed custom responses; and keep response bodies, model markers, source text, credentials, and endpoint values out of errors, logs, diagnostics, and recovery metadata
+- [x] Keep processing location, cancellation consequences, retained content, and keyboard focus explicit throughout the post-submit waiting path
+- [x] Require acknowledged processing cancellation, expose stop failures and online cost risk, and preserve results when completion wins the race
+- [x] Make cancellation acknowledgement wait for actual task settlement and recover official lookup when the stop remains unconfirmed
+- [x] Guard settings navigation during active work, confirm cancellation before switching configuration, and carry retained-content status across the transition
+- [x] Distinguish retained manual overflow from missing imported tails, with honest counts, accessible alerts, and actionable recovery
+- [x] Protect unsaved API Key, endpoint, and model drafts across settings exit and provider/path changes
+- [x] Protect advanced-analysis instructions with explicit save, exact failed-write revocation, merged retries, and shared guards for Settings exit, first-run completion, and fallback transitions
+- [x] Require acknowledged full-analysis validation cancellation before leaving settings, with stop-failure and completion-race recovery
+- [x] Protect in-memory tasks, drafts, results, and settings with a renderer-confirmed app quit handshake
+- [x] Recover same-window drafts and results after renderer interruption without creating durable history or resuming tasks and approvals
+- [x] Require informed clipboard-monitoring consent and keep enable/disable state truthful across save failures
+- [x] Keep active clipboard monitoring visible and directly stoppable from the main task surface and macOS menu
+- [x] Prevent consecutive monitored copies from replacing active work or unread results; keep only the latest copy in a visible memory-only waiting state
+- [x] Prevent Option+C and F2 from silently replacing or cancelling active analysis and official verification
+- [x] Prevent Option+C and F2 from starting invisibly behind Settings; route capture through draft, provider-validation, and guided-setup guards
+- [x] Prevent F2 from bypassing foreground correction, recovery, undo, library, settings, or quit decisions; return capture control only after the visible task settles
+- [x] Give Option+C the same foreground ownership rule with consequence-specific replacement actions and focus return for correction, draft, recovery, and clear-undo states
+- [x] Prevent manual “读取剪贴板” from overwriting an unsent draft, source correction, or clear-undo state; require explicit Replace/Keep, pause and resume the exact Undo remainder, bind stale callbacks to the exact snapshot, restore actionable focus, and prove no automatic processing
+- [x] Make global-shortcut registration readiness visible at startup and recoverable with per-shortcut status, atomic rollback, and synchronized diagnostics
+- [x] Replace technical shortcut strings with direct key recording, immediate format and duplicate guidance, macOS-facing labels, and reason-specific rollback
+- [x] Turn runtime provider failures into reason-specific, task-preserving settings recovery with focused credential/model/connection validation and a verified return-to-retry loop
+- [x] Keep the first-use translation fallback truthful and preserve its source/result across an incomplete full-analysis upgrade
+- [x] Make full-analysis exit explicit about retaining or deleting saved provider credentials
+- [x] Replace the free-translation failure dead end with direct retry and alternate-processing recovery
+- [x] Make the MyMemory fallback work under automatic language detection and disclose the second full-source transfer before submission
+- [x] Turn the static action path into a self-reported, reversible execution checklist whose state survives task-preserving navigation and recovery without claiming external verification
+- [x] Keep the next unfinished action visible by compacting completed evidence without sacrificing one-click source traceability
+- [x] Prevent action paths from asking users to submit or confirm an item before the step that creates or prepares it
+- [x] Block a completed reply claim when mandatory pre-reply actions are still unchecked unless the user explicitly confirms the checklist is stale
+- [x] Distinguish processing completion from self-reported task completion and provide a reversible completed-task exit
+- [x] Keep clipboard consequence visibility after task completion and Undo, without automatic cleanup; later app-owned replacement or explicit manual-overwrite acknowledgement resolves it
+- [x] Prevent app quit from discarding a live clipboard consequence; after pending writes settle, require exact preserve-and-exit confirmation
+- [x] Make saved API-key visibility truthful: never imply a redacted credential can be revealed, and limit reveal controls to the user's unsaved replacement input
+- [x] Enforce strict top-layer decision ownership so one Escape closes only the visible app-quit dialog, restores exact focus, preserves nested Settings confirmations, and keeps shortcut requests queued until the decision settles
+- [x] Prevent saved-term list reflow or sequential clicks from deleting multiple records while only one undo right survives; require explicit undo-or-keep resolution and restore useful focus
+- [x] Preserve a pending application-quit request across successful full-data reset so the main-process request registry is always settled
+- [x] Contain full-data reset in a real destructive modal with background isolation, exact focus recovery, failure-safe retry, narrow-window reflow, and truthful reset/quit competition
+- [x] Keep first-use Option+C and F2 intent visible and memory-only until a processing mode is selected, then require an explicit start
+- [x] Protect an edited guided-reply draft and its focus trap from Option+C/F2 foreground capture
+- [x] Keep destructive credential-removal decisions isolated from unrelated Settings controls, with safe focus entry, exact return, and no background activation
+- [x] Add a fail-closed native Electron UI fixture with isolated temporary user data, a demo-only preload, loopback-only renderer access, and runtime proof that production IPC, shortcuts, tray, clipboard monitoring, secrets, and the normal profile stay outside the test
+- [x] Unify Settings draft and connection-validation decisions under one exact modal ownership contract, reset visible local editors on explicit discard, and pass hidden native Electron interaction plus injected-save-failure automation at 520×680
+- [x] Preserve saved-term classification and trust through persistence, copy, and v2 export; fail closed on import by downgrading evidence-free `original`, `inference`, and `official` labels to unknown, protecting stronger local records, and importing v1 as explicitly unknown
+- [x] Preserve edited guided replies through clear Undo and bounded renderer recovery while re-confirming stale-checklist exceptions
+- [x] Replace the bare F2 new-user default with Option+Shift+S while preserving and truthfully warning existing function-key choices
+- [x] Replace Electron's development-oriented default application menu with safe app/edit/window roles that cannot reload the renderer or open DevTools
+- [x] Preserve copied-reply version semantics through task exit/Undo and delayed clipboard-write settlement, with preload coverage proving retired clipboard-clear channels stay unavailable
+- [x] Route every app-provided clipboard write through one App-owned pending, settlement, and preserve-only consequence lifecycle across task, Settings, and saved-term surfaces
+- [x] Revalidate Option+C source at dispatch time so an edit during the 400 ms capture transition cannot submit the stale captured original
+- [x] Make persistent-settings startup fail closed by validating and migrating a private staged copy before activating normal runtime, while preserving the original on failure
+- [x] Add retry plus confirmation-gated recovery that archives the old settings locally with mode `0600`, starts from fresh settings without automatic re-import, and removes recognized archives during full data reset
+- [x] Upgrade the built-in full-analysis prompt to `action-brief.prompt.v2` while retaining the v1 candidate contract, `ActionBriefV1` schema, and prior prompt-version compatibility
+- [x] Strengthen full-analysis readiness with a fixed fictional probe through the production analysis/parser/validator path plus probe-specific grounding checks
+- [x] Pass the enhanced live DeepSeek readiness gate with `deepseek-v4-flash`, provider metadata `ok`, `structuredBrief: true`, 5,738 output characters, and 42,276 ms elapsed
+- [x] Re-run the exact final-tree copy with root docs and freshly installed lockfile dependencies through complete `npm test`, lint, renderer build, runtime audit, and the full unsigned dual-architecture packaging/release gate without overwriting workspace release artifacts
+- [x] Add bounded DMG-detach retry to release-artifact inspection after transient `hdiutil` status 16, while still failing after four attempts and accepting an already-absent mount as detached
+- [x] Keep application quit pinned while a clipboard write is unsettled, then require an explicit preserve decision for the exact resulting opaque consequence without weakening expired/error fail-closed behavior
+- [x] Replace vulnerable development-toolchain copies with range-compatible `brace-expansion@1.1.18` / `2.1.4` / `5.0.9`, root development `undici@7.29.0`, and `fast-uri@3.1.5`; gate strict dependency-tree validity, lock integrity, legacy API behavior, bounded expansion, and full/production audits at 0 vulnerabilities
+- [x] Clear a custom-endpoint API key in the same atomic store write whenever the endpoint origin changes, while preserving it for same-origin path edits
+- [x] Keep a visible replacement custom-endpoint API key under the unsaved-draft guard when an origin change revokes the previously stored key
+- [x] Preserve a user's correction of failed source B after returning to valid result A, then retry corrected B with truthful manual metadata instead of silently resubmitting the original
+- [x] Revoke a failed full-analysis activation retry as soon as its tested processing configuration changes
+- [x] Stop offering “continue current task” after screenshot-triggered cancellation has already been dispatched and can no longer be withdrawn
+- [x] Add a ten-case, all-fictional administrative model-quality benchmark that fails closed on omitted, invented, inverted, misdated, conditional, reply-channel, and source-grounding errors without logging source text, raw model output, or credentials
+- [x] Drive degraded background runtime, corrupt-settings archive recovery, and fail-once provider retry through isolated real Electron fixtures, including deterministic focus handoff and zero external-network requests
+- [x] Audit the visible first-use/basic-translation/initial-Settings flow, raise critical setup readability and filled-control contrast, collapse redundant first-Settings disclosure content, add semantic page structure, and make every custom Settings radio group keyboard-operable with a deterministic regression gate
+- [x] Keep Clear Undo until an explicit clipboard read returns usable replacement text; then pause its exact remaining duration through Replace/Keep so empty, failed, stale, or delayed decisions cannot consume or revive the wrong recovery snapshot
+- [x] Make the first-use full-analysis and basic-translation choices one synchronously owned transaction, and revoke an abandoned basic-mode retry before opening full setup
+- [x] Enforce the advertised 30-minute temporary-recovery privacy lifetime from the latest real state change instead of extending it with idle heartbeat or pagehide flushes
+- [x] Mark a copied “completed” reply as outdated whenever required action progress makes that real-world claim inconsistent, and require any stale-checklist exception again
+- [x] Complete user-authorized visible native Electron desktop and narrow-window screenshot acceptance for the unified Settings transition dialogs
+- [x] Keep every Settings-transition focus target and its full semantic ring visible at a real 400×400 window with 200% Chromium scaling, with native geometry coverage for draft, running, stop-error, retry, and completed states
+- [x] Preserve metadata-only clipboard residue risk after renderer interruption, keep retired clear authority unavailable, and require truthful preserve/manual-overwrite acknowledgement across recovery, quit, and full-data reset
+- [x] Remove automatic clipboard clearing and migrate copied results, action lists, guided replies, quit, and full data reset to an explicit preserve/manual-overwrite consequence model with opaque, sender-bound runtime coordination
+- [x] Complete first-use and capture-shell 200% reflow plus visible/native acceptance at 400×400 with zoom 2, including global actions, privacy handoff, empty capture, safe sample, and keyboard focus
+- [x] Complete result-workspace and Saved-Terms-drawer 200% reflow plus visible/native acceptance at 400×400 with zoom 2, including result/source switching, action progress, all footer actions, search, backup controls, focus containment, and Escape restoration
+- [x] Isolate each native Electron runtime gate in its own inode-verified temporary root so concurrent gates and a running normal Slipstream instance cannot create false profile or cleanup failures
+- [x] Complete full Settings-shell 200% reflow and visible/native acceptance at 400×400 with zoom 2, including mode/location/provider hierarchy, connection editors, secondary settings, shortcuts, diagnostics, reset reachability, and defect-specific geometry
+- [x] Restore the authoritative checked Settings radio and roving tab stop after cancelled transitions or rejected asynchronous saves, with native ArrowRight cancellation and fail-once coverage
+- [x] Complete whole-app 200% visible/native acceptance for simultaneous shortcut/monitoring/capture/recovery banners
+- [x] Honor the operating-system Reduced Motion preference for result evidence, deadline, official-verification, and Settings-recovery navigation, with a shared fail-safe policy plus ordinary/reduced isolated Electron coverage
+- [x] Add contrast-safe ordinary light/dark semantic fills plus `prefers-contrast: more` and `forced-colors` behavior, with visible Result/Settings evidence and an isolated Electron Result/Settings/reset matrix
+- [x] Make the core Chinese-interface/English-content journey screen-reader ready with valid BCP-47 boundaries, segmented accessible names, deterministic first-use focus, reduced duplicate live output, and an isolated Chromium DOM/Accessibility Tree gate
+- [x] Hand focus from capture into processing, mount one empty-first bounded live-status owner with silent elapsed seconds, and place the Result conclusion, evidence, and footer actions inside one named non-nested `main`, with isolated processing DOM/Chromium AX runtime coverage
+- [x] Reconcile a successful generic credential-save retry with the exact connection editor, preserve any newer same-field draft, remove contradictory live feedback, and focus the newly available provider test
+- [x] Make Saved Terms import review encounter trust and capacity consequences before confirmation, expose one transfer-announcement owner, and restore predictable focus across cancel, success, close, and reopen
+- [x] Give every Result disclosure a stable heading, trigger, description, and persistent panel relationship for screen-reader navigation while reserving one labelled region for processing details and avoiding landmark overload
+- [x] Reflow Guided Reply into one vertical surface at an exact 200×200 CSS viewport, keep conflict and placeholder blockers truthful, make the footer non-overlapping and every target at least 32×32, preserve copied-versus-outdated version feedback, and prove close/reopen, a complete nine-Tab loop, Escape, and exact trigger-focus return with trusted native input
+- [x] Stop low-confidence or incomplete OCR before any processing handoff, require an editable explicit review with truthful destination copy, bind unchanged confirmation to the exact source/current provider/location/endpoint plus monotonic config revision, prevent destination round trips or credential replacement from reviving consent, recover authoritative main rejection without a retry loop, and prove zero provider calls before confirmation plus narrow-window reflow
+- [x] Keep corrupt-settings recovery keyboard-owned: focus the destructive confirmation heading, let idle Escape return to the exact fresh-recovery trigger, preserve that decision beneath the app-level quit layer, and hand focus to the successful archive notice
+- [x] Move full reply/evidence composition out of the returning-capture entry while sharing one compact progress contract, and enforce a 490,000-byte working budget that reserves at least 10,000 raw bytes below the release ceiling
+- [ ] After explicit authorization to change the global macOS accessibility setting, complete real VoiceOver pronunciation, speech order, interruption, Rotor, and announcement-queue acceptance across first use, capture, processing, results, reply, Saved Terms, and Settings transitions; also complete manual Increase Contrast, operating-system text sizing, and remaining Reduced Motion acceptance
+- [ ] Run the complete network-backed DeepSeek quality benchmark with a rotated process-only credential and review every failed case before making a broad model-quality claim; partial runs remain explicitly partial
+- [x] Retire the temporary development-audit exception after adopting advisory-recognized patched versions; full `npm audit` and `npm audit --omit=dev` now both report 0 vulnerabilities
+- [x] Constrain the `@phosphor-icons/react` root barrel to 47 leaf exports, add a regression gate, and remeasure build, bundle, and hidden first-use/returning startup without treating the result as a release threshold
+- [x] Keep the renderer-only `@phosphor-icons/react` package as a pinned development dependency, gate its package classification, and prove a fresh-install unsigned x64/arm64 DMG/ZIP build without the pathological production-dependency scan
+- [x] Select a fixture-free IPC adapter at production build time, keep deterministic preview/native fixtures on the development server, remove fixture sentinels from renderer artifacts, and enforce the entry below 500,000 bytes without changing the workspace recovery graph
+- [x] Move the native UI proof runner, in-memory fixture store, and fixture IPC bodies out of the formal main process; exclude every fixture resolver/script from packaged artifacts; and verify the exact dual-architecture ASAR contents
+- [x] Split Settings and Result out of the startup graph with focus-safe fallbacks, preserve hidden capture ownership, inspect the `vite:css-post` hotspot, and remeasure the production entry plus hidden first-use/returning startup
+- [x] Recover rejected Settings and Result workspace chunks in place without reprocessing, settings writes, reload, or losing the current task; preserve safe return/edit escapes and focus ownership
+- [x] Defer Saved Terms JavaScript with a modal-safe one-way mount latch, one finite same-file/new-URL recovery attempt, state-preserving close/reopen behavior, and production resource-request evidence
+- [x] Move Result-private CSS out of the eager entry behind one finite JavaScript-plus-stylesheet presentation gate, with separate real CSS failure recovery, actual built `file:` same-file/new-URL application, stable packaged-asset inspection, and no reprocessing/reload/state loss
+- [x] Stabilize the check-only hidden Electron fixture without relaxing product assertions: disable background throttling only in fixture-check windows, replace fixed-delay focus/scroll samples with bounded stable-frame evidence, preserve strict focus/ring/overflow checks, and emit actionable snapshots on failure
+- [x] Publish visible Settings and panel quit risk in the same layout commit, synchronously merge authoritative refs before an operating-system quit can auto-confirm, and prohibit passive stale-state ref writeback
+- [x] Make manual clipboard replacement focus DOM-commit-owned and one-shot per explicit read instead of relying on a race-prone next-frame attempt
+- [x] Move Settings-private and Saved-Terms-private presentation CSS behind separate finite same-file JavaScript-plus-stylesheet gates while keeping each trigger, loading/failure/recovery/accessibility shell and genuinely shared cross-workspace rules eager; prove real CSS failure, one retry, exact 200% reachability, packaged stable assets, and zero replay/writes/reload
+- [x] Replace the aging fixed-date safe sample with source-grounded relative deadlines anchored to receipt of the fictional email; preserve generation → preparation → submission → reply order, reject invented calendar dates and visible overdue state, and retain zero automatic processing/network effects
+- [x] Recover the missing renderer-entry reserve by removing main-only prompt exports from the renderer ESM surface; production entry is 478,148 bytes with 11,852 bytes of working headroom and the existing workspace resource/recovery graph unchanged
+- [x] Move the full-data-reset transaction into the existing retryable SettingsPanel lazy workspace and inject its already-loaded runner into App, so confirmation adds no network or module-load failure surface; production entry falls from 486,809 to 482,159 bytes, leaving 7,841 bytes of working-budget headroom and 17,841 bytes below the release ceiling; focused checks, the production build, and the complete post-change `npm test` suite pass
+- [x] Route macOS application-menu `Command+Q` through the guarded quit handshake; replay an early pending request only after renderer readiness, keep an already-active replay a strict no-op, and prove native Escape, two-stage clipboard consequence, cleanup/`will-quit`, real process exit, and one-dialog replay within their stated physical/fixture evidence boundaries
+- [x] Add the standard macOS `设置…` / `Command+,` route without remounting Settings; preserve drafts, task and guard ownership, Stop-and-Open settlement, completion/cancellation-failure race results, and useful return focus; recover repeated transient READY failures plus a dropped ACK response; and keep physical accelerator evidence separate from nine-call deterministic menu-handler coverage
+- [x] Remove the contrast-preference reset-dialog timing race by waiting for its focus transaction and deterministically targeting the safe cancel action without weakening the forced-colors product assertion
+- [x] Stabilize delayed-reply Undo evidence by requiring the restored Result footer and reply consequence for three identical animation frames with actionable status snapshots, without extending the product Undo lifetime
+- [x] Bound dual-architecture release peak space by deleting only basename-guarded, reproducible unpacked app directories after archives exist and before atomic publication
+- [x] Prove that an indefinitely unsettled startup `terms:get` read does not block the first capture interaction, keep the eager read for a fresh at-a-glance count and proactive failure state, and gate the decision with fixed native/runtime plus visible evidence
+- [x] Remove the unproven startup-measurement activation path and old timing claims from the formal application, then gate against reintroducing its flags, environment handshake, runtime files, package entry, or bundled resources
+- [x] Build a separately identified, capability-minimized renderer-startup harness and collect a full-contract hidden baseline with 40 recorded samples plus five warmups per fixed scenario
+- [x] Keep the formal startup window hidden until renderer load completes, provide privacy-safe native retry/quit on load failure, and give fresh setup and returning capture deterministic priority-aware initial focus
+- [x] Bound serial basic translation with one 45-second whole-task deadline while preserving per-chunk limits, active user cancellation, late-response suppression, and parent-listener cleanup
+- [x] Hand ordinary processing failures one-shot programmatic focus without stealing dedicated permission recovery or active modal ownership
+- [x] Keep Guided Reply status radios square with one whole-card focus ring, compact inset containment, and selected-card contrast under 200% zoom and forced colors; require native Tab to leave and return before accepting runtime geometry
+- [x] Add a fail-closed packaged-build identity shown in Settings and the macOS About panel; inject it during signed/ad-hoc builds and reject unknown, cross-architecture, ambiguous-signature, or metadata/signature-mismatched release artifacts
+- [x] Preserve the latest cold-start Option+C, Option+Shift+S, legacy screenshot-shortcut, or passive clipboard-monitor event in one sender-bound memory slot until trusted renderer listeners are ready; replay once, retry failed delivery, clear across window ownership, and never let passive monitoring steal focus
+- [x] Add a fixed, fictional image and a repeatable positive Apple Vision OCR runtime gate for source and host-architecture packaged runners; retain the missing-image probe as a negative case without calling it successful OCR
+- [x] Reject File Provider conflict copies at packaging input, app, ASAR, raw ZIP, extracted ZIP, mounted DMG, checksum, and final release-directory boundaries; keep the release gate workable on constrained disks by inspecting and removing one architecture at a time
+- [ ] Reduce packaged non-runtime dependency source and source-map weight to shorten clean packaging and lower temporary-disk demand without weakening artifact inspection
+- [ ] Launch a copied real package with an isolated profile and verify first use, Basic Translation selection, Settings lazy loading, private persisted settings, and restart continuity without fixture IPC or external requests
+- [ ] Require migrated legacy Full-mode configurations to pass the current prompt-v2 readiness probe instead of inferring readiness from stored credentials, endpoint, and model alone
+- [ ] Return the actual Basic Translation provider route (`google_only`, fallback, or mixed) in bounded provenance, and separate deterministic transport-stub evidence from any opt-in live compatibility claim
+- [ ] Repeat visible startup acceptance on signed/notarized installed builds and representative older/Intel Macs before defining an absolute release threshold
 - [ ] Sign and notarize release with Apple Developer ID
+- [ ] Prepare reviewed release notes plus a clean tagged release commit, authenticate GitHub, and publish only Developer-ID-signed, notarized artifacts after every distribution check passes

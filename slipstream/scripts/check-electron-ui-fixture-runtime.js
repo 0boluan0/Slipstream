@@ -333,7 +333,7 @@ async function main() {
     const runFixture = (run) => runLauncher(networkTrap.port, fixtureTempRoot, run);
     const proof = parseProof(await runFixture());
     assertIsolationProof(proof);
-    assert.equal(proof.renderer.setupTitle, '先选择你希望获得哪种帮助');
+    assert.equal(proof.renderer.setupTitle, '从下一段英文开始');
     assert.equal(proof.renderer.settingsTransition, null);
     assert.equal(proof.renderer.trustedInputBridgeAvailable, false);
     assert.equal(proof.trustedInputState, null);
@@ -642,7 +642,7 @@ async function main() {
     assert.deepEqual(firstUseTextScale.viewport, { width: 200, height: 200 });
 
     const firstUseSetup = firstUseTextScale.setup;
-    assert.equal(firstUseSetup.title, '先选择你希望获得哪种帮助');
+    assert.equal(firstUseSetup.title, '从下一段英文开始');
     assert.equal(firstUseSetup.choiceCount, 2);
     assert.equal(firstUseSetup.choicesStacked, true);
     assert.equal(firstUseSetup.regionsNoHorizontalOverflow, true);
@@ -1685,7 +1685,7 @@ async function main() {
     assert.equal(startupRecovery.escapeReturnedToFreshTrigger, true);
     assert.equal(startupRecovery.busyStateVisible, true);
     assert.equal(startupRecovery.recoveryScreenRemoved, true);
-    assert.equal(startupRecovery.setupTitle, '先选择你希望获得哪种帮助');
+    assert.equal(startupRecovery.setupTitle, '从下一段英文开始');
     assert.equal(startupRecovery.recoveryNoticeVisible, true);
     assert.equal(startupRecovery.recoveryNoticeRole, 'status');
     assert.equal(startupRecovery.recoveryNoticeFocused, true);

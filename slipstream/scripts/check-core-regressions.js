@@ -131,6 +131,13 @@ async function main() {
     assert.equal(constants.DEFAULTS.CLIPBOARD_MONITORING, false);
   });
 
+  await check('login launch defaults on and only accepts booleans', () => {
+    const { validateSetting } = require('../src/main/validation');
+    assert.equal(constants.DEFAULTS.OPEN_AT_LOGIN, true);
+    assert.deepEqual(validateSetting('openAtLogin', false), ['openAtLogin', false]);
+    assert.throws(() => validateSetting('openAtLogin', 'true'), /设置值类型错误/);
+  });
+
   await check('processing-setting changes abort stale work without relabeling old failures', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'src/main/main.js'), 'utf8');
     assert.match(source, /LLM_PROCESSING_SETTING_KEYS = new Set\([\s\S]*?'customPrompt'[\s\S]*?'verificationPolicy'/);

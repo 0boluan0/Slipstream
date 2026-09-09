@@ -140,14 +140,14 @@ const VERIFICATION_OPTIONS = [
 ];
 
 const CONNECTION_RESULT_COPY = Object.freeze({
-  ok: ['完整分析能力验证通过', '服务与当前模型已通过测试；内置虚构文本的翻译、行动、术语和流程背景也都通过了结构与来源证据校验。你现在可以决定是否启用。'],
+  ok: ['服务与模型验证通过', '服务与当前模型已通过测试；内置虚构文本的翻译、行动、术语和流程背景也都通过了结构与来源证据校验。你现在可以决定是否启用。'],
   unsupported: ['无法确认', '这个自定义服务没有提供可识别的模型列表接口；未发送任何原文。'],
   'missing-credentials': ['缺少凭据', '请先保存当前服务所需的 API Key。'],
   'invalid-config': ['配置无效', '请检查服务、模型 ID 和服务地址后重试。'],
   'unsafe-endpoint': ['地址不安全', '只允许公开 HTTPS 地址，或指向本机回环地址的 HTTP 服务。'],
   unauthorized: ['凭据未通过', '服务拒绝了当前凭据，请检查或更换 API Key。'],
   'model-not-found': ['没有找到模型', '服务可访问，但模型列表中没有当前模型 ID。'],
-  timeout: ['测试超时', '服务没有在限定时间内完成连接或完整分析验证，请稍后重试。'],
+  timeout: ['测试超时', '服务没有在限定时间内完成连接或专业阅读验证，请稍后重试。'],
   'invalid-response': ['响应无法确认', '服务没有返回可识别的 JSON 模型元数据。'],
   'response-too-large': ['响应超出限制', '模型元数据响应过大，Slipstream 已停止读取。'],
   'redirect-rejected': ['拒绝了重定向', '为避免把凭据发送到另一地址，连接测试不会跟随重定向。'],
@@ -155,7 +155,7 @@ const CONNECTION_RESULT_COPY = Object.freeze({
   'service-unavailable': ['服务暂时不可用', '服务商当前无法完成测试，请稍后重试。'],
   'http-error': ['服务返回错误', '服务已响应，但没有完成这次模型元数据检查。'],
   'structured-output-invalid': ['当前模型能力不兼容', '模型能够响应，但内置虚构文本的翻译、行动、术语或流程背景没有全部通过结构与来源证据校验。'],
-  'generation-failed': ['完整分析测试失败', '模型已找到，但没有完成这次内置虚构文本的生成测试。'],
+  'generation-failed': ['专业阅读测试失败', '模型已找到，但没有完成这次内置虚构文本的生成测试。'],
   busy: ['已有测试进行中', '请等待当前连接测试结束后再试。'],
   cancelled: ['测试已取消', '配置或输入发生变化，旧连接测试结果已丢弃。'],
   'cancelled-by-user': ['测试已取消', '你已停止这次验证；配置没有改变，可以随时重新验证。'],
@@ -164,7 +164,7 @@ const CONNECTION_RESULT_COPY = Object.freeze({
 
 function getConnectionResultCopy(code, backend, fullAnalysisEnabled = false) {
   if (code === 'ok' && fullAnalysisEnabled) {
-    return ['完整分析能力验证通过', '服务与当前模型已通过测试；当前配置已可用，可以继续使用完整分析。'];
+    return ['服务与模型验证通过', '服务与当前模型已通过测试；当前配置已可用，可以继续使用专业阅读。'];
   }
   if (backend === LLM_BACKENDS.OLLAMA && code === 'unreachable') {
     return ['没有连接到本机 Ollama', '没有发送任何原文。下面按顺序检查安装、服务和当前模型。'];
@@ -597,7 +597,7 @@ export default function SettingsPanel({
     const outerFrame = window.requestAnimationFrame(() => {
       innerFrame = window.requestAnimationFrame(() => {
         const target = entryTarget === 'full-analysis'
-          ? document.querySelector('[role="radiogroup"][aria-label="完整分析运行位置"] [role="radio"]')
+          ? document.querySelector('[role="radiogroup"][aria-label="专业阅读运行位置"] [role="radio"]')
           : entryTarget === 'processing-test'
             ? connectionTestButtonRef.current
             : document.getElementById(processingTargets[entryTarget]);
@@ -866,7 +866,7 @@ export default function SettingsPanel({
     } catch {
       setTranslationFallbackStatus('error');
       setTranslationFallbackError(
-        '切换没有完整保存。当前任务仍保留，完整分析已暂停；重试会继续完成同一个选择。',
+        '切换没有完整保存。当前任务仍保留，专业阅读已暂停；重试会继续完成同一个选择。',
       );
     }
   }, [
@@ -1771,7 +1771,7 @@ export default function SettingsPanel({
       {/* Header — drag region */}
       <div className="settings-panel__header">
         <h1 id="settings-title">
-          {isGuidedSetup ? '配置完整分析' : '设置'}
+          {isGuidedSetup ? '配置专业阅读' : '设置'}
         </h1>
         <button
           ref={settingsReturnButtonRef}
@@ -1832,8 +1832,8 @@ export default function SettingsPanel({
                 <small>
                   {isGuidedSetup
                     ? captureRequest.kind === 'screenshot'
-                      ? '完整分析尚未启用；完成配置后可返回主面板决定是否开始截图。'
-                      : '完整分析尚未启用；完成配置后可返回主面板决定是否处理这段文字。'
+                      ? '专业阅读尚未启用；完成配置后可返回主面板决定是否开始截图。'
+                      : '专业阅读尚未启用；完成配置后可返回主面板决定是否处理这段文字。'
                     : captureRequest.kind === 'screenshot'
                       ? '继续设置不会启动框选；返回主面板后仍可决定是否开始截图。'
                       : '继续设置不会替换当前内容；返回主面板后仍可决定是否处理这段文字。'}
@@ -1851,9 +1851,9 @@ export default function SettingsPanel({
           </span>
           <small className="settings-mode-summary__detail">
             {settings.setupMode === SETUP_MODES.FULL
-              ? '会生成翻译、行动、材料、日期、术语与原文依据。'
+              ? '显示中文译文，按需解释专业概念，并支持本地术语卡片。'
               : settings.setupMode === SETUP_MODES.TRANSLATION_ONLY
-                ? '只提供翻译，不生成行动简报。'
+                ? '提供中文译文和选词翻译。'
                 : '完成下面的选择后才能开始使用。'}
           </small>
         </div>
@@ -1870,7 +1870,7 @@ export default function SettingsPanel({
           <div
             className="analysis-location-options"
             role="radiogroup"
-            aria-label="完整分析运行位置"
+            aria-label="专业阅读运行位置"
             onKeyDown={handleRadioGroupKeyDown}
           >
             <button
@@ -2233,19 +2233,19 @@ export default function SettingsPanel({
                   : isCancellingConnection
                     ? '正在停止验证…'
                   : isTestingConnection
-                    ? '正在验证完整分析能力…'
+                    ? '正在验证专业阅读能力…'
                     : connectionTest.status === 'failed' || connectionTest.status === 'inconclusive'
-                      ? '重新验证完整分析能力'
+                      ? '重新验证专业阅读能力'
                       : settings.setupMode === SETUP_MODES.FULL
-                        ? '重新验证完整分析能力'
-                        : '验证完整分析能力'}
+                        ? '重新验证专业阅读能力'
+                        : '验证专业阅读能力'}
               </button>
               {isTestingConnection && (
                 <>
                   <div className="provider-connection-progress">
                     <CircleNotch size={17} weight="bold" aria-hidden="true" />
                     <span role="status" aria-live="polite">
-                      <strong>{isCancellingConnection ? '正在停止验证' : '正在验证完整分析能力'}</strong>
+                      <strong>{isCancellingConnection ? '正在停止验证' : '正在验证专业阅读能力'}</strong>
                       <small>
                         {isCancellingConnection
                           ? '确认模型请求已经结束前，会保留当前设置与进度。'
@@ -2297,18 +2297,18 @@ export default function SettingsPanel({
               )}
             </div>
 
-            <div style={{ ...sectionTitleStyle, marginTop: 12 }}>{enableStepNumber} 启用完整分析</div>
+            <div style={{ ...sectionTitleStyle, marginTop: 12 }}>{enableStepNumber} 启用专业阅读</div>
             <div style={{ padding: '11px 12px', marginBottom: 12, borderRadius: 9, background: 'var(--accent-light)', color: 'var(--accent-ink)', fontSize: 11, lineHeight: 1.5 }}>
               <strong style={{ display: 'block', marginBottom: 3 }}>
-                {settings.setupMode === SETUP_MODES.FULL ? '完整分析已启用' : '功能模式由你决定'}
+                {settings.setupMode === SETUP_MODES.FULL ? '专业阅读已启用' : '功能模式由你决定'}
               </strong>
               {settings.setupMode === SETUP_MODES.FULL
-                ? '完整分析能力测试只检查当前配置，不会更改已经选择的功能模式。'
+                ? '专业阅读能力测试只检查当前配置，不会更改已经选择的功能模式。'
                 : hasCurrentSuccessfulConnectionTest
-                  ? '当前已保存配置通过了完整分析能力测试。启用仍由你决定。'
+                  ? '当前已保存配置通过了专业阅读能力测试。启用仍由你决定。'
                   : isCurrentConnectionReady
-                    ? '第一次启用前，当前已保存配置必须通过上方完整分析能力测试。测试通过也不会自动启用。'
-                  : '完成上方必需信息后，才能启用完整分析。'}
+                    ? '第一次启用前，当前已保存配置必须通过上方专业阅读能力测试。测试通过也不会自动启用。'
+                  : '完成上方必需信息后，才能启用专业阅读。'}
               {settings.setupMode !== SETUP_MODES.FULL && (
                 <button
                   type="button"
@@ -2325,7 +2325,7 @@ export default function SettingsPanel({
                   }, event.currentTarget)}
                   style={{ display: 'block', width: '100%', marginTop: 9, padding: '8px 10px', border: 'none', borderRadius: 8, background: 'var(--accent-fill)', color: 'var(--on-solid)', cursor: hasCurrentSuccessfulConnectionTest ? 'pointer' : 'not-allowed', opacity: hasCurrentSuccessfulConnectionTest ? 1 : 0.48, fontSize: 11, fontWeight: 700 }}
                 >
-                  {hasCurrentSuccessfulConnectionTest ? '完成配置并启用完整分析' : '请先通过完整分析能力测试'}
+                  {hasCurrentSuccessfulConnectionTest ? '完成配置并启用专业阅读' : '请先通过专业阅读能力测试'}
                 </button>
               )}
               {isCurrentConnectionReady && (
@@ -2404,8 +2404,42 @@ export default function SettingsPanel({
               </div>
             </details>
 
-        {/* Clipboard monitoring toggle */}
+        {/* Behavior toggles */}
         <div style={sectionTitleStyle}>行为</div>
+        <div className="clipboard-monitoring-setting">
+          <div className="clipboard-monitoring-setting__row">
+            <span>
+              <strong>登录时启动 Slipstream</strong>
+              <small id="open-at-login-description">
+                {settings.openAtLoginStatus === 'unavailable'
+                  ? '当前构建不能管理 macOS 登录项；正式安装版可在这里开关。'
+                  : settings.openAtLoginStatus === 'not-found'
+                    ? 'macOS 暂时无法读取登录项；可以稍后重试。'
+                  : settings.openAtLogin
+                    ? '登录 Mac 后会在后台启动；也可在“系统设置 → 通用 → 登录项”中关闭。'
+                    : settings.openAtLoginStatus === 'requires-approval'
+                    ? 'macOS 当前未允许自动启动；可在“系统设置 → 通用 → 登录项”中重新开启。'
+                    : '当前已关闭；Slipstream 不会随登录启动。'}
+              </small>
+            </span>
+            <label className="clipboard-monitor-toggle">
+              <input
+                type="checkbox"
+                checked={settings.openAtLogin}
+                onChange={(event) => {
+                  updateSettings('openAtLogin', event.target.checked).catch(() => {});
+                }}
+                role="switch"
+                aria-label="登录时启动 Slipstream"
+                aria-checked={settings.openAtLogin}
+                aria-describedby="open-at-login-description"
+                disabled={settingsSaving || settings.openAtLoginStatus === 'unavailable'}
+              />
+              <span aria-hidden="true"><span /></span>
+            </label>
+          </div>
+        </div>
+
         <div className="clipboard-monitoring-setting">
           <div className="clipboard-monitoring-setting__row">
             <span>
@@ -2888,7 +2922,9 @@ export default function SettingsPanel({
           description={(
             <>
               这会停止并清除当前原文、结果、行动进度、撤销副本和同窗口恢复记录，
-              再清除全部 API Key、连接凭据、保存的术语及所有设置，然后重新显示首次使用选择。此操作无法在应用内撤销。
+              再清除全部 API Key、连接凭据、保存的术语及所有设置，将“登录时启动”恢复为开启，
+              然后重新显示首次使用选择。此操作无法在应用内撤销。
+              文稿文件夹中的术语卡片 Markdown 文件会保留。
             </>
           )}
           clipboardDescription={hasClipboardResidueRisk || hasClipboardCopyConsequence

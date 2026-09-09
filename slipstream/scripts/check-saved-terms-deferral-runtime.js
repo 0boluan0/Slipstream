@@ -21,6 +21,16 @@ if (process.type === 'renderer') {
   const scenario = process.env.SLIPSTREAM_SAVED_TERMS_SCENARIO;
   if (!SCENARIOS.has(scenario)) throw new Error('Saved Terms harness scenario is invalid');
 
+  // Exercise the retained action-workspace library through its real recovery path.
+  // The current empty reading home and native card box have check:reading-home coverage.
+  if (scenario !== 'first-use-setup') {
+    window.sessionStorage.setItem('slipstream:temporary-session-recovery:v1', JSON.stringify({
+      version: 1, savedAt: Date.now(), kind: 'draft',
+      payload: { status: 'idle', inputText: '', sourceType: 'manual',
+        lastGood: { inputText: 'A fictional retained source.', result: '一份保留的虚构结果。',
+          processingProvider: 'free_translate', processingLocation: 'online' } },
+    }));
+  }
   const baseSettings = Object.freeze({
     anthropicApiKey: '',
     openaiApiKey: '',
@@ -183,6 +193,11 @@ if (process.type === 'renderer') {
   async function invoke(channel, ...args) {
     increment(invokeCounts, channel);
     switch (channel) {
+      case 'llm:cancel':
+        // Recovery clears any interrupted request; this fixture never starts one.
+        if (validNoArguments(args) || (args.length === 1 && args[0]?.discardResult === true
+          && Object.keys(args[0]).length === 1)) return true;
+        break;
       case 'settings:get':
         if (validNoArguments(args)) return { ...baseSettings };
         break;
@@ -477,7 +492,7 @@ if (process.type === 'renderer') {
       `${proof.scenario} startup requested SavedTermsLibrary.js`);
     assert.equal(proof.externalRequests, 0,
       `${proof.scenario} attempted an external request`);
-    assert.deepEqual(proof.unexpectedWrites, { provider: 0, settings: 0, terms: 0 });
+    assert.deepEqual(proof.unexpectedWrites, { provider: 0, settings: 0, terms: 0 }, JSON.stringify(proof.unexpectedCalls));
     assert.deepEqual(proof.unexpectedCalls, []);
     if (proof.scenario === 'first-use-setup') {
       assert.equal(proof.readyTarget, 'first-use-setup');
@@ -998,6 +1013,10 @@ if (process.type === 'renderer') {
       }, 25_000);
 
       await window.loadFile(path.join(renderer, 'index.html'));
+      if (scenario !== 'first-use-setup') {
+        await waitForRendererCondition(window, 'document.querySelector(".session-recovery-dialog__restore")', 'compatibility workspace recovery');
+        await window.webContents.executeJavaScript('document.querySelector(".session-recovery-dialog__restore").click()');
+      }
       if (scenario === 'returning-capture-stylesheet-recovery') {
         window.setContentSize(400, 400);
         window.webContents.setZoomFactor(2);
@@ -1043,7 +1062,7 @@ if (process.type === 'renderer') {
         await window.webContents.executeJavaScript(`
           (() => {
             const sampleButton = [...document.querySelectorAll('button')]
-              .find((button) => button.textContent.includes('载入安全示例'));
+              .find((button) => button.textContent.includes('载入阅读示例'));
             if (!sampleButton) throw new Error('Saved Terms startup sample action is unavailable');
             sampleButton.click();
             return true;
@@ -1056,7 +1075,7 @@ if (process.type === 'renderer') {
             const analyze = document.querySelector('.process-button');
             const harness = window.slipstreamSavedTermsHarness?.getSummary();
             return Boolean(
-              textarea?.value.startsWith('Dear Student,')
+              textarea?.value.startsWith('Correlation')
               && analyze
               && !analyze.disabled
               && document.activeElement === textarea
@@ -1075,7 +1094,7 @@ if (process.type === 'renderer') {
             const analyze = document.querySelector('.process-button');
             const harness = window.slipstreamSavedTermsHarness.getSummary();
             return {
-              sourceLoaded: textarea?.value.startsWith('Dear Student,') || false,
+              sourceLoaded: textarea?.value.startsWith('Correlation') || false,
               sourceFocused: document.activeElement === textarea,
               analyzeEnabled: Boolean(analyze && !analyze.disabled),
               termsReadStillPending: harness.pendingTermsGetRequest === 1,
@@ -1631,7 +1650,7 @@ if (process.type === 'renderer') {
         );
         const providerCalls = Object.entries(invokeCounts).reduce(
           (total, [channel, count]) => (
-            /^(?:llm|provider|verification):/u.test(channel) ? total + count : total
+            /^(?:llm|provider|verification):/u.test(channel) && channel !== 'llm:cancel' ? total + count : total
           ),
           0,
         );

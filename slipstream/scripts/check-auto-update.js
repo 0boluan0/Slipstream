@@ -62,6 +62,39 @@ async function main() {
   await settle();
   assert.equal(dialogs.length, 0, 'automatic current-version checks must stay quiet');
 
+  const loginLaunchUpdater = new FakeUpdater();
+  const loginLaunchScheduled = [];
+  const loginLaunchDialogs = [];
+  const loginLaunchResponses = [];
+  const loginLaunchManager = createAutoUpdateManager({
+    updater: loginLaunchUpdater,
+    enabled: true,
+    getMenuItem: () => ({ enabled: true, label: '' }),
+    onInstallRequested() {},
+    onInstallFailed() {},
+    schedule(callback) {
+      loginLaunchScheduled.push(callback);
+      return { unref() {} };
+    },
+    showMessageBox: async (options) => {
+      loginLaunchDialogs.push(options);
+      return { response: loginLaunchResponses.shift() ?? 1 };
+    },
+  });
+  loginLaunchManager.start({ silentAutomaticCheck: true });
+  assert.equal(loginLaunchScheduled.length, 1,
+    'a login launch must retain one automatic update check');
+  loginLaunchScheduled[0]();
+  await settle();
+  loginLaunchUpdater.emit('update-available', { version: '1.0.7' });
+  await settle();
+  assert.equal(loginLaunchDialogs.length, 0,
+    'a background login launch must not interrupt the user with an update dialog');
+  loginLaunchResponses.push(0);
+  await loginLaunchManager.checkForUpdates();
+  assert.equal(loginLaunchUpdater.downloadCount, 1,
+    'the available update must remain actionable from the explicit menu');
+
   await manager.checkForUpdates();
   updater.emit('update-not-available');
   await settle();
@@ -173,6 +206,8 @@ async function main() {
   assert.match(mainSource,
     /mainWindow\.on\('closed'[\s\S]{0,900}?quitRequestRegistry\.clearSender\(rendererSenderId\);[\s\S]{0,160}?!app\.isQuitting[\s\S]{0,100}?cancelUpdateInstallRequest\(\)/,
     'a non-quitting window teardown must clear an uncommitted update-install intent');
+  assert.match(mainSource, /autoUpdateManager\.start\(\{ silentAutomaticCheck: launchedAtLogin \}\)/,
+    'a login launch must check in the background without interrupting the user');
 
   console.log('Auto-update checks passed.');
 }

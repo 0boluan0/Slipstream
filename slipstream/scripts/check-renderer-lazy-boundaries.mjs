@@ -1062,8 +1062,8 @@ assert.match(panelSource,
   /const prepareSavedTermsAccess = useCallback\(\(\) => \{[\s\S]*?prepareSavedTermsLibrary\(\);[\s\S]*?ensureSavedTermsLoaded\(\)\.catch\(\(\) => false\)/,
   'Saved Terms intent must preload both its lazy workspace and persistent data');
 assert.match(panelSource,
-  /className=\{`saved-terms-trigger saved-terms-trigger--\$\{savedTermsLoadStatus\}`\}[\s\S]*?onPointerEnter=\{prepareSavedTermsAccess\}[\s\S]*?onFocus=\{prepareSavedTermsAccess\}[\s\S]*?onClick=\{openSavedTerms\}/,
-  'the visible Saved Terms trigger must preload on pointer and keyboard intent');
+  /className=\{`saved-terms-trigger saved-terms-trigger--\$\{savedTermsLoadStatus\}[\s\S]*?onPointerEnter=\{readingStart \? undefined : prepareSavedTermsAccess\}[\s\S]*?onFocus=\{readingStart \? undefined : prepareSavedTermsAccess\}[\s\S]*?onClick=\{readingStart \?[\s\S]*?: openSavedTerms\}/,
+  'the compatibility Saved Terms trigger must preload on intent; the reading home opens its native card box');
 assert.match(panelSource,
   /\{savedTermsWorkspaceMounted && \([\s\S]*?<LazyWorkspaceBoundary[\s\S]*?key=\{`saved-terms-workspace-\$\{savedTermsWorkspace\.attempt\}`\}[\s\S]*?<SavedTermsWorkspaceRecovery[\s\S]*?<React\.Suspense[\s\S]*?<SavedTermsWorkspaceFallback[\s\S]*?<SavedTermsLibrary[\s\S]*?key=\{`saved-terms-session-\$\{savedTermsSessionGeneration\}`\}/,
   'the one-way latch must own eager recovery/loading shells around the generation-keyed library');

@@ -92,7 +92,7 @@ export function analysisLocationForSettings(settings = {}) {
 }
 
 export function modeLabel(setupMode) {
-  if (setupMode === SETUP_MODES.FULL) return '完整分析';
+  if (setupMode === SETUP_MODES.FULL) return '专业阅读';
   if (setupMode === SETUP_MODES.TRANSLATION_ONLY) return '基础翻译';
   return '尚未完成设置';
 }

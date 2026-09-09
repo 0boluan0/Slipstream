@@ -94,7 +94,7 @@ const panelCss = readSource('src/renderer/App.css');
 const mainSource = readSource('src/main/main.js');
 const packageSource = readSource('package.json');
 const projectReadme = readSource('../README.md');
-const developmentReadme = readSource('README.md');
+const developmentReadme = readSource('../docs/action-workspace-development.md');
 const privacyDoc = readSource('../docs/PRIVACY.md');
 const releaseDoc = readSource('../docs/RELEASE.md');
 
@@ -124,7 +124,7 @@ assert.match(mainSource, /if \(monitoring\.enabled\) tooltipParts\.push\(monitor
 assert.match(mainSource, /function startClipboardMonitoring\(\)[\s\S]*?refreshTrayPresentation\(\)/);
 assert.match(mainSource, /function stopClipboardMonitoring\(\)[\s\S]*?refreshTrayPresentation\(\)/);
 assert.match(packageSource, /check:clipboard-monitor-visibility/);
-assert.match(projectReadme, /main task surface and macOS menu keep the destination and a direct off action visible/);
+assert.match(projectReadme, /界面和菜单栏持续显示去向及关闭入口/);
 assert.match(developmentReadme, /Closing monitoring stops future clipboard triggers,[^.]*does not cancel analysis already underway/);
 assert.match(privacyDoc, /Closing monitoring prevents future clipboard triggers,[^.]*does not cancel an analysis already in progress/);
 assert.match(releaseDoc, /active destination and off action stay visible on the main task surface and macOS menu/);
