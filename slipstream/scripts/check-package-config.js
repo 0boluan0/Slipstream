@@ -365,7 +365,7 @@ const macBuildSource = fs.readFileSync(path.join(__dirname, 'build-macos.js'), '
 const afterSignSource = fs.readFileSync(path.join(__dirname, 'after-sign.js'), 'utf8');
 for (const marker of [
   "'--sequesterRsrc', '--keepParent'",
-  'notarizationArguments(submissionPath, process.env)',
+  "runAppleTool('/usr/bin/xcrun', notarizationArguments(submissionPath, process.env))",
   "['stapler', 'staple', appPath]",
   "['stapler', 'validate', appPath]",
 ]) {
@@ -376,7 +376,7 @@ for (const marker of [
 }
 const stagedDmgStepIndexes = [
   macBuildSource.indexOf("['--force', '--sign', signingIdentity, '--timestamp', dmgPath]"),
-  macBuildSource.indexOf("execFileSync('xcrun', notarizationArguments(dmgPath, env)"),
+  macBuildSource.indexOf("runAppleTool('xcrun', notarizationArguments(dmgPath, env)"),
   macBuildSource.indexOf("['stapler', 'staple', dmgPath]"),
   macBuildSource.indexOf("['stapler', 'validate', dmgPath]"),
 ];
