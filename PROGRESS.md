@@ -1,18 +1,20 @@
 # Slipstream — Progress
 
-## Current — 2026-09-09 reading preview
+## Current — 2026-09-10 reading release
 
-Phase: professional English reading preview.
+Phase: professional English reading, version 1.1.0.
 
-Positioning: 读懂原文，留下概念。The Chinese README is the default repository entry, with an English switch. Screenshot reading leads the home screen; pasted text opens the same independent reading cards. The home card-box entry opens the native Markdown concept library. First use, model-mode labels, authored sample, package description, specification, privacy and architecture docs follow this reading workflow.
+Positioning: 读懂原文，留下概念。The Chinese README is the default repository entry, with an English switch. Screenshot and pasted-text reading open independent cards; contextual terms can be saved to the local Markdown concept library. First use, examples, formula handling and public docs follow this workflow.
 
-Validation: all npm test component checks and ESLint pass after targeted reruns, including native first use, lazy workspace recovery, reading home, pins, card store and math. Production entry JavaScript is 485,321 bytes (under the 490,000-byte working budget). UI screenshots use temporary profiles and illustrative replies, not live-model quality evidence. The preview uses a stable Developer ID identity separate from the original installed app.
+Published: [v1.1.0](https://github.com/0boluan0/Slipstream/releases/tag/v1.1.0), at 2026-09-10 08:38 UTC, from tag commit `b2d9933d1661bceb97e0262a8f96732b0e69ad86`. The eight public release assets match local SHA-256 digests. The public latest update feed was downloaded and matched the verified 1.1.0 metadata byte for byte.
 
-Release candidate: 1.1.0, prepared for the existing production update channel. Developer ID signing and the prior Apple notarization profile are available. Fresh lockfile installation and full dependency audit report zero vulnerabilities after fast-uri, js-yaml and xmldom patch updates. Publication requires the complete signed dual-architecture release gate; the exact published tag records the built commit.
+Validation: [CI run 34432930836](https://github.com/0boluan0/Slipstream/actions/runs/34432930836) passed full npm test, lint, renderer build, full dependency audit and OCR typecheck. Both architectures passed local archive, OCR-slice, signing, notarization, Gatekeeper and update-manifest checks. All 95 packaged source files in each ZIP match the release commit. Local lint and history non-retention checks passed. Local aggregate test retries encountered native fixture launcher/timeouts; the complete source regression result is the successful CI run.
 
-Installed preview: updated at the fixed user Applications path with the same Developer ID and bundle identity; installed source and renderer match the verified workspace. The new Chinese home, card-box entry, authored sample loading and accepted text handoff were checked through native UI.
+Distribution recovery: after Apple status polling lost its connection, the preserved signed artifacts were resumed. All four app/DMG submissions were confirmed Accepted; staples and final distribution trust passed. Temporary-network retry and uploaded-submission resume checks are included in the release tooling.
 
-Next: complete the signed release gate, publish its exact commit and upload all eight distribution/update assets.
+Installation: the public app keeps `com.slipstream.app` and its existing update channel. The independent reading preview retains its own settings, permissions and identity.
+
+Next: use real reading feedback to refine term selection and formula review.
 
 ## Historical snapshot — 2026-08-04
 

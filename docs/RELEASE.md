@@ -1,5 +1,13 @@
 # macOS release checklist
 
+## Published 1.1.0 — 2026-09-10
+
+- Release: [Slipstream 1.1.0](https://github.com/0boluan0/Slipstream/releases/tag/v1.1.0), tag commit `b2d9933d1661bceb97e0262a8f96732b0e69ad86`.
+- Source regression: [CI run 34432930836](https://github.com/0boluan0/Slipstream/actions/runs/34432930836) passed full npm test, lint, renderer build, dependency audit and OCR typecheck. Both full and production audits reported zero vulnerabilities. Local aggregate test retries encountered native fixture launcher/timeouts; full source-regression acceptance comes from that CI run.
+- Local distribution gates passed: package configuration, release archives, architecture-specific OCR, fixed authored arm64 OCR fixture, checksums, Developer ID signatures, stapled app/DMG notarization tickets, Gatekeeper, history non-retention and update manifest. Each ZIP contains 95 source files matching the release commit byte for byte.
+- The candidate was resumed from preserved signed artifacts after Apple notarization status requests lost their connection. Both app submissions and both DMG submissions were independently confirmed Accepted before final staple and distribution checks.
+- Published eight assets: arm64/x64 DMGs, ZIPs and ZIP blockmaps, `latest-mac.yml`, and `SHA256SUMS.txt`. GitHub asset digests match all eight local files. The public latest update feed was fetched after publication and matched the local 1.1.0 metadata byte for byte.
+
 ## Apple connection recovery
 
 Apple tool calls retry recognized temporary timestamp and network failures up to four attempts. When a notarization upload has completed, a dropped status connection resumes with `notarytool wait` on the existing submission ID. Incomplete uploads retry submission; permanent failures still stop the release. Signing, notarization tickets and distribution checks remain required. `npm run check:apple-tool-retry` replays these failure boundaries without contacting Apple.
