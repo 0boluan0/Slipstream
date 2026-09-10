@@ -2,6 +2,7 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { runAppleTool } = require('./apple-tool-retry');
 const { BUILD_IDENTITIES } = require('../src/main/build-identity');
 const {
   findFileProviderConflictCopies,
@@ -153,14 +154,14 @@ async function notarizeDmgArtifacts(stagingDir, env = process.env) {
     if (!fs.existsSync(dmgPath) || fs.statSync(dmgPath).size === 0) {
       throw new Error(`missing staged DMG for notarization: ${dmgPath}`);
     }
-    execFileSync(
+    runAppleTool(
       'codesign',
       ['--force', '--sign', signingIdentity, '--timestamp', dmgPath],
       { env, stdio: 'inherit' },
     );
     execFileSync('codesign', ['--verify', '--verbose=2', dmgPath], { env, stdio: 'inherit' });
     try {
-      execFileSync('xcrun', notarizationArguments(dmgPath, env), { env, stdio: 'inherit' });
+      runAppleTool('xcrun', notarizationArguments(dmgPath, env), { env });
     } catch {
       throw new Error(`Apple notarization failed for ${path.basename(dmgPath)}; see output above`);
     }

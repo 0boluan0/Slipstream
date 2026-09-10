@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { notarizationArguments } = require('./build-macos');
+const { runAppleTool } = require('./apple-tool-retry');
 
 exports.default = async function afterSign(context) {
   if (context.electronPlatformName !== 'darwin' || process.env.SLIPSTREAM_REQUIRE_SIGNING !== '1') return;
@@ -16,9 +17,7 @@ exports.default = async function afterSign(context) {
     execFileSync('/usr/bin/ditto', [
       '-c', '-k', '--sequesterRsrc', '--keepParent', path.basename(appPath), submissionPath,
     ], { cwd: path.dirname(appPath), stdio: 'inherit' });
-    execFileSync('/usr/bin/xcrun', notarizationArguments(submissionPath, process.env), {
-      stdio: 'inherit',
-    });
+    runAppleTool('/usr/bin/xcrun', notarizationArguments(submissionPath, process.env));
     execFileSync('/usr/bin/xcrun', ['stapler', 'staple', appPath], { stdio: 'inherit' });
     execFileSync('/usr/bin/xcrun', ['stapler', 'validate', appPath], { stdio: 'inherit' });
   } finally {

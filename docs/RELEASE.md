@@ -1,5 +1,9 @@
 # macOS release checklist
 
+## Apple connection recovery
+
+Apple tool calls retry recognized temporary timestamp and network failures up to four attempts. When a notarization upload has completed, a dropped status connection resumes with `notarytool wait` on the existing submission ID. Incomplete uploads retry submission; permanent failures still stop the release. Signing, notarization tickets and distribution checks remain required. `npm run check:apple-tool-retry` replays these failure boundaries without contacting Apple.
+
 ## Source gate
 
 - Working tree and dependency lock are intentional.
