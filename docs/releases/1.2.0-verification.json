@@ -1,0 +1,179 @@
+{
+  "version": "1.2.0",
+  "sourceCommit": "0c5ae1bcde7f0fdd9a22a04bda087da6d6984f5b",
+  "ci": {
+    "conclusion": "success",
+    "headSha": "0c5ae1bcde7f0fdd9a22a04bda087da6d6984f5b",
+    "startedAt": "2026-09-18T12:31:27Z",
+    "status": "completed",
+    "updatedAt": "2026-09-18T12:37:57Z",
+    "url": "https://github.com/0boluan0/Slipstream/actions/runs/35345116536"
+  },
+  "archives": [
+    {
+      "architecture": "arm64",
+      "sourceFiles": 107,
+      "rendererFiles": 10,
+      "version": "1.2.0",
+      "buildIdentity": "developer-id"
+    },
+    {
+      "architecture": "x64",
+      "sourceFiles": 107,
+      "rendererFiles": 10,
+      "version": "1.2.0",
+      "buildIdentity": "developer-id"
+    }
+  ],
+  "packagedFormulaOCR": [
+    {
+      "version": "1.2.0",
+      "architecture": "arm64",
+      "cases": [
+        {
+          "name": "attention-equation",
+          "count": 2,
+          "elapsedMs": 3267
+        },
+        {
+          "name": "adam-algorithm",
+          "count": 19,
+          "elapsedMs": 4523
+        },
+        {
+          "name": "dml-equations",
+          "count": 2,
+          "elapsedMs": 1403
+        }
+      ],
+      "network": "blocked",
+      "source": "packaged ASAR, models, native runtime and Swift OCR"
+    },
+    {
+      "version": "1.2.0",
+      "architecture": "x64",
+      "cases": [
+        {
+          "name": "attention-equation",
+          "count": 2,
+          "elapsedMs": 9321
+        },
+        {
+          "name": "adam-algorithm",
+          "count": 19,
+          "elapsedMs": 9091
+        },
+        {
+          "name": "dml-equations",
+          "count": 2,
+          "elapsedMs": 2811
+        }
+      ],
+      "network": "blocked",
+      "source": "packaged ASAR, models, native runtime and Swift OCR"
+    }
+  ],
+  "packageVerification": {
+    "releaseInfo": "passed",
+    "archiveContents": "passed",
+    "checksums": "passed",
+    "distributionTrust": "passed",
+    "updateManifest": "passed"
+  },
+  "notarization": {
+    "x64App": {
+      "id": "40eeda9f-b6eb-4192-9f1f-42317b75fd8a",
+      "status": "Accepted"
+    },
+    "arm64App": {
+      "id": "6f05da8b-2cb5-440d-870f-545fc80c6614",
+      "status": "Accepted"
+    },
+    "x64Dmg": {
+      "id": "b31a145b-cd33-4af7-8b70-348ec0ee6b72",
+      "status": "Accepted"
+    },
+    "arm64Dmg": {
+      "id": "c7a5b493-6520-4c27-b9e9-d91657884d02",
+      "status": "Accepted"
+    }
+  },
+  "installation": {
+    "previousVersion": "1.0.4",
+    "installedVersion": "1.2.0",
+    "profile": "preserved",
+    "bundleBackup": "retained",
+    "observed": [
+      "installed reading home",
+      "paper reference window",
+      "OS screenshot selector launched",
+      "cancel returned to home without permission error",
+      "installed application update check reported latest version after publication"
+    ]
+  },
+  "limits": [
+    "x64 execution used Rosetta on Apple Silicon; no Intel device test",
+    "OS screenshot drag could not be completed with available desktop automation; no claim of interactive capture to translation acceptance",
+    "Not a first-install quarantine, minimum macOS, or updater download/install acceptance test",
+    "Recognition corpus is small and does not establish general accuracy"
+  ],
+  "githubReleaseId": 391466393,
+  "assets": [
+    {
+      "name": "latest-mac.yml",
+      "size": 502,
+      "sha256": "58ec0ede4d2ac981b2d74913b71d854c991d0977a4cd42d4cefb8241f4ddf3a5",
+      "assetId": 572609083
+    },
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 651,
+      "sha256": "f29e264bb4486cd024eb5d602b1b870ef59e3a4608d296e726e3f6f90607a953",
+      "assetId": 572609095
+    },
+    {
+      "name": "Slipstream-1.2.0-arm64.dmg",
+      "size": 385517321,
+      "sha256": "8c7a8b507a8a3bd667655dea1660c5d58445b7f30cd12fc232a6f5eea005d128",
+      "assetId": 572609033
+    },
+    {
+      "name": "Slipstream-1.2.0-arm64.zip",
+      "size": 376887106,
+      "sha256": "cd4a5d7382f44dc28ff6b51767812d7c13d774139e4d1155004d600b8ece9527",
+      "assetId": 572609037
+    },
+    {
+      "name": "Slipstream-1.2.0-arm64.zip.blockmap",
+      "size": 393176,
+      "sha256": "2bf3dc81d2e5163060db36821a1994ccd6736c9b22c586a206d4f5c6508cec16",
+      "assetId": 572609031
+    },
+    {
+      "name": "Slipstream-1.2.0-x64.dmg",
+      "size": 390260585,
+      "sha256": "29639e558754742820836933019e6672945498a738353096159046cc2c0589f4",
+      "assetId": 572609032
+    },
+    {
+      "name": "Slipstream-1.2.0-x64.zip",
+      "size": 381690455,
+      "sha256": "a6e4df6c2424d66b39e52d8582f4e4c5b4a22806ea6a0d9719207c8b3047db17",
+      "assetId": 572609034
+    },
+    {
+      "name": "Slipstream-1.2.0-x64.zip.blockmap",
+      "size": 400543,
+      "sha256": "bc9f1815ba241570c21aac9d20c7043d65bfae79707be7e4ce835ede3349d00d",
+      "assetId": 572609061
+    }
+  ],
+  "publication": {
+    "publishedAt": "2026-09-18T12:44:03Z",
+    "url": "https://github.com/0boluan0/Slipstream/releases/tag/v1.2.0",
+    "latest": true,
+    "publicUpdateFeedMatches": true,
+    "publicChecksumsMatch": true,
+    "publicAssetDigestsMatch": true
+  }
+}

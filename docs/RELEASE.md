@@ -1,5 +1,15 @@
 # macOS release checklist
 
+## Published 1.2.0 — 2026-09-18
+
+- Release: [Slipstream 1.2.0](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.0), source commit `0c5ae1bcde7f0fdd9a22a04bda087da6d6984f5b`, published at 12:44 UTC. [Machine-readable verification](releases/1.2.0-verification.json).
+- [Exact-commit CI](https://github.com/0boluan0/Slipstream/actions/runs/35345116536) passed local formula OCR, full npm test, lint, renderer build, dependency audit and Swift typecheck. Fresh CI compiles its Swift helper before starting OCR timing; packaged apps use their precompiled helper.
+- Both ZIPs contain 107 project source/resource files and 10 renderer artifacts matching the release candidate byte for byte. Models, notices, native ONNX architecture and compiled Swift resources passed archive checks. Package configuration, checksums, archive inspection, update manifest and history non-retention checks passed.
+- Actual packaged ASAR, model, native ONNX and Swift components recognized Attention, Adam and DML pixels with HTTP/HTTPS requests blocked. arm64 ran natively; x64 ran through Rosetta on Apple Silicon. This is not an Intel hardware or general recognition-accuracy claim.
+- Apple accepted both app and both DMG notarization submissions. Developer ID, hardened runtime, code signatures, stapled tickets and Gatekeeper checks passed for both architectures.
+- Eight public assets were verified against local SHA-256 digests. The public latest update feed and checksum file were downloaded after publication and matched the verified local files byte for byte.
+- The official local app was upgraded from 1.0.4 to 1.2.0 using the verified arm64 archive, preserving its profile and a recoverable bundle backup. Reading home and paper reference entry were observed; the installed app reported the latest version when checking for updates after publication. The OS screenshot selector launched, but the available desktop automation could not complete the drag; interactive capture-to-translation, first-install quarantine, minimum macOS and updater download/install acceptance remain unverified.
+
 ## Published 1.1.0 — 2026-09-10
 
 - Release: [Slipstream 1.1.0](https://github.com/0boluan0/Slipstream/releases/tag/v1.1.0), tag commit `b2d9933d1661bceb97e0262a8f96732b0e69ad86`.

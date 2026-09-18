@@ -1,10 +1,16 @@
 # Slipstream — Progress
 
-## Current — 2026-09-18 version 1.2.0 release candidate
+## Current — 2026-09-18 version 1.2.0 published
 
-The local screenshot OCR component now uses Apache-2.0 PP-DocLayoutV3 and MIT Pix2Text MFR 1.5. Both Mac architectures bundle verified models, native ONNX libraries and license notices. ONNX Runtime 1.18.0 preserves macOS 12 compatibility. Signed release preparation is in progress; publication evidence will be recorded after upload verification.
+Published [v1.2.0](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.0) at 12:44 UTC from `0c5ae1bcde7f0fdd9a22a04bda087da6d6984f5b`. All eight GitHub asset digests match the verified local artifacts; the public latest update feed and checksums match byte for byte. [Release verification](docs/releases/1.2.0-verification.json).
+
+The local screenshot OCR component uses Apache-2.0 PP-DocLayoutV3 and MIT Pix2Text MFR 1.5. Both Mac architectures bundle verified models, native ONNX libraries and license notices. ONNX Runtime 1.18.0 meets the application's macOS 12 binary compatibility requirement. Both apps and DMGs passed Developer ID signing, Apple notarization, stapling and Gatekeeper checks. Paper-scoped references and the real-paper usability fixes are included in this production release.
 
 Fixed source text duplication around formulas, adjacent punctuation, narrow captures and edge symbols. Real-pixel tests include Adam, Attention, DML, two fresh narrow equation crops, a matrix/mean and plain prose. Missing components and cancellation are covered; screenshot cancellation no longer produces a false permission alert. Formula results remain behind original-image review before translation. [Implementation and limits](docs/local-formula-ocr.md), [recognition evidence](docs/usability/2026-09-18/formula-ocr/results.json).
+
+Validation: [exact-commit CI](https://github.com/0boluan0/Slipstream/actions/runs/35345116536) passed full npm test, local formula OCR, lint, renderer build, dependency audit and Swift typecheck. Each ZIP's 107 source/resource files and 10 renderer artifacts match the candidate. Actual bundled OCR passed Attention, Adam and DML images with network requests blocked on native arm64 and x64 through Rosetta; no Intel hardware acceptance is claimed.
+
+Installed the verified arm64 ZIP over the local official 1.0.4 app, preserving its profile and a recoverable bundle archive. Observed the reading home, retained paper context and reference window; the installed app's update check reported the latest version after publication. The system screenshot selector launches; desktop automation could not complete its drag selection, so interactive capture-to-translation remains unverified. This is not first-install quarantine, minimum-OS or updater download/install acceptance. The independent reading preview remains separate and was closed to avoid competing shortcuts.
 
 
 ## Previous — 2026-09-18 real-paper usability iteration
