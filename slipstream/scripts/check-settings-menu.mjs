@@ -19,7 +19,7 @@ for (const source of [constantsJs, constantsCjs]) {
 
 assert.match(
   main,
-  /id: 'app-settings',[\s\S]{0,160}?label: '设置…',[\s\S]{0,160}?accelerator: 'Command\+,',[\s\S]{0,160}?click: requestAppSettings/u,
+  /id: 'app-settings',[\s\S]{0,160}?label: '设置…',[\s\S]{0,160}?accelerator: process\.platform === 'win32' \? 'Control\+,' : 'Command\+,',[\s\S]{0,160}?click: requestAppSettings/u,
   'the macOS app menu must expose a guarded Settings item with the standard Command+, accelerator',
 );
 assert.doesNotMatch(main, /globalShortcut\.register\(['"]Command\+,/u,

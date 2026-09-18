@@ -202,7 +202,7 @@ assert.ok(requestQuitStart >= 0 && requestQuitEnd > requestQuitStart);
 const requestQuitSource = mainSource.slice(requestQuitStart, requestQuitEnd);
 assert.match(
   mainSource,
-  /id: 'app-quit',[\s\S]{0,160}?label: '退出 Slipstream',[\s\S]{0,160}?accelerator: 'Command\+Q',[\s\S]{0,160}?click: requestAppQuit/,
+  /id: 'app-quit',[\s\S]{0,160}?label: '退出 Slipstream',[\s\S]{0,160}?accelerator: process\.platform === 'win32' \? 'Control\+Q' : 'Command\+Q',[\s\S]{0,160}?click: requestAppQuit/,
   'the standard macOS quit accelerator must route through the guarded request path',
 );
 assert.doesNotMatch(
