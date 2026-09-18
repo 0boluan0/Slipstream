@@ -559,6 +559,7 @@ let exposedApi = null;
 const invokedChannels = [];
 const preloadWarnings = [];
 vm.runInNewContext(preloadSource, {
+  process: { platform: 'darwin' },
   require: (specifier) => {
     assert.equal(specifier, 'electron', 'the production preload must load only the Electron bridge here');
     return {
