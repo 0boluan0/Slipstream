@@ -1,7 +1,10 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const actions = new Set(['ready', 'close', 'toggle-top', 'translate', 'explain', 'retake', 'settings',
-  'lookup', 'dismiss-lookup', 'collapse', 'fit', 'copy', 'review', 'save-term', 'library', 'recognize-formulas']);
+  'lookup', 'dismiss-lookup', 'collapse', 'fit', 'copy', 'review', 'save-term', 'library', 'recognize-formulas',
+  'paper-create', 'paper-select', 'paper-rename', 'paper-remove', 'paper-undo',
+  'reference-open', 'reference-draft', 'reference-refresh', 'reference-extract', 'reference-accept',
+  'reference-save', 'reference-remove', 'reference-copy']);
 contextBridge.exposeInMainWorld('readingPin', {
   act(action, payload) {
     if (!actions.has(action)) return Promise.reject(new Error('Unsupported card action'));

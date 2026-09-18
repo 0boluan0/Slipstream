@@ -142,14 +142,15 @@ export function canonicalizeShortcutAccelerator(value) {
   return result.ok ? result.accelerator : '';
 }
 
-export function shortcutDisplayParts(value) {
+export function shortcutDisplayParts(value, platform) {
   const result = analyzeShortcutAccelerator(value);
   const source = result.ok ? result.accelerator : String(value || '').trim();
-  return source.split('+').filter(Boolean).map((part) => part === 'Alt' ? 'Option' : part);
+  const windows = platform ? platform === 'win32' : typeof navigator !== 'undefined' && /Win/i.test(navigator.platform);
+  return source.split('+').filter(Boolean).map((part) => part === 'Alt' && !windows ? 'Option' : part);
 }
 
-export function displayShortcutAccelerator(value) {
-  return shortcutDisplayParts(value).join('+');
+export function displayShortcutAccelerator(value, platform) {
+  return shortcutDisplayParts(value, platform).join('+');
 }
 
 export function sameShortcutAccelerator(left, right) {

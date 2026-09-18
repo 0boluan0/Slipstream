@@ -1,12 +1,17 @@
 const { execFile } = require('child_process');
 const { app } = require('electron');
 const path = require('path');
+const fs = require('node:fs/promises');
 const { createOcrEnvironment } = require('./ocr-environment');
+const { createLocalFormulaOcr } = require('./local-formula-ocr');
+const { mergeFormulaDocument } = require('./formula-document');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const OCR_SCRIPT = app.isPackaged
   ? path.join(process.resourcesPath, 'scripts', 'ocr-swift-runner.sh')
   : path.join(APP_ROOT, 'scripts', 'ocr-swift-runner.sh');
+const formulaOcr = createLocalFormulaOcr(app.isPackaged
+  ? path.join(process.resourcesPath, 'formula-models') : path.join(APP_ROOT, 'formula-models'));
 
 /**
  * Clean raw OCR text by normalizing whitespace and removing garbage.
@@ -29,7 +34,7 @@ function cleanOcrText(rawText) {
  * @param {string} imagePath - Absolute path to the image file.
  * @returns {Promise<{text: string, confidence: number, blocks: Array}>}
  */
-function performOCR(imagePath, { signal } = {}) {
+function performOCR(imagePath, { signal, characters = false } = {}) {
   return new Promise((resolve, reject) => {
     const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
     let settled = false;
@@ -58,8 +63,9 @@ function performOCR(imagePath, { signal } = {}) {
       finish(reject, error);
       return;
     }
-    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath], {
+    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath, ...(characters ? ['--characters'] : [])], {
       timeout: 15000,
+      maxBuffer: 8 * 1024 * 1024,
       env: environment,
     }, (error, stdout, stderr) => {
       if (error) {
@@ -99,15 +105,47 @@ function performOCR(imagePath, { signal } = {}) {
   });
 }
 
+async function performReadingOCR(imagePath, { signal } = {}) {
+  const [textResult, formulaResult] = await Promise.allSettled([
+    performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
+  ]);
+  if (textResult.status === 'rejected') throw textResult.reason;
+  const original = textResult.value;
+  if (formulaResult.status === 'rejected') {
+    const error = formulaResult.reason;
+    if (signal?.aborted || error?.isCancellation) throw error;
+    return { ...original, formulaOcr: { status: error.code === 'ENOENT' ? 'unavailable' : 'failed', count: 0 } };
+  }
+  const recognized = formulaResult.value;
+  if (!recognized.formulas.length) {
+    return { ...original, formulaOcr: { status: 'done', count: 0, milliseconds: recognized.milliseconds } };
+  }
+  const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
+  createOcrEnvironment(cacheDir);
+  const temporary = await fs.mkdtemp(path.join(cacheDir, 'formula-'));
+  try {
+    const maskedPath = path.join(temporary, 'prose.png');
+    await fs.writeFile(maskedPath, recognized.masked, { mode: 0o600 });
+    const prose = await performOCR(maskedPath, { signal, characters: true });
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, original);
+    return { ...prose, text: document.text, document,
+      // Token probabilities flag uncertain recognition; they do not certify correctness.
+      formulaOcr: { status: 'done', count: recognized.formulas.length,
+        uncertain: recognized.formulas.filter((item) => item.confidence < .6).length,
+        milliseconds: recognized.milliseconds } };
+  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+}
+
 /**
  * Cleanup any resources held by the OCR service.
  * Currently a no-op but provided for interface consistency.
  */
 function cleanup() {
-  // No resources to clean up at this time.
+  return formulaOcr.cleanup();
 }
 
 module.exports = {
   performOCR,
+  performReadingOCR,
   cleanup,
 };

@@ -5,6 +5,7 @@ const { mathRanges } = require('../shared/reading-math.cjs');
 // Vision emits visual lines. Join wrapped prose while retaining paragraph gaps;
 // keep the untouched capture available for checking notation and reading order.
 function readingTextFromOcr(ocr) {
+  if (ocr.document) return ocr.document;
   const lines = ocr.blocks;
   if (!Array.isArray(lines) || !lines.length || lines.some((line) =>
     typeof line.text !== 'string' || !line.boundingBox

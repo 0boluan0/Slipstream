@@ -119,11 +119,13 @@ function createSupportDiagnostics(input = {}) {
   const settings = input.settings && typeof input.settings === 'object' ? input.settings : {};
   const appVersion = safeText(input.appVersion, '未知', 40);
   const systemVersion = safeText(input.systemVersion, '未知', 80);
+  const windows = input.platform === 'win32';
+  const systemName = windows ? 'Windows' : 'macOS';
   const arch = ['arm64', 'x64'].includes(input.arch) ? input.arch : 'unknown';
   const architectureLabel = arch === 'arm64'
-    ? 'Apple 芯片（arm64）'
+    ? (windows ? 'ARM64' : 'Apple 芯片（arm64）')
     : arch === 'x64'
-      ? 'Intel（x64）'
+      ? (windows ? 'Intel / AMD（x64）' : 'Intel（x64）')
       : '未知架构';
   const screenRecordingStatus = ALLOWED_SCREEN_RECORDING_STATUSES.has(input.screenRecordingStatus)
     ? input.screenRecordingStatus
@@ -166,7 +168,7 @@ function createSupportDiagnostics(input = {}) {
     buildTrust: buildDescription.detail,
     isPublicDistribution: buildDescription.isPublicDistribution,
     system: {
-      name: 'macOS',
+      name: systemName,
       version: systemVersion,
       arch,
       architectureLabel,
@@ -212,7 +214,7 @@ function createSupportDiagnostics(input = {}) {
     `Slipstream ${appVersion}`,
     `构建：${buildKind}`,
     `构建信任：${buildDescription.detail}`,
-    `系统：macOS ${systemVersion} · ${architectureLabel}`,
+    `系统：${systemName} ${systemVersion} · ${architectureLabel}`,
     `功能模式：${diagnostics.mode.label}`,
     `分析方式：${analysisLabel}`,
     `屏幕录制权限：${diagnostics.screenRecording.label}`,

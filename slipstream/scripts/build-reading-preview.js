@@ -28,9 +28,10 @@ function build() {
   fs.mkdirSync(project);
   // A fresh dependency tree outside the synced workspace avoids File Provider
   // conflict copies entering the package. Source copies are still validated.
-  for (const entry of ['src', 'dist', 'scripts', 'assets', 'build', 'preload.js', 'package.json', 'package-lock.json', 'LICENSE', 'README.md']) {
+  for (const entry of ['src', 'dist', 'scripts', 'assets', 'build', 'licenses', 'preload.js', 'package.json', 'package-lock.json', 'LICENSE', 'README.md']) {
     fs.cpSync(path.join(root, entry), path.join(project, entry), { recursive: true });
   }
+  fs.cpSync(path.join(root, 'formula-models'), path.join(project, 'formula-models'), { recursive: true });
   const environment = { ...process.env };
   // This is a local preview, not the public release/notarization lifecycle.
   delete environment.SLIPSTREAM_REQUIRE_SIGNING;

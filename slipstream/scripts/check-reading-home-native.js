@@ -7,9 +7,15 @@ const { app, BrowserWindow, ipcMain, screen, nativeTheme } = require('electron')
 const { createReadingPins } = require('../src/main/reading-pins');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
+const { createReadingReferenceStore } = require('../src/main/reading-reference-store');
 const { createTermLibrary } = require('../src/main/term-library');
 const before = process.argv.includes('--before');
-const work = fs.mkdtempSync(path.join(os.tmpdir(), 'slipstream-reading-home-'));
+const windowsUi = process.platform === 'win32' || process.argv.includes('--windows-ui');
+const work = process.env.SLIPSTREAM_READING_HOME_WORK
+  || fs.mkdtempSync(path.join(os.tmpdir(), 'slipstream-reading-home-'));
+function cleanupWork() {
+  if (!process.env.SLIPSTREAM_READING_HOME_WORK) fs.rmSync(work, { recursive: true, force: true });
+}
 const outputIndex = process.argv.indexOf('--output');
 const output = outputIndex >= 0 ? path.resolve(process.argv[outputIndex + 1]) : null;
 app.setPath('userData', path.join(work, 'profile'));
@@ -59,6 +65,7 @@ app.whenReady().then(async () => {
       : [{ quote: 'Correlation', label: '相关关系' }, { quote: 'causation', label: '因果关系' }] });
   });
   pins = createReadingPins({ BrowserWindow, ipcMain, screen, getSettings: () => settings, getMainWindow: () => main,
+    referenceStore: createReadingReferenceStore(path.join(work, 'references')),
     processReadingText: provider, saveTermCard: input => store.save(input), onOpenLibrary: id => library.open(id),
     requestCapturePermission: async () => { screenRequests += 1; return { granted: false }; },
     captureRegion: async () => { throw new Error('Screenshot fixture must not read the screen'); },
@@ -67,7 +74,7 @@ app.whenReady().then(async () => {
   const channels = ['settings:get', 'shortcut:status-get', 'app:renderer-recovery-status-get', 'window:set-mode',
     'app:session-risk-update', 'terms:get', 'clipboard:pending-status', 'app:quit-listener-ready',
     'app:settings-listener-ready', 'capture:listener-ready', 'app:settings-request-handled',
-    'reading:open-text', 'reading:library-open', 'screenshot:capture', 'llm:process'];
+    'reading:open-text', 'reading:library-open', 'reading:references-open', 'screenshot:capture', 'llm:process'];
   for (const channel of channels) ipcMain.handle(channel, (_event, value) => {
     invocations.push(channel);
     if (channel === 'settings:get') return { ...settings };
@@ -78,12 +85,16 @@ app.whenReady().then(async () => {
     if (channel === 'reading:open-text') return rejectTextHandoff
       ? { success: false, errorCode: 'reading-busy' } : pins.openText(value);
     if (channel === 'reading:library-open') { library.open(); return true; }
+    if (channel === 'reading:references-open') return pins.openReferences();
     if (channel === 'screenshot:capture') { screenRequests += 1; return { success: false, cancelled: true }; }
     if (channel === 'llm:process') throw new Error('Reading home must open a reading card');
     return { status: 'recorded' };
   });
+  const preload = path.join(work, 'preload.js');
+  fs.writeFileSync(preload, fs.readFileSync(path.join(__dirname, '../preload.js'), 'utf8')
+    .replace('platform: process.platform,', `platform: '${windowsUi ? 'win32' : 'darwin'}',`));
   main = new BrowserWindow({ width: 520, height: 680, frame: false, show: false,
-    webPreferences: { preload: path.join(__dirname, '../preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    webPreferences: { preload, sandbox: true, contextIsolation: true, nodeIntegration: false } });
   main.webContents.session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: /^https?:/u.test(details.url) }));
   const entry = before
     ? path.join(os.homedir(), 'Applications/Slipstream 阅读预览.app/Contents/Resources/app.asar/dist/renderer/index.html')
@@ -93,10 +104,17 @@ app.whenReady().then(async () => {
   main.showInactive();
   if (before) {
     await shot(main, '01-reading-home-before.png');
-    library.dispose(); pins.dispose(); main.destroy(); fs.rmSync(work, { recursive: true, force: true }); app.exit(0); return;
+    library.dispose(); pins.dispose(); main.destroy(); cleanupWork(); app.exit(0); return;
   }
   assert.equal(await js('document.querySelector("h1").textContent'), '读懂原文，留下概念');
-  assert(await js('document.querySelector(".reading-capture-primary").getBoundingClientRect().bottom < document.querySelector("textarea").getBoundingClientRect().top'));
+  if (windowsUi) {
+    assert.equal(await js('document.querySelector(".reading-capture-primary") === null'), true);
+    assert(await js('document.body.textContent.includes("Windows 预览暂不支持截图识字")'));
+    assert(await js('document.body.textContent.includes("Alt+C")'));
+    assert.equal(await js('document.querySelector(".capture-permission-note") === null'), true);
+  } else {
+    assert(await js('document.querySelector(".reading-capture-primary").getBoundingClientRect().bottom < document.querySelector("textarea").getBoundingClientRect().top'));
+  }
   await shot(main, '02-reading-home.png');
   await js('document.querySelector(".capture-sample button").click()');
   assert.match(await js('document.querySelector("textarea").value'), /Correlation/);
@@ -135,6 +153,11 @@ app.whenReady().then(async () => {
   await shot(box, '04-reading-card-box.png');
   assert.equal((await store.list()).cards.length, 1);
   library.dispose();
+  await js(`document.querySelector('[aria-label="打开按论文保留的本文速查"]').click()`);
+  await until(() => BrowserWindow.getAllWindows().length === 2, 'paper references from home');
+  const references = BrowserWindow.getAllWindows().find(window => window !== main);
+  await until(() => references.webContents.executeJavaScript('!document.getElementById("reference-content").hidden'), 'reference window rendered');
+  references.close();
   main.setSize(400, 400); main.webContents.setZoomFactor(2);
   await pause(200);
   assert(await js('document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1'), 'home must reflow at 200%');
@@ -145,7 +168,11 @@ app.whenReady().then(async () => {
   await until(() => js('Boolean(document.querySelector("#setup-title"))'), 'first use');
   await shot(main, '06-reading-setup.png');
   assert(await js('document.body.textContent.includes("专业阅读")'));
-  console.log('Reading home passed: screenshot hierarchy, explicit sample loading, text to independent reading card, no screen permission for text, contextual lookup, local save and correct card-box entry, first use and 200% reflow. Model responses are illustrative fixtures; all state is temporary.');
-  pins.dispose(); main.destroy(); fs.rmSync(work, { recursive: true, force: true }); app.exit(0);
-}).catch(error => { console.error(error); library?.dispose(); pins?.dispose(); fs.rmSync(work, { recursive: true, force: true }); app.exit(1); });
+  if (windowsUi) {
+    assert(await js('document.body.textContent.includes("Windows 预览暂不支持截图识字")'));
+    assert.equal(await js('document.body.textContent.includes("截图读译文")'), false);
+  }
+  console.log('Reading home passed: platform-specific capture entry, explicit sample loading, text to independent reading card, no screen permission for text, contextual lookup, local save and correct card-box entry, first use and 200% reflow. Model responses are illustrative fixtures; all state is temporary.');
+  pins.dispose(); main.destroy(); cleanupWork(); app.exit(0);
+}).catch(error => { console.error(error); library?.dispose(); pins?.dispose(); cleanupWork(); app.exit(1); });
 app.on('window-all-closed', () => {});

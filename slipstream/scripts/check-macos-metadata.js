@@ -37,6 +37,9 @@ async function main() {
 
   try {
     fs.mkdirSync(scriptsPath, { recursive: true });
+    fs.cpSync(path.join(__dirname, '..', 'formula-models'), path.join(contentsPath, 'Resources', 'formula-models'), { recursive: true });
+    const ortSuffix = path.join('node_modules', 'onnxruntime-node', 'bin', 'napi-v3', 'darwin', process.arch);
+    fs.cpSync(path.join(__dirname, '..', ortSuffix), path.join(contentsPath, 'Resources', 'app.asar.unpacked', ortSuffix), { recursive: true });
     fs.mkdirSync(path.dirname(helperBinary), { recursive: true });
     fs.writeFileSync(path.join(contentsPath, 'Info.plist'), appPlist);
     fs.writeFileSync(path.join(helperContentsPath, 'Info.plist'), helperPlist);

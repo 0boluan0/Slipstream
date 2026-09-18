@@ -1,6 +1,6 @@
 {
   "name": "slipstream",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A macOS English reading companion for Chinese speakers, with contextual term explanations and local concept cards.",
   "author": "Slipstream",
   "license": "MIT",
@@ -147,18 +147,28 @@
     "diagnose:screen-permission": "electron scripts/check-screen-permission-runtime.js",
     "release:checksums": "node scripts/write-release-checksums.js",
     "format": "prettier --write 'src/**/*.{js,jsx,css,html}'",
-    "check:reading-pins": "node scripts/check-reading-service.js && node scripts/check-term-cards.js && electron scripts/check-reading-pins-native.js && electron scripts/check-term-library-native.js && npm run check:reading-math && npm run check:reading-preview-config",
+    "check:reading-pins": "node scripts/check-reading-service.js && node scripts/check-term-cards.js && electron scripts/check-reading-pins-native.js && electron scripts/check-term-library-native.js && npm run check:reading-math && npm run check:reading-preview-config && npm run check:reading-references",
     "check:reading-math": "node scripts/check-reading-math.js && electron scripts/check-reading-math-native.js",
     "build:reading-preview": "npm run build:renderer && node scripts/build-reading-preview.js",
     "check:reading-preview-config": "node scripts/check-reading-preview-config.js",
     "check:reading-home": "npm run build:renderer && electron scripts/check-reading-home-native.js",
-    "check:apple-tool-retry": "node scripts/check-apple-tool-retry.js"
+    "check:apple-tool-retry": "node scripts/check-apple-tool-retry.js",
+    "build:windows": "npm run build:renderer && node scripts/build-windows.js",
+    "check:windows": "node scripts/check-windows.js",
+    "check:windows-ui": "node scripts/check-reading-home.js",
+    "check:reading-references": "node scripts/check-reading-references.js && electron scripts/check-reading-references-native.js && npm run check:reading-usability",
+    "check:reading-usability": "electron scripts/check-reading-usability-native.js",
+    "check:reading-references-live": "node scripts/check-reading-references-live.js",
+    "setup:formula-models": "node scripts/setup-formula-models.js",
+    "check:formula-ocr": "electron scripts/check-local-formula-ocr.js",
+    "check:formula-models": "node scripts/check-formula-models.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
     "electron-store": "^8.1.0",
     "electron-updater": "6.8.9",
     "katex": "0.18.7",
+    "onnxruntime-node": "1.18.0",
     "openai": "^4.20.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
@@ -200,6 +210,18 @@
           "VisionOCR.swift",
           "ocr-swift-runner.sh"
         ]
+      },
+      {
+        "from": "formula-models",
+        "to": "formula-models",
+        "filter": [
+          "*.onnx",
+          "tokenizer.json"
+        ]
+      },
+      {
+        "from": "licenses",
+        "to": "licenses"
       }
     ],
     "mac": {
@@ -215,7 +237,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "signIgnore": "\\.pak$",
       "extendInfo": {
-        "NSScreenCaptureUsageDescription": "Slipstream \u4ec5\u5728\u4f60\u4e3b\u52a8\u6846\u9009\u65f6\u8bfb\u53d6\u8be5\u5c4f\u5e55\u533a\u57df\uff0c\u5e76\u5728\u672c\u673a\u5b8c\u6210\u622a\u56fe\u4e0e\u6587\u5b57\u8bc6\u522b\u3002 Slipstream only captures the region you select and runs OCR locally."
+        "NSScreenCaptureUsageDescription": "Slipstream 仅在你主动框选时读取该屏幕区域，并在本机完成截图与文字识别。 Slipstream only captures the region you select and runs OCR locally."
       },
       "notarize": false,
       "artifactName": "${productName}-${version}-${arch}.${ext}"

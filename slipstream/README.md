@@ -14,12 +14,15 @@
 
 ```bash
 npm ci
+npm run setup:formula-models
 npm run dev
 ```
 
 `Option + Shift + S` 截图阅读，`Option + C` 读取已复制文字，`Command + ,` 打开设置；粘贴英文后用“开始阅读”或 `Command + Enter` 提交。截图需要 macOS 屏幕录制权限，纯文字阅读不需要。
 
 专业阅读可配置本机 Ollama、DeepSeek、OpenAI、Anthropic 或兼容端点。基础翻译使用 Google Translate，必要时回退至 MyMemory。模型配置的兼容性探测仍使用固定虚构材料和现有结构化校验，界面会说明测试内容；不发送当前阅读材料。
+
+安装包自带本地公式 OCR，无需用户安装 Python 或下载模型。源码构建需先下载固定摘要的模型；模型许可见 `licenses/`，实现和真实论文测试见[公式识别说明](../docs/local-formula-ocr.md)。
 
 ## 核心模块
 
@@ -39,6 +42,7 @@ npm run dev
 ## 验证
 
 ```bash
+npm run check:formula-ocr
 npm test
 npm run lint
 npm run build:renderer

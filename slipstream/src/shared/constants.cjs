@@ -39,6 +39,7 @@ const IPC_CHANNELS = {
   SCREENSHOT_CAPTURE: 'screenshot:capture',
   READING_OPEN_TEXT: 'reading:open-text',
   READING_LIBRARY_OPEN: 'reading:library-open',
+  READING_REFERENCES_OPEN: 'reading:references-open',
   SCREENSHOT_REQUESTED: 'screenshot:requested',
   WINDOW_SET_MODE: 'window:set-mode',
   WINDOW_HIDE: 'window:hide',

@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { Arch } = require('builder-util');
 const { listPackage } = require('@electron/asar');
+const { verifyModels } = require('./check-formula-models');
 const {
   findFileProviderConflictCopies,
   findFileProviderConflictCopiesInEntries,
@@ -26,6 +27,14 @@ exports.default = async function afterPack(context) {
   const swiftSource = path.join(runtimeScripts, 'VisionOCR.swift');
   const ocrBinary = path.join(runtimeScripts, 'slipstream-ocr');
   const archName = Arch[context.arch] === 'arm64' ? 'arm64' : 'x86_64';
+  verifyModels(path.join(appPath, 'Contents', 'Resources', 'formula-models'));
+  const ortDirectory = path.join(appPath, 'Contents', 'Resources', 'app.asar.unpacked', 'node_modules',
+    'onnxruntime-node', 'bin', 'napi-v3', 'darwin', Arch[context.arch]);
+  for (const file of ['onnxruntime_binding.node', 'libonnxruntime.1.18.0.dylib']) {
+    const binary = path.join(ortDirectory, file);
+    const architectures = execFileSync('/usr/bin/lipo', ['-archs', binary], { encoding: 'utf8' });
+    if (!architectures.split(/\s+/).includes(archName)) throw new Error(`Missing ${archName} formula runtime: ${file}`);
+  }
   const bundleConflictCopies = findFileProviderConflictCopies(appPath);
   const conflictCopies = findFileProviderConflictCopiesInEntries(listPackage(asarPath, { isPack: false }));
 

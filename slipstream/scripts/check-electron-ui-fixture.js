@@ -1144,7 +1144,8 @@ function checkNativeElectronBinding() {
     from: 'scripts',
     to: 'scripts',
     filter: ['VisionOCR.swift', 'ocr-swift-runner.sh'],
-  }], 'production resources must remain the exact two-file OCR build allowlist');
+  }, { from: 'formula-models', to: 'formula-models', filter: ['*.onnx', 'tokenizer.json'] },
+  { from: 'licenses', to: 'licenses' }], 'production resources must include the OCR runtime, pinned models and notices');
   assert.match(runtimeCheckSource, /createFixtureRuntimeTempRoot\(\)/);
   assert.match(runtimeCheckSource, /TMPDIR: tempRoot/);
   assert.match(runtimeCheckSource, /TMP: tempRoot/);

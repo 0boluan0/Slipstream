@@ -59,6 +59,7 @@ const { sameShortcutAccelerator } = require('../shared/shortcut-accelerator.cjs'
 const ScreenshotService = require('./screenshot-service');
 const { createReadingPins } = require('./reading-pins');
 const { createTermCardStore } = require('./term-card-store');
+const { createReadingReferenceStore } = require('./reading-reference-store');
 const { createTermLibrary } = require('./term-library');
 const OCRService = require('./ocr-service');
 const ClipboardMonitor = require('./clipboard-monitor');
@@ -876,6 +877,7 @@ function createTrayMenuTemplate(presentation) {
       }),
     },
     { label: '术语卡片盒', click: () => termLibrary?.open() },
+    { label: '本文速查', click: () => readingPins?.openReferences() },
     {
       label: mainWindow?.isVisible() ? '隐藏窗口' : '显示 Slipstream',
       click: toggleMainWindow,
@@ -905,7 +907,7 @@ function createApplicationMenuTemplate() {
         {
           id: 'app-settings',
           label: '设置…',
-          accelerator: 'Command+,',
+          accelerator: process.platform === 'win32' ? 'Control+,' : 'Command+,',
           click: requestAppSettings,
         },
         { type: 'separator' },
@@ -916,7 +918,7 @@ function createApplicationMenuTemplate() {
         {
           id: 'app-quit',
           label: '退出 Slipstream',
-          accelerator: 'Command+Q',
+          accelerator: process.platform === 'win32' ? 'Control+Q' : 'Command+Q',
           click: requestAppQuit,
         },
       ],
@@ -2137,6 +2139,7 @@ function registerIpcHandlers() {
       buildIdentity: runtimeBuildIdentity,
       systemVersion: typeof process.getSystemVersion === 'function' ? process.getSystemVersion() : '未知',
       arch: process.arch,
+      platform: process.platform,
       screenRecordingStatus: getScreenRecordingAccessStatus(),
       settings: getSafeSettings(),
       shortcutRegistrationStatus,
@@ -2857,10 +2860,18 @@ function registerIpcHandlers() {
     termLibrary.open();
     return true;
   });
+  ipcMain.handle(IPC_CHANNELS.READING_REFERENCES_OPEN, (event) => {
+    assertTrustedIpc(event);
+    if (app.isQuitting || userDataResetRegistry.isLocked(event.sender.id) || !readingPins) return false;
+    return readingPins.openReferences();
+  });
 
   // Screenshot capture flow: capture region -> OCR -> reading card
   ipcMain.handle(IPC_CHANNELS.SCREENSHOT_CAPTURE, async (event) => {
     assertTrustedIpc(event);
+    if (process.platform === 'win32') {
+      return { success: false, errorCode: 'screenshot-unsupported', error: 'Windows 预览暂不支持截图识字，请复制或粘贴文字开始阅读。' };
+    }
     if (readingPins && store.getAllSettings().setupMode !== 'unconfigured') {
       return readingPins.capture();
     }
@@ -2897,17 +2908,19 @@ app.on('ready', () => {
   readingPins = createReadingPins({
     BrowserWindow, ipcMain, screen,
     captureAppName: isReadingPreview ? 'Slipstream 阅读预览' : 'Slipstream',
+    captureSupported: process.platform === 'darwin',
     copyText: (text) => {
       if (app.isQuitting || userDataResetRegistry.isLocked(mainWindow?.webContents?.id)) throw new Error('reading-copy-unavailable');
       clipboardMonitor?.suppressNextText(text);
       clipboard.writeText(text);
     },
     saveTermCard: (input) => termCardStore.save(input),
+    referenceStore: createReadingReferenceStore(path.join(app.getPath('documents'), 'Slipstream', '本文速查')),
     onOpenLibrary: (id) => termLibrary.open(id),
     getSettings: () => store.isStoreReady() ? store.getAllSettings() : null,
     getMainWindow: () => mainWindow,
     captureRegion: ScreenshotService.captureSelectedRegion,
-    performOCR: OCRService.performOCR,
+    performOCR: OCRService.performReadingOCR,
     processReadingText: LLMService.processReadingText,
     recognizeReadingFormulas: LLMService.recognizeReadingFormulas,
     requestCapturePermission: requestScreenRecordingAccessForCapture,

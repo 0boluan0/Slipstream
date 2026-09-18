@@ -44,9 +44,9 @@ p { margin: 0; }
 #review .muted { margin: 8px 0; }
 textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid var(--line); border-radius: 7px; background: var(--paper); color: inherit; padding: 10px; font-size: 14px; line-height: 1.65; }
 .review-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; margin-bottom: 14px; }
-#formula-tools, #formula-preview { margin-top: 15px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; }
+#formula-tools, #formula-preview, #source-correction { margin-top: 15px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; }
 #formula-tools button { white-space: normal; text-align: left; margin: 8px 0; max-width: 100%; }
-#formula-tools summary, #formula-preview summary { color: var(--accent); font-size: 12px; }
+#formula-tools summary, #formula-preview summary, #source-correction summary { color: var(--accent); font-size: 12px; }
 #source-preview { white-space: pre-wrap; font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
 .primary { background: var(--accent); color: var(--paper); border-color: var(--accent); }
 .primary:hover { opacity: .9; background: var(--accent); }
