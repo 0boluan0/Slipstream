@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const katex = require('katex');
@@ -19,7 +20,7 @@ const fixtures = path.resolve(__dirname, '../../docs/usability/2026-09-18/formul
 const compact = (value) => value.replace(/\s+/g, '');
 const results = [];
 let manager, service;
-setTimeout(() => { console.error('Local formula OCR exceeded 90 seconds'); app.exit(1); }, 90000).unref();
+setTimeout(() => { console.error('Local formula OCR exceeded 180 seconds'); app.exit(1); }, 180000).unref();
 
 async function fixture(name, html) {
   const win = new BrowserWindow({ width: 900, height: 360, show: false,
@@ -35,6 +36,12 @@ async function fixture(name, html) {
 }
 
 app.whenReady().then(async () => {
+  // Release apps contain a compiled Swift helper. Build the development helper
+  // before timing OCR: a clean CI host can need >15 seconds to compile Vision.
+  execFileSync('/bin/bash', [path.join(__dirname, 'ocr-swift-runner.sh'), path.join(fixtures, 'attention-equation.png')], {
+    env: require('../src/main/ocr-environment').createOcrEnvironment(path.join(app.getPath('userData'), 'ocr-cache')),
+    timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'],
+  });
   // The OCR path must work without credentials and without any HTTP request.
   const denyNetwork = () => { throw new Error('OCR attempted network access'); };
   global.fetch = denyNetwork;
