@@ -31,6 +31,13 @@ exports.run = function run() {
       deepseekApiKey: safeStorage.decryptString(Buffer.from(raw.deepseekApiKey.slice(4), 'base64')) };
     const { processReadingText, recognizeReadingFormulas } = require('./llm-service');
     report.provider = settings.activeBackend; report.model = settings.activeModel;
+    if (process.argv.includes('--reading-check-references')) {
+      stage = 'paper-references';
+      const passed = await require('./reading-reference-check').run({ processReadingText, settings, report, saveReport });
+      fs.rmSync(work, { recursive: true, force: true });
+      app.exit(passed ? 0 : 1);
+      return;
+    }
     if (process.argv.includes('--reading-check-terms')) {
       stage = 'term-selection';
       const passed = await require('./reading-term-check').run({ processReadingText, settings, report, saveReport });

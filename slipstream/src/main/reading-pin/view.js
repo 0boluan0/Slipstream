@@ -64,9 +64,11 @@ function createSegment(segment) {
   translation.className = 'translation-paragraph';
   const terms = document.createElement('div');
   terms.className = 'term-list';
-  section.append(tools, source, translation, terms);
+  const referenceHits = document.createElement('div');
+  referenceHits.className = 'reference-hit-list';
+  section.append(tools, source, translation, terms, referenceHits);
   byId('translation').append(section);
-  const node = { section, source, translation, toggle, terms, termsKey: '', sourceValue: segment.source };
+  const node = { section, source, translation, toggle, terms, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
   segmentNodes.set(segment.id, node);
   return node;
 }
@@ -111,7 +113,7 @@ function renderSegments(segments) {
           button.setAttribute('aria-label', `解释 ${term.label} · ${term.quote}`);
           button.title = term.quote;
           const labelText = document.createElement('span');
-          labelText.textContent = term.label;
+          window.renderReadingMath(labelText, term.label);
           const english = document.createElement('span');
           english.className = 'term-english';
           english.lang = 'en';
@@ -126,6 +128,24 @@ function renderSegments(segments) {
     node.terms.querySelectorAll('button').forEach((button) => {
       button.setAttribute('aria-pressed', String(state.lookup?.quote === button.dataset.quote));
     });
+    const hitsKey = JSON.stringify(segment.referenceHits || []);
+    if (node.hitsKey !== hitsKey) {
+      node.hitsKey = hitsKey;
+      node.referenceHits.replaceChildren();
+      if (segment.referenceHits?.length) {
+        const label = document.createElement('span');
+        label.textContent = '本文';
+        node.referenceHits.append(label);
+        for (const hit of segment.referenceHits) {
+          const button = document.createElement('button');
+          button.setAttribute('aria-label', `查本文定义：${hit.symbol}`);
+          window.renderReadingMath(button, window.readingReferences.symbolText(hit.symbol));
+          button.onclick = () => requestLookup({ segmentId: segment.id, start: hit.start, end: hit.end });
+          node.referenceHits.append(button);
+        }
+      }
+    }
+    node.referenceHits.hidden = !segment.referenceHits?.length;
   }
 }
 
@@ -157,6 +177,7 @@ function render(next) {
     byId('source-editor').value = state.sourceText || '';
     window.renderReadingMath(byId('source-preview'), state.sourceText || '');
     byId('formula-preview').open = window.readingMath.mathRanges(state.sourceText || '').length > 0;
+    byId('source-correction').open = !byId('formula-preview').open;
     byId('review-title').focus({ preventScroll: true });
   }
   byId('reading-content').hidden = state.phase === 'review' || mode === 'image';
@@ -185,25 +206,29 @@ function render(next) {
   byId('lookup-panel').hidden = !lookup && !state.lookupNotice;
   if (lookup || state.lookupNotice) {
     const contextual = lookup?.contextual ?? state.explainSupported;
-    byId('lookup-title').textContent = contextual ? '术语与词句解释' : '词句翻译';
-    byId('lookup-quote').textContent = lookup?.quote || '';
+    byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : contextual ? '术语与词句解释' : '词句翻译';
+    window.renderReadingMath(byId('lookup-quote'), lookup?.reference ? window.readingReferences.symbolText(lookup.quote) : lookup?.quote || '');
     window.renderReadingMath(byId('lookup-meaning'), state.lookupStatus === 'loading' ? '正在结合这段原文解释…' : lookup?.meaning || '');
-    byId('meaning-label').hidden = !contextual || state.lookupStatus !== 'done';
+    byId('meaning-label').hidden = lookup?.reference || !contextual || state.lookupStatus !== 'done';
+    byId('lookup-meaning').hidden = Boolean(lookup?.reference);
+    byId('lookup-note').hidden = Boolean(lookup?.reference);
     window.renderReadingMath(byId('lookup-note'), lookup?.note || '');
-    byId('note-label').hidden = !lookup?.note;
+    byId('note-label').hidden = lookup?.reference || !lookup?.note;
     byId('lookup-notice').hidden = !state.lookupNotice;
     byId('lookup-notice').textContent = state.lookupNotice || '';
     byId('lookup-retry').hidden = state.lookupStatus !== 'error' || !selected;
     byId('lookup-settings').hidden = contextual || state.lookupStatus !== 'done';
-    byId('save-term').disabled = state.lookupStatus !== 'done' || state.saveStatus === 'saving';
-    byId('save-term').textContent = state.saveStatus === 'saving' ? '正在保存…' : state.saveStatus === 'saved' ? '打开卡片' : '存为卡片';
-    byId('save-note').textContent = state.saveStatus === 'saved' ? '已保存在本地' : state.saveStatus === 'error' ? '保存失败，可重试' : '保留解释与这段原文';
+    byId('save-term').disabled = state.lookupStatus !== 'done' || state.saveStatus === 'saving' || !lookup?.meaning;
+    byId('save-term').parentElement.hidden = Boolean(lookup?.reference && (!lookup.meaning || !lookup.referenceSource));
+    byId('save-term').textContent = state.saveStatus === 'saving' ? '正在保存…' : state.saveStatus === 'saved' ? '打开卡片' : lookup?.reference ? '存为知识卡片' : '存为卡片';
+    byId('save-note').textContent = state.saveStatus === 'saved' ? '已保存在本地' : state.saveStatus === 'error' ? '保存失败，可重试' : lookup?.reference ? '保留为长期知识' : '保留解释与这段原文';
   }
   if (state.phase === 'done' && !fitRequested && mode === 'translation' && !state.lookup && !state.collapsed) {
     fitRequested = true;
     requestAnimationFrame(() => act('fit', { height: byId('translation').scrollHeight + 180 }));
   }
   previousPhase = state.phase;
+  window.readingReferences.render(state);
 }
 
 function captureSelection() {
@@ -243,7 +268,12 @@ byId('recognize-formulas').onclick = async () => {
 byId('retry').onclick = () => act('translate', { revision: state?.revision, retryFailed: true });
 byId('retake').onclick = () => act('retake');
 for (const id of ['settings', 'footer-settings', 'lookup-settings']) byId(id).onclick = () => act('settings');
-byId('edit-source').onclick = () => act('review');
+byId('edit-source').onclick = async () => {
+  await act('review');
+  setMode('translation');
+  byId('source-correction').open = true;
+  byId('source-editor').focus();
+};
 byId('review-image').onclick = () => setMode('image');
 byId('lookup-close').onclick = () => act('dismiss-lookup');
 byId('save-term').onclick = () => act(state?.saveStatus === 'saved' ? 'library' : 'save-term');
@@ -288,9 +318,11 @@ document.addEventListener('keydown', (event) => {
   else if (event.key === 'Escape') {
     event.preventDefault();
     if (byId('processing-info').open) byId('processing-info').open = false;
+    else if (window.readingReferences.isEditing()) window.readingReferences.closeEditor();
     else if (!byId('selection-bar').hidden) { window.getSelection()?.removeAllRanges(); byId('selection-bar').hidden = true; }
     else act(state?.lookup || state?.lookupNotice ? 'dismiss-lookup' : 'close');
   }
 });
+window.readingReferences.init(act);
 window.readingPin.subscribe(render);
 act('ready');

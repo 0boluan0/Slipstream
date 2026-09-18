@@ -11,6 +11,7 @@ import {
   WarningCircle,
 } from '../phosphorIcons';
 import constants from '../../shared/constants';
+import { useIpc } from '@renderer-ipc';
 import { SETUP_MODES } from '../utils/setupReadiness.mjs';
 import { describeSetupCaptureIntent } from '../utils/setupCaptureIntent.mjs';
 import {
@@ -34,6 +35,7 @@ export default function SetupGate({
   onSettingsMenuRequestHandled,
   loading = false,
 }) {
+  const { platform } = useIpc();
   const {
     discardFailedSettings,
     retryFailedSettings,
@@ -215,7 +217,9 @@ export default function SetupGate({
         <header className="setup-header">
           <span className="setup-eyebrow">首次使用</span>
           <h1 id="setup-title">从下一段英文开始</h1>
-          <p>截图读译文，按需解释专业概念，把值得留下的理解存成本地卡片。</p>
+          <p>{platform === 'win32'
+            ? '复制或粘贴英文，读中文译文、查询概念并保存卡片。Windows 预览暂不支持截图识字。'
+            : '截图读译文，按需解释专业概念，把值得留下的理解存成本地卡片。'}</p>
         </header>
 
         {recoveryNotice && (
@@ -297,7 +301,7 @@ export default function SetupGate({
             <div className="setup-choice-icon" aria-hidden="true"><Translate size={22} /></div>
             <div>
               <h2>只用基础翻译</h2>
-              <p>先体验截图阅读和中文译文，无需填写模型密钥。</p>
+              <p>先体验英文原文的中文译文，无需填写模型密钥。</p>
             </div>
             <div className="setup-limit" role="note">
               专业概念解释需要配置模型；基础模式中的选词查询提供翻译。
@@ -328,7 +332,7 @@ export default function SetupGate({
 
         <footer className="setup-privacy">
           <LockKey size={15} />
-          <span>专业阅读使用你选择的服务；基础翻译使用 Google / MyMemory。截图默认留在本机，剪贴板自动检测默认关闭。</span>
+          <span>专业阅读使用你选择的服务；基础翻译使用 Google / MyMemory。{platform === 'darwin' ? '截图默认留在本机，' : ''}剪贴板自动检测默认关闭。</span>
         </footer>
       </section>
     </main>

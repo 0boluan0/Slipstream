@@ -50,11 +50,19 @@ function captureRegion(outPath, { signal } = {}) {
       onAbort();
       return;
     }
-    child = execFile('/usr/sbin/screencapture', ['-i', '-x', '-t', 'png', filePath], { timeout: 30000 }, (error) => {
+    child = execFile('/usr/sbin/screencapture', ['-i', '-x', '-t', 'png', filePath], { timeout: 120000 }, (error) => {
       if (error) {
         cleanupFile();
         if (signal?.aborted || error.code === 1) return finish(reject, cancelError());
+        if (error.killed) return finish(reject, Object.assign(new Error('Screenshot selection timed out'), { code: 'capture-timeout' }));
         return finish(reject, new Error(`screencapture failed: ${error.message}`));
+      }
+      // Escape can exit screencapture successfully without creating a file.
+      try {
+        if (!fs.statSync(filePath).size) { cleanupFile(); return finish(reject, cancelError()); }
+      } catch (fileError) {
+        if (fileError.code === 'ENOENT') return finish(reject, cancelError());
+        return finish(reject, fileError);
       }
       finish(resolve, filePath);
     });

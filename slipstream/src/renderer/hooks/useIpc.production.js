@@ -14,5 +14,5 @@ export function useIpc() {
     return () => {};
   }, []);
 
-  return { invoke, on };
+  return { invoke, on, platform: window.api?.platform || 'darwin' };
 }

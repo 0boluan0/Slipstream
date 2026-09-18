@@ -484,9 +484,10 @@ const expectedOcrResources = [{
   from: 'scripts',
   to: 'scripts',
   filter: ['VisionOCR.swift', 'ocr-swift-runner.sh'],
-}];
+}, { from: 'formula-models', to: 'formula-models', filter: ['*.onnx', 'tokenizer.json'] },
+{ from: 'licenses', to: 'licenses' }];
 if (JSON.stringify(pkg.build.extraResources) !== JSON.stringify(expectedOcrResources)) {
-  console.error('packaged extraResources must remain the exact two-file OCR build allowlist');
+  console.error('packaged extraResources must include the OCR runtime, pinned models and license notices');
   process.exit(1);
 }
 

@@ -1,0 +1,102 @@
+Window: "Slipstream · 阅读卡片", App: Slipstream 阅读预览.
+0 standard window Slipstream · 阅读卡片, Secondary Actions: Raise
+	1 container Slipstream · 阅读卡片
+		2 container
+			3 HTML content Slipstream · 阅读卡片, URL: file://<user-home>/Applications/Slipstream%20%E9%98%85%E8%AF%BB%E9%A2%84%E8%A7%88.app/Contents/Resources/app.asar/src/main/reading-pin/index.html
+				4 container
+					5 text Slipstream 阅读
+					6 button Description: 收起卡片, Help: 收起卡片 · 双击顶部
+					7 toggle button Description: 置顶, Help: 取消置顶, Value: 1
+					8 button Description: 关闭这张卡片, Help: 关闭卡片 · Esc
+				9 tab group 阅读方式
+					10 tab (selected) 译文, Value: 1
+					11 tab (settable, integer) 对照, Value: 0
+				12 container 阅读字号
+					13 button 缩小字号
+					14 button 放大字号
+				15 container
+					16 text 这张卡片所属的阅读
+					17 pop-up button 这张卡片所属的阅读, Value: DML · 9月18日体验测试
+						18 (selected) DML · 9月18日体验测试
+					19 button 本文速查 · 0
+				20 container
+					21 text 之后的新截图沿用这篇阅读；已打开的其他卡片保留各自归属。
+					22 button 重新读取
+					23 container 译文
+						24 container
+							25 text 01
+							26 button 查看第 1 段英文原文
+							27 text We develop a series of simple results for obtaining root-N consistent estimation, where N
+is the sample size, and valid inferential statements about a low-dimensional parameter of
+interest, θ0, in the presence of a high-dimensional or “highly complex” nuisance parame-
+ter, η0. The parameter of interest will typically be a causal parameter or treatment effect
+parameter, and we consider settings in which the nuisance parameter will be estimated
+using machine learning (ML) methods such as random forests, lasso 我们建立了一系列简单的结果，用于在存在高维或“高度复杂”的干扰参数
+							28 container $\eta_0$
+								29 container
+									30 text 𝜂 0
+							31 text  的情况下，获得根号
+							32 text 𝑁
+							33 text  相合估计，其中
+							34 text 𝑁
+							35 text  是样本量，并对低维的感兴趣参数
+							36 container $\theta_0$
+								37 container
+									38 text 𝜃 0
+							39 text  作出有效的推断陈述。感兴趣参数通常是因果参数或处理效应参数，我们考虑的情形是干扰参数将使用机器学习（ML）方法进行估计，例如随机森林、lasso 或 post-lasso、神经网络、提升回归树，以及这些方法的各种混合与集成。这些 ML 方法能够处理许多协变量，并在干扰参数高度复杂时提供干扰参数的自然估计量。在这里，高度复杂在形式上意味着干扰参数参数空间的熵随样本量增加，从而使我们超出经典半参数文献中所考虑的传统框架，在该框架中干扰参数空间的复杂度被认为足够小。 术语
+							40 toggle button Description: 解释 根号 N 相合估计 · root-N consistent estimation, Help: root-N consistent estimation, Value: 1
+							41 toggle button Description: 解释 参数空间的熵 · entropy of the parameter space, Help: entropy of the parameter space, Value: 0
+							42 toggle button Description: 解释 半参数文献 · semi-parametric literature, Help: semi-parametric literature, Value: 0
+							43 toggle button Description: 解释 机器学习方法 · machine learning (ML) methods, Help: machine learning (ML) methods, Value: 0
+					44 button 整理这段的符号定义
+				45 container 术语与词句解释
+					46 heading 术语与词句解释, Value: 2
+						47 text 术语与词句解释
+					48 button 收起词句解释
+					49 text root-N consistent estimation
+					50 container
+						51 text 概念是什么 指估计量的收敛速度达到
+						52 container $1/\sqrt{N}$
+							53 container
+								54 text 1 /
+								55 text 𝑁
+						56 text  量级的一致性，其中
+						57 text 𝑁
+						58 text  是样本量。也就是说，随着样本量
+						59 text 𝑁
+						60 text  增大，估计量与真值之间的误差以
+						61 container $1/\sqrt{N}$
+							62 container
+								63 text 1 /
+								64 text 𝑁
+						65 text  的速度趋于零（在适当的概率意义下）。这是参数估计中常见的“快”收敛速度，通常与经典参数估计（如样本均值估计总体均值）的收敛速度相同。 放在这段里 在本段中，作者强调即使存在高维或“高度复杂”的冗余参数
+						66 container $\eta_0$
+							67 container
+								68 text 𝜂 0
+						69 text ，仍希望得到关于低维目标参数
+						70 container $\theta_0$
+							71 container
+								72 text 𝜃 0
+						73 text  的 root-N 一致估计。这里的
+						74 text 𝑁
+						75 text  被明确说明为样本量。该目标与经典半参数文献中冗余参数空间复杂度足够小的传统框架形成对照；本段指出，当冗余参数空间的熵随样本量增大而增长时，就超出了那个传统框架。
+					76 button 记入本文速查
+					77 container
+						78 text 保留解释与这段原文
+						79 button 存为卡片
+				80 container
+					81 text 1 段 · 已完成
+					82 button 卡片盒
+					83 disclosure triangle Description: 查看处理位置, Help: 处理位置
+						84 text 处理位置
+					85 button 复制完整译文
+86 menu bar
+	87 Slipstream
+	88 编辑
+	89 窗口
+
+Selected text: ```
+nuisance parameter
+```
+
+Note: Pay special attention to the content selected by the user. If the user asks a question or refers to the content they are looking at on-screen, they might be referring to the selected content (but they might be referring to something else that's visible, too).

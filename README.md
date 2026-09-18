@@ -8,7 +8,7 @@
   <p><a href="#开始使用">开始使用</a> · <a href="./docs/reading-pins.md">阅读功能说明</a> · <a href="https://github.com/0boluan0/Slipstream/issues">反馈问题</a></p>
 </div>
 
-> **阅读版 v1.1.0** · macOS 12+ · [下载安装包](https://github.com/0boluan0/Slipstream/releases/tag/v1.1.0) · 已安装正式版可从菜单选择“检查更新”。
+> **阅读版 v1.2.0** · macOS 12+ · [下载安装包](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.0) · 已安装正式版可从菜单选择“检查更新”。
 
 <p align="center"><img src="./docs/images/02-reading-home.png" width="520" alt="中文阅读首页，截图阅读是主要入口，也可粘贴英文或打开本地卡片盒"></p>
 
@@ -47,9 +47,15 @@
 
 <p align="center"><img src="./docs/images/04-reading-card-box.png" width="860" alt="本地术语卡片盒，包含搜索、概念解释、原文、个人理解和关联卡片"></p>
 
+## 本文速查
+
+[「本文速查」](./docs/reading-references.md)：按论文记住符号、缩写和本文约定，保留原文依据，跨截图查询、隔天继续阅读。候选定义由你决定是否留下；本地查询与长期概念卡片盒各有入口。
+
 ## 数学公式
 
 译文、术语解释和本地卡片支持行内与独立 LaTeX 公式渲染，复制时保留 LaTeX。独立公式沿用原文，疑似数学 OCR 结果先进入可编辑核对界面。
+
+安装包自带[本地公式识别](./docs/local-formula-ocr.md)：截图时自动识别公式区域，恢复 LaTeX 并放回原句，再对照原图核对。不需要 API Key 或通用大模型，使用时无需另装组件。
 
 使用支持的 DeepSeek 配置时，可以主动选择“识别公式”，将当前截图交给视觉模型转写；转写后仍需对照截图确认。该操作会单独说明图片去向。公式支持用于保留和阅读数学内容，复杂排版与识别结果仍需要人工核对。
 
@@ -57,8 +63,8 @@
 
 支持 **macOS 12 及以上**。下载与你的 Mac 对应的安装包，将 Slipstream 拖入“应用程序”：
 
-- [Apple 芯片版](https://github.com/0boluan0/Slipstream/releases/download/v1.1.0/Slipstream-1.1.0-arm64.dmg)
-- [Intel 版](https://github.com/0boluan0/Slipstream/releases/download/v1.1.0/Slipstream-1.1.0-x64.dmg)
+- [Apple 芯片版](https://github.com/0boluan0/Slipstream/releases/download/v1.2.0/Slipstream-1.2.0-arm64.dmg)
+- [Intel 版](https://github.com/0boluan0/Slipstream/releases/download/v1.2.0/Slipstream-1.2.0-x64.dmg)
 
 已安装正式版可从 Slipstream 菜单检查更新，下载完成后确认重启安装。独立“Slipstream 阅读预览”使用单独的配置与权限，请安装正式版并完成其首次配置。
 
@@ -68,6 +74,7 @@
 git clone https://github.com/0boluan0/Slipstream.git
 cd Slipstream/slipstream
 npm ci
+npm run setup:formula-models
 npm run dev
 ```
 
@@ -83,7 +90,7 @@ npm run dev
 
 ## 数据如何处理
 
-- **截图识字在本机**：默认使用 Apple Vision。主动选择公式识别时，当前截图才会发送给所说明的视觉服务。
+- **截图识字在本机**：文字使用 Apple Vision；公式使用随应用附带的专用识别组件。主动选择云端重新识别时，当前截图才会发送给所说明的视觉服务。
 - **处理位置可见**：原文发给你选定的服务翻译；点击词句后，再发送词句与本次阅读上下文请求解释。本机 Ollama 使用本地端点。
 - **保存由你决定**：临时阅读卡片不自动成为历史记录；主动保存的概念卡片包含解释和原文。
 - **剪贴板监听默认关闭**，开启前确认处理去向，开启后界面和菜单栏持续显示去向及关闭入口；API Key 使用 macOS 加密存储；应用没有账户、广告或产品分析埋点。

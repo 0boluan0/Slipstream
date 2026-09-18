@@ -1,0 +1,249 @@
+{
+  "date": "2026-09-14T16:11:12.638Z",
+  "capture": "Authored notation excerpts only; no screen or document capture.",
+  "cases": [
+    {
+      "name": "explicit-definitions",
+      "expected": [
+        "x_i",
+        "n",
+        "\\lambda"
+      ],
+      "source": "Let $x_i \\in \\mathbb{R}^d$ denote the feature vector of the i-th training example. Let $n$ be the number of training examples. The regularization strength is denoted by $\\lambda$.",
+      "result": {
+        "translation": "令 $x_i \\in \\mathbb{R}^d$ 表示第 i 个训练样本的特征向量。令 $n$ 为训练样本的数量。正则化强度由 $\\lambda$ 表示。",
+        "terms": [
+          {
+            "quote": "feature vector",
+            "label": "特征向量",
+            "start": 38,
+            "end": 52
+          },
+          {
+            "quote": "regularization strength",
+            "label": "正则化强度",
+            "start": 131,
+            "end": 154
+          }
+        ],
+        "references": [
+          {
+            "symbol": "$x_i \\in \\mathbb{R}^d$",
+            "meaning": "第 i 个训练样本的特征向量，属于 d 维实数空间",
+            "evidence": "Let $x_i \\in \\mathbb{R}^d$ denote the feature vector of the i-th training example.",
+            "source": "Let $x_i \\in \\mathbb{R}^d$ denote the feature vector of the i-th training example. Let $n$ be the number of training examples. The regularization strength is denoted by $\\lambda$.",
+            "origin": "excerpt",
+            "scope": ""
+          },
+          {
+            "symbol": "$n$",
+            "meaning": "训练样本的数量",
+            "evidence": "Let $n$ be the number of training examples.",
+            "source": "Let $x_i \\in \\mathbb{R}^d$ denote the feature vector of the i-th training example. Let $n$ be the number of training examples. The regularization strength is denoted by $\\lambda$.",
+            "origin": "excerpt",
+            "scope": ""
+          },
+          {
+            "symbol": "$\\lambda$",
+            "meaning": "正则化强度",
+            "evidence": "The regularization strength is denoted by $\\lambda$.",
+            "source": "Let $x_i \\in \\mathbb{R}^d$ denote the feature vector of the i-th training example. Let $n$ be the number of training examples. The regularization strength is denoted by $\\lambda$.",
+            "origin": "excerpt",
+            "scope": ""
+          }
+        ]
+      },
+      "elapsedMs": 1514,
+      "passed": false
+    },
+    {
+      "name": "equation-without-definitions",
+      "expected": [],
+      "source": "We minimize $$L(\\theta) = \\sum_i \\ell(f_\\theta(x_i), y_i) + \\lambda R(\\theta).$$ The optimization details are given in the next section.",
+      "result": {
+        "translation": "我们最小化 $$L(\\theta) = \\sum_i \\ell(f_\\theta(x_i), y_i) + \\lambda R(\\theta).$$ 优化细节将在下一节给出。",
+        "terms": [
+          {
+            "quote": "minimize",
+            "label": "最小化",
+            "start": 3,
+            "end": 11
+          },
+          {
+            "quote": "L(\\theta)",
+            "label": "目标函数",
+            "start": 14,
+            "end": 23
+          },
+          {
+            "quote": "\\ell(f_\\theta(x_i), y_i)",
+            "label": "损失项",
+            "start": 33,
+            "end": 57
+          },
+          {
+            "quote": "\\lambda R(\\theta)",
+            "label": "正则化项",
+            "start": 60,
+            "end": 77
+          }
+        ],
+        "references": []
+      },
+      "elapsedMs": 1225,
+      "passed": true
+    },
+    {
+      "name": "ordinary-prose",
+      "expected": [],
+      "source": "The next section presents the results. We then discuss the limitations and conclude the paper.",
+      "result": {
+        "translation": "下一节呈现结果。随后我们讨论局限性并总结全文。",
+        "terms": [],
+        "references": []
+      },
+      "elapsedMs": 865,
+      "passed": true
+    },
+    {
+      "name": "same-symbol-different-sections",
+      "expected": [
+        "K",
+        "K"
+      ],
+      "source": "In Section 2, $K$ denotes the number of mixture components. In Section 3, we reuse $K$ to denote a kernel matrix.",
+      "result": {
+        "translation": "在第2节中，$K$ 表示混合分量的数量。在第3节中，我们重新使用 $K$ 来表示核矩阵。",
+        "terms": [
+          {
+            "quote": "mixture components",
+            "label": "混合分量",
+            "start": 40,
+            "end": 58
+          },
+          {
+            "quote": "kernel matrix",
+            "label": "核矩阵",
+            "start": 99,
+            "end": 112
+          }
+        ],
+        "references": [
+          {
+            "symbol": "$K$",
+            "meaning": "混合分量的数量",
+            "evidence": "In Section 2, $K$ denotes the number of mixture components.",
+            "source": "In Section 2, $K$ denotes the number of mixture components. In Section 3, we reuse $K$ to denote a kernel matrix.",
+            "origin": "excerpt",
+            "scope": ""
+          },
+          {
+            "symbol": "$K$",
+            "meaning": "核矩阵",
+            "evidence": "In Section 3, we reuse $K$ to denote a kernel matrix.",
+            "source": "In Section 2, $K$ denotes the number of mixture components. In Section 3, we reuse $K$ to denote a kernel matrix.",
+            "origin": "excerpt",
+            "scope": ""
+          }
+        ]
+      },
+      "elapsedMs": 1263,
+      "passed": true
+    },
+    {
+      "name": "case-sensitive-notation",
+      "expected": [
+        "X",
+        "x"
+      ],
+      "source": "Let $X$ be a random variable and let $x$ denote a fixed observed value of that variable.",
+      "result": {
+        "translation": "设 $X$ 为一个随机变量，并令 $x$ 表示该变量的一个固定观测值。",
+        "terms": [
+          {
+            "quote": "random variable",
+            "label": "随机变量",
+            "start": 13,
+            "end": 28
+          },
+          {
+            "quote": "fixed observed value",
+            "label": "固定观测值",
+            "start": 50,
+            "end": 70
+          }
+        ],
+        "references": [
+          {
+            "symbol": "$X$",
+            "meaning": "随机变量",
+            "evidence": "Let $X$ be a random variable and let $x$ denote a fixed observed value of that variable.",
+            "source": "Let $X$ be a random variable and let $x$ denote a fixed observed value of that variable.",
+            "origin": "excerpt",
+            "scope": ""
+          },
+          {
+            "symbol": "$x$",
+            "meaning": "该随机变量的一个固定观测值",
+            "evidence": "Let $X$ be a random variable and let $x$ denote a fixed observed value of that variable.",
+            "source": "Let $X$ be a random variable and let $x$ denote a fixed observed value of that variable.",
+            "origin": "excerpt",
+            "scope": ""
+          }
+        ]
+      },
+      "elapsedMs": 1074,
+      "passed": true
+    },
+    {
+      "name": "subscripts-and-accents",
+      "expected": [
+        "\\beta_0",
+        "\\hat{\\beta}"
+      ],
+      "source": "The intercept is denoted by $\\beta_0$. We write $\\hat{\\beta}$ for the estimated coefficient vector.",
+      "result": {
+        "translation": "截距用 $\\beta_0$ 表示。我们用 $\\hat{\\beta}$ 表示估计的系数向量。",
+        "terms": [
+          {
+            "quote": "intercept",
+            "label": "截距",
+            "start": 4,
+            "end": 13
+          },
+          {
+            "quote": "estimated coefficient vector",
+            "label": "估计系数向量",
+            "start": 70,
+            "end": 98
+          }
+        ],
+        "references": [
+          {
+            "symbol": "$\\beta_0$",
+            "meaning": "截距",
+            "evidence": "The intercept is denoted by $\\beta_0$.",
+            "source": "The intercept is denoted by $\\beta_0$. We write $\\hat{\\beta}$ for the estimated coefficient vector.",
+            "origin": "excerpt",
+            "scope": ""
+          },
+          {
+            "symbol": "$\\hat{\\beta}$",
+            "meaning": "估计的系数向量",
+            "evidence": "We write $\\hat{\\beta}$ for the estimated coefficient vector.",
+            "source": "The intercept is denoted by $\\beta_0$. We write $\\hat{\\beta}$ for the estimated coefficient vector.",
+            "origin": "excerpt",
+            "scope": ""
+          }
+        ]
+      },
+      "elapsedMs": 1344,
+      "passed": true
+    }
+  ],
+  "readingCalls": [],
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "completed": true,
+  "passed": false
+}

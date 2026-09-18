@@ -10,6 +10,7 @@ const {
 function main() {
   assert.deepEqual(Object.values(BUILD_IDENTITIES), [
     'development',
+    'windows-preview',
     'local-adhoc',
     'developer-id',
     'packaged-unknown',

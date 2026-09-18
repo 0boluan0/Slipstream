@@ -1,11 +1,18 @@
 const BUILD_IDENTITIES = Object.freeze({
   DEVELOPMENT: 'development',
+  WINDOWS_PREVIEW: 'windows-preview',
   LOCAL_ADHOC: 'local-adhoc',
   DEVELOPER_ID: 'developer-id',
   PACKAGED_UNKNOWN: 'packaged-unknown',
 });
 
 const BUILD_IDENTITY_DESCRIPTIONS = Object.freeze({
+  [BUILD_IDENTITIES.WINDOWS_PREVIEW]: Object.freeze({
+    identity: BUILD_IDENTITIES.WINDOWS_PREVIEW,
+    label: 'Windows 预览 · 未签名',
+    detail: '支持文字阅读与概念卡片；截图识字尚未支持。',
+    isPublicDistribution: false,
+  }),
   [BUILD_IDENTITIES.DEVELOPMENT]: Object.freeze({
     identity: BUILD_IDENTITIES.DEVELOPMENT,
     label: '源码预览',
@@ -33,6 +40,7 @@ const BUILD_IDENTITY_DESCRIPTIONS = Object.freeze({
 });
 
 const DECLARED_PACKAGED_IDENTITIES = new Set([
+  BUILD_IDENTITIES.WINDOWS_PREVIEW,
   BUILD_IDENTITIES.LOCAL_ADHOC,
   BUILD_IDENTITIES.DEVELOPER_ID,
   BUILD_IDENTITIES.PACKAGED_UNKNOWN,

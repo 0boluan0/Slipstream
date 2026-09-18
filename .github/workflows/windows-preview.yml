@@ -1,0 +1,40 @@
+name: Windows preview
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'slipstream/**'
+      - '.github/workflows/windows-preview.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        working-directory: slipstream
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: slipstream/package-lock.json
+      - run: npm ci
+      - run: npm run check:windows
+      - run: npm run check:build-identity
+      - run: npm run lint
+      - run: npm run build:renderer
+      - name: Text reading, contextual lookup and local card persistence (fixture provider)
+        run: npm run check:windows-ui
+      - name: Build unsigned Windows preview installer
+        run: node scripts/build-windows.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slipstream-windows-preview-x64
+          path: |
+            slipstream/release/windows-preview/*Setup.exe
+          if-no-files-found: error

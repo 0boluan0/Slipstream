@@ -1,11 +1,14 @@
 const assert = require('node:assert/strict');
 const Module = require('node:module');
+const fs = require('node:fs');
 
 const originalLoad = Module._load;
 let invocation;
 let holdCallback = false;
 let pendingCallback;
 let killed = false;
+let createFile = true;
+let captureError;
 
 Module._load = function load(request, parent, isMain) {
   if (request === 'child_process') {
@@ -16,7 +19,8 @@ Module._load = function load(request, parent, isMain) {
           pendingCallback = callback;
           return { kill: () => { killed = true; } };
         }
-        callback(null);
+        if (createFile) fs.writeFileSync(args[4], 'screenshot fixture');
+        callback(captureError || null);
         return { kill: () => {} };
       },
     };
@@ -31,6 +35,14 @@ async function main() {
   assert.deepEqual(invocation.args.slice(0, 4), ['-i', '-x', '-t', 'png']);
   assert.equal(invocation.args[4], selectedPath);
   assert.match(selectedPath, /slipstream-[^/]+\/screenshots\/screenshot-[\w-]+\.png$/);
+  assert.equal(invocation.options.timeout, 120000);
+  fs.unlinkSync(selectedPath);
+
+  createFile = false;
+  await assert.rejects(service.captureSelectedRegion(), (error) => error.isCancellation === true);
+  captureError = Object.assign(new Error('timed out'), { killed: true, signal: 'SIGTERM' });
+  await assert.rejects(service.captureSelectedRegion(), { code: 'capture-timeout' });
+  captureError = null;
 
   holdCallback = true;
   const controller = new AbortController();

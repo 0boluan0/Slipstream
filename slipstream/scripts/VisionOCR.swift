@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 3
+let OCR_VERSION = 4
 
 import Vision
 import AppKit
@@ -19,6 +19,12 @@ struct BoundingBox: Codable {
 struct Block: Codable {
     let text: String
     let confidence: Double
+    let boundingBox: BoundingBox
+    let characters: [CharacterBox]?
+}
+
+struct CharacterBox: Codable {
+    let text: String
     let boundingBox: BoundingBox
 }
 
@@ -98,10 +104,24 @@ func main() {
                 h: Double(box.size.height)
             )
 
+            // Formula masking can leave two prose fragments in one Vision line.
+            // Character positions let the caller insert inline LaTeX between them.
+            var characters: [CharacterBox]? = nil
+            if CommandLine.arguments.contains("--characters") {
+                characters = []
+                for index in text.indices {
+                    let end = text.index(after: index)
+                    guard let rect = try? topCandidate.boundingBox(for: index..<end)?.boundingBox else { continue }
+                    characters?.append(CharacterBox(text: String(text[index]), boundingBox: BoundingBox(
+                        x: Double(rect.minX), y: Double(rect.minY), w: Double(rect.width), h: Double(rect.height))))
+                }
+            }
+
             blocks.append(Block(
                 text: text,
                 confidence: confidence,
-                boundingBox: boundingBox
+                boundingBox: boundingBox,
+                characters: characters
             ))
 
             allText.append(text)

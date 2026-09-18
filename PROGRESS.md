@@ -1,6 +1,33 @@
 # Slipstream — Progress
 
-## Current — 2026-09-10 reading release
+## Current — 2026-09-18 version 1.2.0 release candidate
+
+The local screenshot OCR component now uses Apache-2.0 PP-DocLayoutV3 and MIT Pix2Text MFR 1.5. Both Mac architectures bundle verified models, native ONNX libraries and license notices. ONNX Runtime 1.18.0 preserves macOS 12 compatibility. Signed release preparation is in progress; publication evidence will be recorded after upload verification.
+
+Fixed source text duplication around formulas, adjacent punctuation, narrow captures and edge symbols. Real-pixel tests include Adam, Attention, DML, two fresh narrow equation crops, a matrix/mean and plain prose. Missing components and cancellation are covered; screenshot cancellation no longer produces a false permission alert. Formula results remain behind original-image review before translation. [Implementation and limits](docs/local-formula-ocr.md), [recognition evidence](docs/usability/2026-09-18/formula-ocr/results.json).
+
+
+## Previous — 2026-09-18 real-paper usability iteration
+
+Tested five excerpts from Attention Is All You Need, Adam, and Double/Debiased Machine Learning through native Preview and the installed reading preview with real model calls. Verified concept saving/editing, paper-scoped retention across restart, and retrieval of an earlier-page Q definition from a later-page card. This was an agent-operated reading audit, not a full-paper study or human usability trial. Evidence and limitations: [audit report](docs/usability/2026-09-18/README.md).
+
+Fixed search equivalence for flattened/Unicode/LaTeX subscripts without changing stored symbol identities; search now filters pending candidates and prioritizes saved entries. Explicit reference windows acquire focus on first creation. Short inline mathematics no longer reserves a scrollbar gutter, and term labels render LaTeX. The initial claim that manual selection required scrolling was withdrawn after both geometry checks and actual drag-selection confirmed immediate visibility.
+
+Validation: reference unit/native checks, the new real-issue usability regressions, math checks/native rendering, ESLint, renderer build and signed preview identity passed. Re-tested the saved Adam symbol, actual DML candidates, selection and mathematics in the installed UI. All 100 packaged source files and 10 renderer artifacts match the current workspace. Updated only the user-local signed reading preview, preserving its profile and recoverable bundle backups; no push, notarization or public release in this iteration.
+
+Open: PDF copying can silently lose mathematical distinctions (Adam moment hats); important terms are still missed and terminology varies. A live root-N explanation also blurred the general rate definition with stronger distributional/moment properties; the audit records a primary-source comparison. Native screen-region capture could not be completed using the available UI-control surface, so its end-to-end result remains unverified. Paper switching clears pending definitions; capture cancellation/timeouts can produce a misleading permission message. Background activation can still require a separate first click. These limitations are not covered by the passing regression checks.
+
+## Previous — 2026-09-14 paper references preview
+
+Implemented persistent paper-scoped references alongside the existing reading cards. New captures inherit the selected paper; existing cards keep their association. Explicitly retained definitions include source evidence, support local lookup and editing, and remain separate from concept cards. Unknown symbols, pending local redefinitions, case/subscript distinctions, conflicting meanings, restart, deletion undo and narrow layouts are covered.
+
+Validation: the full reading-pins group (native OCR, concept library, mathematical rendering and reference flow), macOS reading home, simulated Windows UI route, Windows packaging checks, core regressions, IPC and storage boundaries, lint and renderer build passed. Six authored reference fixtures passed with real DeepSeek V4 Flash through the signed preview identity. The first live run exposed a domain declaration being included in a symbol name; the corrected behavior and both live runs are recorded in [reference evidence](docs/reading-references.md).
+
+Delivery: Developer ID-signed local reading preview; public release remains 1.1.0. The final archive's 100 runtime source files match the current workspace, and its 10 renderer artifacts match the tested production build. This preview has not been notarized or published as a production update. Existing Windows preview changes remain in the working tree.
+
+Installed over the existing user-local reading preview with a recoverable archive of the prior bundle. Opened the installed application and verified the home entry reaches the new 本文速查 window; the app is left there ready to create a reading.
+
+## Published — 2026-09-10 reading release
 
 Phase: professional English reading, version 1.1.0.
 

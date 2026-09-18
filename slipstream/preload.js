@@ -35,6 +35,7 @@ const ALLOWED_INVOKE_CHANNELS = [
   'screenshot:capture',
   'reading:open-text',
   'reading:library-open',
+  'reading:references-open',
   'window:set-mode',
   'window:hide',
   'system:open-screen-recording-settings',
@@ -52,6 +53,7 @@ const ALLOWED_ON_CHANNELS = [
 ];
 
 contextBridge.exposeInMainWorld('api', {
+  platform: process.platform,
   invoke: (channel, ...args) => {
     if (ALLOWED_INVOKE_CHANNELS.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);

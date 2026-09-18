@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { extractFile } = require('@electron/asar');
+const { verifyModels } = require('./check-formula-models');
 
 const { createOcrEnvironment } = require('../src/main/ocr-environment');
 const {
@@ -136,6 +137,15 @@ function inspectArchive(arch, outputDir, runtimeRoot) {
     throw new Error(`${arch} app bundle contains File Provider conflict copies: ${formatConflictCopies(bundleConflictCopies)}`);
   }
   const resourcesPath = path.join(appPath, 'Contents', 'Resources');
+  verifyModels(path.join(resourcesPath, 'formula-models'));
+  for (const file of ['NOTICE.md', 'PP-DocLayoutV3-Apache-2.0.txt', 'Pix2Text-MIT.txt', 'ONNX-Runtime-MIT.txt']) {
+    if (!fs.statSync(path.join(resourcesPath, 'licenses', file)).size) throw new Error(`Missing license notice: ${file}`);
+  }
+  const ortDirectory = path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'onnxruntime-node', 'bin', 'napi-v3', 'darwin', arch);
+  for (const file of ['onnxruntime_binding.node', 'libonnxruntime.1.18.0.dylib']) {
+    const architectures = execFileSync('/usr/bin/lipo', ['-archs', path.join(ortDirectory, file)], { encoding: 'utf8' });
+    if (!architectures.split(/\s+/).includes(contract.machOArch)) throw new Error(`Missing ${arch} formula runtime: ${file}`);
+  }
   const output = execFileSync('/usr/bin/plutil', ['-p', path.join(appPath, 'Contents', 'Info.plist')], { encoding: 'utf8' });
   const banned = ['NSBluetoothAlwaysUsageDescription', 'NSBluetoothPeripheralUsageDescription', 'NSCameraUsageDescription', 'NSMicrophoneUsageDescription', 'NSAllowsArbitraryLoads'].filter((key) => output.includes(key));
   if (banned.length) {

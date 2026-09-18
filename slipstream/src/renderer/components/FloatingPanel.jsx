@@ -390,6 +390,7 @@ const SCREENSHOT_CAPTURE_PRIVACY_DISCLOSURE = Object.freeze({
   activeDetail: '系统框选和文字识别不会发送给模型；识别完成后才会进入所选处理方式。',
 });
 const USER_ERROR_MESSAGES = Object.freeze({
+  'screenshot-unsupported': 'Windows 预览暂不支持截图识字，请复制或粘贴文字开始阅读。',
   'processing-busy': '已有任务正在处理，请稍候。',
   'processing-cancelled': '处理已取消。',
   'processing-invalid': '模型返回的内容未通过结构与证据校验。原文和上一份有效结果已保留，请重试或更换模型。',
@@ -769,7 +770,8 @@ export default function FloatingPanel({
     ));
   }, [setClipboardNotice]);
 
-  const { invoke, on } = useIpc();
+  const { invoke, on, platform } = useIpc();
+  const screenshotSupported = platform === 'darwin';
   const { clipboardEvent, clearClipboard } = useClipboard();
 
   const updateSavedTerms = useCallback((nextOrUpdater) => {
@@ -4927,6 +4929,9 @@ export default function FloatingPanel({
                     : '—'}
             </strong>}
           </button>
+          {readingStart && <button type="button" className="saved-terms-trigger reading-library-trigger"
+            onClick={() => invoke(IPC_CHANNELS.READING_REFERENCES_OPEN).catch(() => setError('本文速查没有打开，请重试。'))}
+            aria-label="打开按论文保留的本文速查"><span>本文速查</span></button>}
           <button
             ref={settingsTriggerRef}
             type="button"
@@ -5441,17 +5446,19 @@ export default function FloatingPanel({
                     : isFreeTranslate ? '让英文阅读继续下去' : '读懂原文，留下概念'}</h1>
                   <p>{isEditingSource
                     ? '上一份结果仍在内存保留；只有修正后的原文生成成功，才会替换它。'
-                    : isFreeTranslate
+                    : !screenshotSupported
+                      ? '复制或粘贴英文，看中文译文；按需解释概念并保存卡片。Windows 预览暂不支持截图识字。'
+                      : isFreeTranslate
                       ? '框选一段英文，把中文译文贴在阅读位置旁。'
                       : '框选正在读的内容，看中文译文；遇到不懂的概念，再展开解释、存成卡片。'}</p>
                 </div>
               </div>
 
-              {readingStart && !ocrReviewCopy && (
+              {readingStart && screenshotSupported && !ocrReviewCopy && (
                 <button type="button" className="reading-capture-primary" onClick={handleScreenshot}>
                   <Camera size={24} aria-hidden="true" />
                   <span><strong>截图阅读</strong><small>框选一段，译文贴在屏幕旁</small></span>
-                  <kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT)}</kbd>
+                  <kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT, platform)}</kbd>
                 </button>
               )}
 
@@ -5557,7 +5564,7 @@ export default function FloatingPanel({
 
               <label className="capture-input">
                 <span className="capture-input__label-row">
-                  <span>{readingStart ? '或粘贴一段英文' : '原文'}</span>
+                  <span>{readingStart ? (screenshotSupported ? '或粘贴一段英文' : '粘贴一段英文') : '原文'}</span>
                   {inputText && (
                     <small className={sourceLimitState.blocked ? 'is-over-limit' : ''} aria-hidden="true">
                       {sourceLimitState.countLabel}
@@ -5723,10 +5730,10 @@ export default function FloatingPanel({
 
               {!ocrReviewCopy && (
                 <div className="capture-methods">
-                  {!readingStart && <button type="button" onClick={handleScreenshot}>
+                  {!readingStart && screenshotSupported && <button type="button" onClick={handleScreenshot}>
                     <span><Camera size={23} /></span>
                     <strong>框选截图</strong>
-                    <small>按 {displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT)} · 本地 OCR</small>
+                    <small>按 {displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT, platform)} · 本地 OCR</small>
                   </button>}
                   <button
                     ref={clipboardReadButtonRef}
@@ -5744,13 +5751,13 @@ export default function FloatingPanel({
                     <small>
                       {manualClipboardReadPending
                         ? '先选择替换或保留当前原文'
-                        : `复制后按 ${displayShortcutAccelerator(settings.clipboardShortcut || DEFAULTS.CLIPBOARD_SHORTCUT)}`}
+                        : `复制后按 ${displayShortcutAccelerator(settings.clipboardShortcut || DEFAULTS.CLIPBOARD_SHORTCUT, platform)}`}
                     </small>
                   </button>
                 </div>
               )}
 
-              {!ocrReviewCopy && (
+              {!ocrReviewCopy && screenshotSupported && (
                 <p className="capture-permission-note" role="note">
                   <ShieldCheck size={16} weight="fill" aria-hidden="true" />
                   <span>首次截图需要屏幕录制权限。文字识别在本机完成；粘贴阅读无需此权限。</span>
@@ -5807,8 +5814,8 @@ export default function FloatingPanel({
               )}
 
               <div className="shortcut-help">
-                <span><kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT)}</kbd> 截图</span>
-                <span><kbd>Command</kbd><kbd>Enter</kbd> {ocrReviewCopy ? '核对并继续' : '处理'}</span>
+                {screenshotSupported && <span><kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT, platform)}</kbd> 截图</span>}
+                <span><kbd>{platform === 'win32' ? 'Ctrl' : 'Command'}</kbd><kbd>Enter</kbd> {ocrReviewCopy ? '核对并继续' : '处理'}</span>
               </div>
             </section>
           )}

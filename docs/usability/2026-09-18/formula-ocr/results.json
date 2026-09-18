@@ -1,0 +1,59 @@
+[
+  {
+    "case": "adam-algorithm",
+    "elapsedMs": 4968,
+    "status": "done",
+    "count": 19,
+    "uncertain": 10,
+    "milliseconds": 4596,
+    "text": "Require: $\\alpha$: Stepsize\nRequire: $\\beta _ { 1 }, \\beta _ { 2 } \\in [ 0, 1 )$: Exponential decay rates for the moment estimates\nRequire: $f ( \\theta )$: Stochastic objective function with parameters $\\theta$\nRequire: $\\theta _ { 0 }$: Initial parameter vector\n$m _ { 0 } \\gets 0$ (Initialize $1 ^ { \\mathrm { s t } }$ moment vector)\n$v _ { 0 } \\gets 0$ (Initialize $2 ^ { \\mathrm { n d } }$ moment vector)\n$t \\gets 0$ (Initialize timestep)\nwhile $\\theta _ { t }$ not converged do\n$t \\gets t + 1$\n$g _ { t } \\gets \\nabla _ { \\theta } f _ { t } ( \\theta _ { t - 1 } )$ (Get gradients w.r.t. stochastic objective at timestep t)\n$m _ { t } \\gets \\beta _ { 1 } \\cdot m _ { t - 1 } + ( 1 - \\beta _ { 1 } ) \\cdot g _ { t }$ (Update biased first moment estimate)\n$v _ { t } \\gets \\beta _ { 2 } \\cdot v _ { t - 1 } + ( 1 - \\beta _ { 2 } ) \\cdot g _ { t } ^ { 2 }$ (Update biased second raw moment estimate)\n$\\widehat { m } _ { t } \\gets m _ { t } / ( 1 - \\beta _ { 1 } ^ { t } )$ (Compute bias-corrected first moment estimate)\n$\\widehat { v } _ { t } \\gets v _ { t } / ( 1 - \\beta _ { 2 } ^ { t } )$ (Compute bias-corrected second raw moment estimate)\n$\\theta _ { t } \\leftarrow \\theta _ { t - 1 } - \\alpha \\cdot \\widehat { m } _ { t } / ( \\sqrt { \\widehat { v } _ { t } } + \\epsilon )$ (Update parameters)\nend while\nreturn $\\theta _ { t }$ (Resulting parameters)"
+  },
+  {
+    "case": "attention-equation",
+    "elapsedMs": 1473,
+    "status": "done",
+    "count": 2,
+    "uncertain": 1,
+    "milliseconds": 1160,
+    "text": "In practice, we compute the attention function on a set of queries simultaneously, packed together\ninto a matrix $Q$. The keys and values are also packed together into matrices K and V. We compute\nthe matrix of outputs as:\n\n$$\\mathrm { A t t e n t i o n } ( Q, K, V ) = \\mathrm { s o f t m a x } ( { \\frac { Q K ^ { T } } { \\sqrt { d _ { k } } } } ) V$$\n\n(1)"
+  },
+  {
+    "case": "dml-paragraph",
+    "elapsedMs": 1469,
+    "status": "done",
+    "count": 3,
+    "uncertain": 0,
+    "milliseconds": 1005,
+    "text": "We develop a series of simple results for obtaining root-N consistent estimation, where N\nis the sample size, and valid inferential statements about a low-dimensional parameter of\ninterest, $\\theta _ { 0 }$, in the presence of a high-dimensional or \"highly complex\" nuisance parame-\nter, $\\eta _ { 0 }$. The parameter of interest will typically be a causal parameter or treatment effect\nparameter, and we consider settings in which the nuisance parameter will be estimated\nusing machine learning (ML) methods such as random forests, lasso or post-lasso, neu-\nral nets, boosted regression trees, and various hybrids and ensembles of these methods.\nThese ML methods are able to handle many covariates and provide natural estimators\nof nuisance parameters when these parameters are highly complex. Here, highly complex\nformally means that the entropy of the parameter space for the nuisance parameter is\nincreasing with the sample size in a way that moves us outside of the traditional frame-\nwork considered in the classical semi-parametric literature where the complexity of the\nnuisance parameter space is taken to be sufficiently small. Offering a general and simple\nprocedure for estimating and doing inference on $\\theta _ { 0 }$ that is formally valid in these highly\ncomplex settings is the main contribution of this paper."
+  },
+  {
+    "case": "dml-equations",
+    "status": "done",
+    "count": 2,
+    "uncertain": 1,
+    "milliseconds": 1156,
+    "text": "$$Y = D \\theta _ { 0 } + g _ { 0 } ( X ) + U, \\quad \\mathrm { E } [ U \\mid X, D ] = 0$$,\n\n(1.1)\n\n$$D = m _ { 0 } ( X ) + V, \\ \\ \\ \\ \\ \\ \\ \\mathrm { E } [ V \\mid X ] = 0$$,\n\n(1.2)"
+  },
+  {
+    "case": "adam-updates",
+    "status": "done",
+    "count": 6,
+    "uncertain": 2,
+    "milliseconds": 2094,
+    "text": "$$t \\gets t + 1$$\n\n$g _ { t } \\gets \\nabla _ { \\theta } f _ { t } ( \\theta _ { t - 1 } )$ (Get gradients w.r.t, stochastic objective at timestep t)\n$m _ { t } \\gets \\beta _ { 1 } \\cdot m _ { t - 1 } + ( 1 - \\beta _ { 1 } ) \\cdot g _ { t }$ (Update biased first moment estimate)\n$v _ { t } \\gets \\beta _ { 2 } \\cdot v _ { t - 1 } + ( 1 - \\beta _ { 2 } ) \\cdot g _ { t } ^ { 2 }$ (Update biased second raw moment estimate)\n$\\widehat { m } _ { t } \\gets m _ { t } / ( 1 - \\beta _ { 1 } ^ { t } )$ (Compute bias-corrected first moment estimate)\n$\\widehat { v } _ { t } \\gets v _ { t } / ( 1 - \\beta _ { 2 } ^ { t } )$ (Compute bias-corrected second raw moment estimate)"
+  },
+  {
+    "case": "authored-matrix",
+    "status": "done",
+    "count": 1,
+    "uncertain": 0,
+    "milliseconds": 1134,
+    "text": "A symmetric matrix and a sample mean:\n\n$$A = \\left( \\begin{matrix} { a } & { b } \\\\ { b } & { c } \\\\ \\end{matrix} \\right), \\qquad \\bar { x } = \\frac { 1 } { n } \\sum _ { i = 1 } ^ { n } x _ { i }$$"
+  },
+  {
+    "case": "authored-prose",
+    "status": "done",
+    "count": 0,
+    "milliseconds": 617
+  }
+]

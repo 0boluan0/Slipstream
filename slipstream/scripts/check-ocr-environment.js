@@ -304,9 +304,9 @@ function checkRunnerSource() {
   for (const command of requiredAbsoluteCommands) {
     assert(runnerSource.includes(command), `OCR runner must use absolute command ${command}`);
   }
-  assert.match(runnerSource, /exec -- "\$BUNDLED_BINARY" "\$1"/,
+  assert.match(runnerSource, /exec -- "\$BUNDLED_BINARY" "\$@"/,
     'packaged OCR binary must be executed by its absolute resolved path');
-  assert.match(runnerSource, /exec -- "\$BINARY" "\$IMAGE_PATH"/,
+  assert.match(runnerSource, /exec -- "\$BINARY" "\$@"/,
     'development OCR binary must be executed by its absolute cache path');
   assert.match(runnerSource, /case "\$CACHE_DIR" in[\s\S]*?\/\*\) ;;[\s\S]*?OCR cache path must be absolute/,
     'runner must reject a relative cache path before creating it');

@@ -1,0 +1,110 @@
+Window: "Slipstream · 阅读卡片", App: Slipstream 阅读预览.
+0 standard window Slipstream · 阅读卡片, Secondary Actions: Raise
+	1 container Slipstream · 阅读卡片
+		2 container
+			3 HTML content Slipstream · 阅读卡片, URL: file://<user-home>/Applications/Slipstream%20%E9%98%85%E8%AF%BB%E9%A2%84%E8%A7%88.app/Contents/Resources/app.asar/src/main/reading-pin/index.html
+				4 container
+					5 text Slipstream 阅读
+					6 button Description: 收起卡片, Help: 收起卡片 · 双击顶部
+					7 toggle button Description: 置顶, Help: 取消置顶, Value: 1
+					8 button Description: 关闭这张卡片, Help: 关闭卡片 · Esc
+				9 tab group 阅读方式
+					10 tab (selected) 译文, Value: 1
+					11 tab (settable, integer) 对照, Value: 0
+				12 container 阅读字号
+					13 button 缩小字号
+					14 button 放大字号
+				15 container
+					16 text 这张卡片所属的阅读
+					17 pop-up button 这张卡片所属的阅读, Value: DML · 9月18日体验测试
+						18 (selected) DML · 9月18日体验测试
+					19 button 本文速查 · 0
+				20 container
+					21 container 译文
+						22 container
+							23 text 01
+							24 button 查看第 1 段英文原文
+							25 text 我们建立了一系列简单的结果，用于在存在高维或“高度复杂”的干扰参数
+							26 container $\eta_0$
+								27 container
+									28 text 𝜂 0
+							29 text  的情况下，获得关于低维感兴趣参数
+							30 container $\theta_0$
+								31 container
+									32 text 𝜃 0
+							33 text  的根
+							34 text 𝑁
+							35 text  一致估计，其中
+							36 text 𝑁
+							37 text  是样本量，并得到有效的推断陈述。感兴趣参数通常是因果参数或处理效应参数，我们考虑的情形是干扰参数将使用机器学习（ML）方法进行估计，例如随机森林、lasso 或 post-lasso、神经网络、提升回归树，以及这些方法的各种混合与集成。这些 ML 方法能够处理许多协变量，并在干扰参数高度复杂时提供干扰参数的自然估计量。在这里，高度复杂在形式上意味着干扰参数参数空间的熵随样本量增加而增加，其方式使我们超出了经典半参数文献中所考虑的传统框架，在该框架中干扰参数空间的复杂度被认为足够小。 术语
+							38 toggle button Description: 解释 根 $N$ 一致估计 · root-N consistent estimation, Help: root-N consistent estimation, Value: 1
+								39 text 根
+								40 text 𝑁
+								41 text  一致估计
+								42 text root-N consistent estimation
+							43 toggle button Description: 解释 参数空间的熵 · entropy of the parameter space, Help: entropy of the parameter space, Value: 0
+							44 toggle button Description: 解释 半参数文献 · semi-parametric literature, Help: semi-parametric literature, Value: 0
+					45 text 找到 3 条本文定义
+					46 button 查看并留下
+					47 button 整理这段的符号定义
+				48 container 术语与词句解释
+					49 heading 术语与词句解释, Value: 2
+						50 text 术语与词句解释
+					51 button 收起词句解释
+					52 text root-N consistent estimation
+					53 container
+						54 text 概念是什么 指估计量的收敛速度达到样本量 N 的平方根量级，即估计误差按
+						55 container $1/\sqrt{N}$
+							56 container
+								57 text 1 /
+								58 text 𝑁
+						59 text  的速度随样本量增大而缩小。更具体地说，若某个参数估计量
+						60 container $\hat{\theta}$
+							61 container
+								62 text 𝜃 ^
+						63 text  满足
+						64 container
+							65 text 𝑁
+							66 text (
+							67 text 𝜃
+							68 text ^
+							69 text −
+							70 text 𝜃
+							71 text 0
+							72 text )
+						73 text  依分布收敛到某个非退化分布（通常为均值零的正态分布），就称它是 root-N 一致的。这是半参数与高维统计中一种理想的、通常也是最快的参数收敛速度，意味着估计量的方差大致以
+						74 container
+							75 text 1 / 𝑁
+						76 text  的速率下降。 放在这段里 在这段摘录中，作者把 root-N 一致估计作为目标：即使存在高维或“高度复杂”的冗余参数
+						77 container $\eta_0$
+							78 container
+								79 text 𝜂 0
+						80 text （用随机森林、lasso、神经网络等机器学习方法估计），仍希望对低维目标参数
+						81 container $\theta_0$
+							82 container
+								83 text 𝜃 0
+						84 text  得到 root-N 一致的估计，并能做出有效的推断。这里的关键区分是：
+						85 container $\eta_0$
+							86 container
+								87 text 𝜂 0
+						88 text  的估计本身可能收敛得比 root-N 慢，但经过恰当构造后，
+						89 container $\theta_0$
+							90 container
+								91 text 𝜃 0
+						92 text  的估计仍可达到 root-N 速度；摘录并未给出具体构造方法或证明。
+					93 button 记入本文速查
+					94 container
+						95 text 保留解释与这段原文
+						96 button 存为卡片
+				97 container
+					98 text 1 段 · 已完成
+					99 button 卡片盒
+					100 disclosure triangle Description: 查看处理位置, Help: 处理位置
+						101 text 处理位置
+					102 button 复制完整译文
+103 menu bar
+	104 Slipstream
+	105 编辑
+	106 窗口
+
+The focused UI element is 38 toggle button Description: 解释 根 $N$ 一致估计 · root-N consistent estimation, Help: root-N consistent estimation, Value: 1

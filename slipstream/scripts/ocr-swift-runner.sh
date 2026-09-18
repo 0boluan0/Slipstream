@@ -21,7 +21,7 @@ case "$CACHE_DIR" in
 esac
 
 if [ -x "$BUNDLED_BINARY" ]; then
-    exec -- "$BUNDLED_BINARY" "$1"
+    exec -- "$BUNDLED_BINARY" "$@"
 fi
 
 /bin/mkdir -p "$CACHE_DIR"
@@ -59,6 +59,4 @@ if [ "$NEEDS_COMPILE" -eq 1 ]; then
     /bin/chmod 600 "$VERSION_FILE"
 fi
 
-IMAGE_PATH="$1"
-
-exec -- "$BINARY" "$IMAGE_PATH"
+exec -- "$BINARY" "$@"

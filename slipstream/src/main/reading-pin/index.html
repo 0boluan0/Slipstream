@@ -6,6 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Slipstream · 阅读卡片</title>
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./references.css">
 <link rel="stylesheet" href="../../../node_modules/katex/dist/katex.min.css">
 <link rel="stylesheet" href="../reading-math/style.css">
 </head>
@@ -26,15 +27,44 @@
     </div>
     <div class="type-controls" aria-label="阅读字号"><button id="smaller" aria-label="缩小字号" title="缩小字号">A−</button><button id="larger" aria-label="放大字号" title="放大字号">A+</button></div>
   </div>
+  <div id="paper-bar" hidden>
+    <label for="paper-select" class="sr-only">这张卡片所属的阅读</label>
+    <select id="paper-select"><option value="">临时阅读</option></select>
+    <button id="open-references" class="text-button">本文速查</button>
+  </div>
   <main id="scroll-area">
     <p id="notice" role="alert" hidden></p>
+    <section id="reference-content" aria-label="本文速查" hidden>
+      <div class="reference-intro"><h2>本文速查</h2><p class="muted">记住本文的符号与约定，下次接着读。</p></div>
+      <div id="reference-welcome"><p class="muted">为正在读的论文或章节开一份速查。之后的截图会沿用它。</p><button id="paper-create" class="primary">新建阅读</button></div>
+      <div id="reference-paper-tools" hidden>
+        <div class="reference-title-row"><label for="paper-title" class="sr-only">阅读名称</label><input id="paper-title" maxlength="120" placeholder="给这篇阅读起个名字"><button id="paper-rename">改名</button></div>
+        <div class="reference-tools"><label for="reference-search" class="sr-only">搜索本文符号或含义</label><input id="reference-search" type="search" placeholder="查符号、缩写或含义"><button id="reference-new">记一条</button></div>
+        <p id="reference-empty" class="muted">还没有留下定义。截图阅读时可保存发现的定义，也可以手动记一条。</p>
+        <div id="reference-entries"></div>
+        <details class="paper-management"><summary>管理这篇阅读</summary><p class="muted">关闭浮窗会保留这份速查。读完后可以删除。</p><button id="paper-delete">删除本文速查</button><div id="paper-delete-confirm" hidden><p>删除这篇阅读及其全部定义？</p><button id="paper-delete-confirmed">删除</button><button id="paper-delete-cancel">保留</button></div></details>
+      </div>
+    </section>
+    <section id="reference-candidates" aria-label="从原文找到的定义" hidden>
+      <div class="reference-candidate-heading"><h2 id="candidate-heading">原文中的定义</h2><button id="reference-accept-all">全部留下</button></div>
+      <p class="muted">从原文提取，留下前可展开依据核对。</p><div id="candidate-entries"></div>
+    </section>
+    <form id="reference-editor" hidden>
+      <h2 id="reference-editor-title">记入本文速查</h2>
+      <label for="reference-symbol">符号或名称</label><input id="reference-symbol" maxlength="120" required placeholder="例如 x_i、λ、ELBO">
+      <label for="reference-meaning">在本文里的意思</label><textarea id="reference-meaning" maxlength="1500" required placeholder="例如：第 i 个样本的特征向量"></textarea>
+      <details id="reference-editor-details"><summary>适用位置与原文依据</summary><label for="reference-scope">适用位置（选填）</label><input id="reference-scope" maxlength="160" placeholder="例如：第 3 节；实验部分"><label for="reference-evidence">原文依据（选填）</label><textarea id="reference-evidence" maxlength="3000" placeholder="粘贴定义所在的原句"></textarea></details>
+      <div id="reference-editor-preview"></div>
+      <div class="reference-tools"><button id="reference-editor-save" class="primary" type="submit">留下</button><button id="reference-editor-cancel" type="button">取消</button></div>
+    </form>
+    <p id="reference-notice" role="status" hidden></p><button id="paper-undo" class="text-button" hidden>撤销删除</button><button id="reference-refresh" class="text-button" hidden>重新读取</button>
+    <div id="reference-offer" hidden><span id="reference-offer-text"></span><button id="reference-offer-open">查看并留下</button></div>
+    <button id="reference-extract" class="text-button" hidden>整理这段的符号定义</button>
     <section id="review" aria-labelledby="review-title" hidden>
       <h2 id="review-title" tabindex="-1">核对识别文字</h2>
-      <p class="muted">对照截图，检查文字和阅读顺序。</p>
-      <label for="source-editor" class="sr-only">识别出的英文原文</label>
-      <textarea id="source-editor" lang="en" maxlength="10000" spellcheck="false"></textarea>
-      <details id="formula-preview"><summary>公式排版预览</summary><p class="muted">行内用 $...$，独立公式用 $$...$$。公式可在上方文字中校正。</p><div id="source-preview"></div></details>
       <div class="review-actions"><button id="confirm" class="primary">确认并翻译</button><button id="review-image">查看截图</button></div>
+      <details id="formula-preview"><summary>排版后的原文</summary><div id="source-preview"></div></details>
+      <details id="source-correction"><summary>校正文字与公式</summary><p class="muted">行内用 $...$，独立公式用 $$...$$。修改后会更新排版预览。</p><label for="source-editor" class="sr-only">识别出的英文原文</label><textarea id="source-editor" lang="en" maxlength="10000" spellcheck="false"></textarea></details>
     </section>
     <div id="reading-content" role="tabpanel" aria-labelledby="tab-translation" tabindex="0">
       <p id="reading-hint" class="muted" hidden>选中英文词句，查看这一处的意思。</p>
@@ -48,7 +78,7 @@
       <button id="edit-source">校正识别文字</button>
     </section>
     <div id="recovery" hidden><button id="retry" class="primary"><img src="./icons/ArrowClockwise.svg" alt="">重试未完成段落</button><button id="retake">重新框选</button><button id="settings">设置</button></div>
-    <details id="formula-tools" hidden><summary>识别公式</summary><p class="muted" id="formula-destination">使用 DeepSeek 视觉实验模型转写本次截图，保留 LaTeX 结构。识别结果需要对照原图核对。</p><button id="recognize-formulas">发送截图到 DeepSeek，识别公式</button><p id="formula-unavailable" class="muted" hidden>截图公式识别目前需要配置 DeepSeek；也可在“校正识别文字”中输入 LaTeX。</p><p id="formula-notice" role="status" class="muted"></p></details>
+    <details id="formula-tools" hidden><summary>公式识别与核对</summary><p id="formula-notice" role="status" class="muted"></p><p class="muted" id="formula-destination">需要重新识别时，可将本次截图交给 DeepSeek 视觉服务。图片只会在点击下方按钮后发送。</p><button id="recognize-formulas">发送截图到 DeepSeek，重新识别</button><p id="formula-unavailable" class="muted" hidden>可以在“校正识别文字”中修改 LaTeX，并实时预览公式。</p></details>
     <div id="selection-bar" hidden><span id="selection-preview" lang="en"></span><button id="lookup-selection" class="primary"><img src="./icons/MagnifyingGlass.svg" alt="">解释所选</button></div>
   </main>
   <aside id="lookup-panel" aria-labelledby="lookup-title" hidden>
@@ -56,6 +86,7 @@
     <blockquote id="lookup-quote" lang="en"></blockquote>
     <div id="lookup-result" aria-live="polite"><p class="lookup-label" id="meaning-label">概念是什么</p><p id="lookup-meaning"></p><p class="lookup-label" id="note-label">放在这段里</p><p id="lookup-note" class="muted"></p><p id="lookup-notice" role="alert" hidden></p></div>
     <button id="lookup-retry" hidden>重试这一处</button><button id="lookup-settings" class="text-button" hidden>配置模型，获取概念与上下文解释</button>
+    <div id="lookup-references"></div><button id="reference-from-lookup" class="text-button" hidden>记入本文速查</button>
     <div class="term-save-row"><span id="save-note" class="muted">保留解释与这段原文</span><button id="save-term">存为卡片</button></div>
   </aside>
   <footer>
@@ -68,7 +99,9 @@
   </footer>
   <script src="../../../node_modules/katex/dist/katex.min.js"></script>
 <script src="../../shared/reading-math.cjs"></script>
+<script src="../../shared/reading-notation.cjs"></script>
 <script src="../reading-math/view.js"></script>
+<script src="./references-view.js"></script>
 <script src="./view.js"></script>
 </body>
 </html>

@@ -1,0 +1,44 @@
+#paper-bar { display: flex; align-items: center; gap: 8px; padding: 5px 17px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+#paper-select { flex: 1; min-width: 0; width: 100%; color: var(--muted); background: var(--paper); font: inherit; font-size: 11px; border: 0; padding: 5px 0; text-overflow: ellipsis; }
+#paper-select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+body.reference-only .toolbar, body.reference-only #processing-info, body.reference-only #copy { display: none; }
+body.reference-only main { padding-top: 15px; }
+.reference-intro { margin-bottom: 15px; }
+.reference-intro h2 { font-size: 19px; letter-spacing: -.4px; margin-bottom: 4px; }
+#reference-welcome button { margin-top: 14px; }
+input { min-width: 0; width: 100%; color: inherit; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; }
+.reference-title-row, .reference-tools { display: flex; align-items: center; gap: 7px; margin: 12px 0; }
+.reference-title-row input { border-color: transparent; font-weight: 600; padding-left: 0; }
+.reference-title-row button { font-size: 11px; }
+.reference-tools input { flex: 1; }
+.reference-entry { padding: 13px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.reference-entry-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px; margin-bottom: 6px; }
+.reference-symbol { font: 17px/1.7 Georgia, serif; color: var(--accent); overflow-wrap: anywhere; }
+.reference-symbol .math-inline, .reference-hit-list .math-inline, #lookup-quote .math-inline { scrollbar-width: none; }
+.reference-entry-meaning { font-size: calc(var(--reading-size) - 2px); line-height: 1.8; white-space: pre-wrap; }
+.reference-entry .reference-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 7px; }
+.reference-entry details { margin-top: 5px; }
+.reference-entry summary { font-size: 11px; color: var(--muted); padding: 5px 0; }
+.reference-entry blockquote { margin: 3px 0; padding: 7px 10px; border-left: 2px solid var(--accent); background: var(--soft); font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
+.reference-badge { font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+.reference-conflict { color: var(--accent); }
+.reference-candidate-heading { display: flex; align-items: center; justify-content: space-between; gap: 7px; flex-wrap: wrap; }
+#reference-candidates { margin: 18px 0; padding: 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--soft); }
+#reference-candidates .reference-entry:last-child { border-bottom: none; padding-bottom: 0; }
+#reference-candidates button { font-size: 11px; }
+#reference-editor { border: 1px solid var(--accent); border-radius: 9px; padding: 13px; margin-top: 15px; }
+#reference-editor label { display: block; margin: 12px 0 5px; color: var(--muted); font-size: 11px; }
+#reference-editor textarea { min-height: 80px; font-size: 13px; }
+#reference-editor-preview { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; margin-top: 8px; }
+#reference-notice { margin: 10px 0; color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+#reference-offer { display: flex; justify-content: space-between; align-items: center; gap: 7px; flex-wrap: wrap; padding: 9px 11px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 7px; font-size: 11px; }
+#reference-offer button { font-size: 11px; }
+#reference-extract { margin-bottom: 12px; }
+.paper-management { margin-top: 22px; color: var(--muted); font-size: 11px; }
+.paper-management button { margin-top: 8px; font-size: 11px; }
+#paper-delete-confirm { padding: 9px 0; }
+.reference-hit-list { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.reference-hit-list > span { color: var(--muted); font-size: 10px; }
+.reference-hit-list button { color: var(--accent); background: var(--soft); padding: 2px 9px; min-height: 28px; }
+#lookup-references .reference-entry { padding-top: 5px; }
+@media (max-width: 240px) { #paper-bar { flex-wrap: wrap; padding-inline: 7px; } #open-references { white-space: normal; } .reference-title-row, .reference-tools { flex-wrap: wrap; } .reference-tools input { flex-basis: 100%; } #reference-editor { padding: 8px; } }
