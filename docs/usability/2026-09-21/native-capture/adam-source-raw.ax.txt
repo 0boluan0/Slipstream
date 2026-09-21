@@ -1,0 +1,233 @@
+Window: "Slipstream · 阅读卡片", App: Slipstream.
+0 standard window Slipstream · 阅读卡片, Secondary Actions: Raise
+	1 container Slipstream · 阅读卡片
+		2 container
+			3 HTML content Slipstream · 阅读卡片, URL: file:///Applications/Slipstream.app/Contents/Resources/app.asar/src/main/reading-pin/index.html
+				4 container
+					5 text Slipstream 阅读
+					6 button Description: 收起卡片, Help: 收起卡片 · 双击顶部
+					7 toggle button Description: 置顶, Help: 取消置顶, Value: 1
+					8 button Description: 关闭这张卡片, Help: 关闭卡片 · Esc
+				9 tab group 阅读方式
+					10 tab (selected) 核对, Value: 1
+					11 tab (settable, integer) 对照, Value: 0
+					12 tab (settable, integer) 截图, Value: 0
+				13 container 阅读字号
+					14 button 缩小字号
+					15 button 放大字号
+				16 container
+					17 text 这张卡片所属的阅读
+					18 pop-up button 这张卡片所属的阅读, Value: DML · 9月18日体验测试
+						19 (selected) DML · 9月18日体验测试
+					20 button 本文速查 · 0
+				21 container
+					22 text 已在本机识别 17 处公式（7 处需留意）。请对照原图核对。
+					23 container 核对识别文字
+						24 heading 核对识别文字, Value: 2
+							25 text 核对识别文字
+						26 button 确认并翻译
+						27 button 查看截图
+						28 container
+							29 disclosure triangle 排版后的原文
+								30 text 排版后的原文
+							31 text Require: a: Stepsize
+Require:
+							32 container
+								33 text 𝛽
+								34 text 1
+								35 text ,
+								36 text 𝛽
+								37 text 2
+								38 text ∈ [ 0 , 1 )
+							39 text :: Exponential decay rates for the moment estimates
+Require:
+							40 container
+								41 text 𝑓 ( 𝜃 )
+							42 text :: Stochastic objective function with parameters 0
+Require:
+							43 container $\theta _ { 0 }$
+								44 container
+									45 text 𝜃 0
+							46 text : Initial parameter vector
+
+							47 container
+								48 text 𝑚
+								49 text 0
+								50 text ← 0
+							51 text  (Initialize
+							52 container
+								53 text 1
+								54 text s
+								55 text t
+							56 text  moment vector)
+
+							57 container
+								58 text 𝑣
+								59 text 0
+								60 text ← 0
+							61 text  (Initialize
+							62 container
+								63 text 2
+								64 text n
+								65 text d
+							66 text  moment vector)
+
+							67 container
+								68 text 𝑡 ← 0
+							69 text  (Initialize timestep)
+while
+							70 container $\theta _ { t }$
+								71 container
+									72 text 𝜃 𝑡
+							73 text  not converged do
+
+							74 container
+								75 text 𝑡 ← 𝑡 + 1
+							76 container
+								77 text 𝑔
+								78 text 𝑡
+								79 text ←
+								80 text ∇
+								81 text 𝜃
+								82 text 𝑓
+								83 text 𝑡
+								84 text (
+								85 text 𝜃
+								86 container
+									87 text 𝑡 − 1
+								88 text )
+							89 text  (Get gradients w.r.t. stochastic objective at timestep t)
+
+							90 container $m _ { t } \gets \beta _ { 1 } \cdot m _ { t - 1 } + ( 1 - \beta _ { 1 } ) \cdot g _ { t }$
+								91 container
+									92 text 𝑚
+									93 text 𝑡
+									94 text ←
+									95 text 𝛽
+									96 text 1
+									97 text ⋅
+									98 text 𝑚
+									99 container
+										100 text 𝑡 − 1
+									101 text + ( 1 −
+									102 text 𝛽
+									103 text 1
+									104 text ) ⋅
+									105 text 𝑔
+									106 text 𝑡
+							107 text  (Update biased first moment estimate)
+
+							108 container $v _ { t } \gets \beta _ { 2 } \cdot v _ { t - 1 } + ( 1 - \beta _ { 2 } ) \cdot g _ { t } ^ { 2 }$
+								109 container
+									110 text 𝑣
+									111 text 𝑡
+									112 text ←
+									113 text 𝛽
+									114 text 2
+									115 text ⋅
+									116 text 𝑣
+									117 container
+										118 text 𝑡 − 1
+									119 text + ( 1 −
+									120 text 𝛽
+									121 text 2
+									122 text ) ⋅
+									123 text 𝑔
+									124 text 𝑡
+									125 text 2
+							126 text  (Update biased second raw moment estimate)
+
+							127 container
+								128 container
+									129 text 𝑚 ^
+								130 text 𝑡
+								131 text ←
+								132 text 𝑚
+								133 text 𝑡
+								134 text / ( 1 −
+								135 text 𝛽
+								136 text 1
+								137 text 𝑡
+								138 text )
+							139 text  (Compute bias-corrected first moment estimate)
+
+							140 container $\widehat { v } _ { t } \gets v _ { t } / \dot { ( 1 - \beta _ { 2 } ^ { t } ) }$
+								141 container
+									142 container
+										143 text 𝑣 ^
+									144 text 𝑡
+									145 text ←
+									146 text 𝑣
+									147 text 𝑡
+									148 text /
+									149 container
+										150 text ( 1 −
+										151 text 𝛽
+										152 text 2
+										153 text 𝑡
+										154 text )
+									155 text ˙
+							156 text  (Compute bias-corrected second raw moment estimate)
+
+							157 container
+								158 text 𝜃
+								159 text 𝑡
+								160 text ←
+								161 text 𝜃
+								162 container
+									163 text 𝑡 − 1
+								164 text − 𝛼 ⋅
+								165 container
+									166 text 𝑚 ^
+								167 text 𝑡
+								168 text / (
+								169 container
+									170 text 𝑣
+									171 text ^
+									172 text 𝑡
+								173 text + 𝜖 )
+							174 text  (Update parameters)
+end while
+return
+							175 container $\theta _ { t }$
+								176 container
+									177 text 𝜃 𝑡
+							178 text  (Resulting parameters)
+						179 container
+							180 disclosure triangle 校正文字与公式
+								181 text 校正文字与公式
+							182 text 行内用 $...$，独立公式用 $$...$$。修改后会更新排版预览。 识别出的英文原文
+							183 text entry area (settable) 识别出的英文原文, Value: Require: a: Stepsize
+Require: $\beta _ { 1 }, \beta _ { 2 } \in [ 0, 1 )$:: Exponential decay rates for the moment estimates
+Require: $f ( \theta )$:: Stochastic objective function with parameters 0
+Require: $\theta _ { 0 }$: Initial parameter vector
+$m _ { 0 } \gets 0$ (Initialize $1 ^ { \mathrm { s t } }$ moment vector)
+$v _ { 0 } \gets 0$ (Initialize $2 ^ { \mathrm { n d } }$ moment vector)
+$t \gets 0$ (Initialize timestep)
+while $\theta _ { t }$ not converged do
+$t \gets t + 1$
+$g _ { t } \gets \nabla _ { \theta } f _ { t } ( \theta _ { t - 1 } )$ (Get gradients w.r.t. stochastic objective at timestep t)
+$m _ { t } \gets \beta _ { 1 } \cdot m _ { t - 1 } + ( 1 - \beta _ { 1 } ) \cdot g _ { t }$ (Update biased first moment estimate)
+$v _ { t } \gets \beta _ { 2 } \cdot v _ { t - 1 } + ( 1 - \beta _ { 2 } ) \cdot g _ { t } ^ { 2 }$ (Update biased second raw moment estimate)
+$\widehat { m } _ { t } \gets m _ { t } / ( 1 - \beta _ { 1 } ^ { t } )$ (Compute bias-corrected first moment estimate)
+$\widehat { v } _ { t } \gets v _ { t } / \dot { ( 1 - \beta _ { 2 } ^ { t } ) }$ (Compute bias-corrected second raw moment estimate)
+$\theta _ { t } \gets \theta _ { t - 1 } - \alpha \cdot \widehat { m } _ { t } / ( \sqrt { \widehat { v } _ { t } } + \epsilon )$ (Update parameters)
+end while
+return $\theta _ { t }$ (Resulting parameters)
+					184 disclosure triangle 公式识别与核对
+						185 text 公式识别与核对
+					186 text 已在本机识别 17 处公式（7 处需留意）。请对照原图核对。
+					187 text 需要重新识别时，可将本次截图交给 DeepSeek 视觉服务。图片只会在点击下方按钮后发送。
+					188 button 发送截图到 DeepSeek，重新识别
+				189 container
+					190 text 等待核对
+					191 button 卡片盒
+					192 disclosure triangle Description: 查看处理位置, Help: 处理位置
+						193 text 处理位置
+					194 button (disabled) 复制完整译文
+195 menu bar
+	196 Slipstream
+	197 编辑
+	198 窗口
+
+The focused UI element is 180 disclosure triangle 校正文字与公式

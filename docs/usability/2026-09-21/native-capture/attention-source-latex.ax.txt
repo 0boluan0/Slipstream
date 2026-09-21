@@ -1,0 +1,96 @@
+Window: "Slipstream · 阅读卡片", App: Slipstream.
+0 standard window Slipstream · 阅读卡片, Secondary Actions: Raise
+	1 container Slipstream · 阅读卡片
+		2 container
+			3 HTML content Slipstream · 阅读卡片, URL: file:///Applications/Slipstream.app/Contents/Resources/app.asar/src/main/reading-pin/index.html
+				4 container
+					5 text Slipstream 阅读
+					6 button Description: 收起卡片, Help: 收起卡片 · 双击顶部
+					7 toggle button Description: 置顶, Help: 取消置顶, Value: 1
+					8 button Description: 关闭这张卡片, Help: 关闭卡片 · Esc
+				9 tab group 阅读方式
+					10 tab (selected) 核对, Value: 1
+					11 tab (settable, integer) 对照, Value: 0
+					12 tab (settable, integer) 截图, Value: 0
+				13 container 阅读字号
+					14 button 缩小字号
+					15 button 放大字号
+				16 container
+					17 text 这张卡片所属的阅读
+					18 pop-up button 这张卡片所属的阅读, Value: DML · 9月18日体验测试
+						19 (selected) DML · 9月18日体验测试
+					20 button 本文速查 · 0
+				21 container
+					22 text 已在本机识别 2 处公式（2 处需留意）。请对照原图核对。
+					23 container 核对识别文字
+						24 heading 核对识别文字, Value: 2
+							25 text 核对识别文字
+						26 button 确认并翻译
+						27 button 查看截图
+						28 container
+							29 disclosure triangle 排版后的原文
+								30 text 排版后的原文
+							31 text In practice, we compute the attention function on a set of queries simultaneously, packed together
+into a matrix
+							32 text 𝑄
+							33 text . The keys and values are also packed together into matrices K and V. We compute
+the matrix of outputs as:
+
+
+							34 container
+								35 text A
+								36 text t
+								37 text t
+								38 text e
+								39 text n
+								40 text t
+								41 text i
+								42 text o
+								43 text n
+								44 text ( 𝑄 , 𝐾 , 𝑉 ) =
+								45 text s
+								46 text o
+								47 text f
+								48 text t
+								49 text m
+								50 text a
+								51 text x
+								52 text (
+								53 container
+									54 text 𝑄
+									55 text 𝐾
+									56 text 𝑇
+								57 container
+									58 text 𝑑 𝑘
+								59 text ) 𝑉
+							60 text
+
+(1)
+						61 container
+							62 disclosure triangle 校正文字与公式
+								63 text 校正文字与公式
+							64 text 行内用 $...$，独立公式用 $$...$$。修改后会更新排版预览。 识别出的英文原文
+							65 text entry area (settable) 识别出的英文原文, Value: In practice, we compute the attention function on a set of queries simultaneously, packed together
+into a matrix $Q$. The keys and values are also packed together into matrices K and V. We compute
+the matrix of outputs as:
+
+$$\mathrm { A t t e n t i o n } ( Q, K, V ) = \mathrm { s o f t m a x } ( \frac { Q K ^ { T } } { \sqrt { d _ { k } } } ) V$$
+
+(1)
+					66 disclosure triangle 公式识别与核对
+						67 text 公式识别与核对
+					68 text 已在本机识别 2 处公式（2 处需留意）。请对照原图核对。
+					69 text 需要重新识别时，可将本次截图交给 DeepSeek 视觉服务。图片只会在点击下方按钮后发送。
+					70 button 发送截图到 DeepSeek，重新识别
+				71 container
+					72 text 等待核对
+					73 button 卡片盒
+					74 disclosure triangle Description: 查看处理位置, Help: 处理位置
+						75 text 处理位置
+					76 button (disabled) 复制完整译文
+77 menu bar
+	78 Slipstream
+	79 编辑
+	80 窗口
+
+The focused UI element is 62 disclosure triangle 校正文字与公式

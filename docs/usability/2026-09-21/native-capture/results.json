@@ -1,0 +1,139 @@
+{
+  "date": "2026-09-21",
+  "appVersion": "1.2.0",
+  "sourceCommit": "0c5ae1bcde7f0fdd9a22a04bda087da6d6984f5b",
+  "platform": {
+    "macOS": "26.6.1",
+    "architecture": "arm64",
+    "chip": "Apple M4 Max"
+  },
+  "installedApp": {
+    "path": "/Applications/Slipstream.app",
+    "signatureVerification": "passed",
+    "asarSha256": "d7a5fa18b5b0a08582902a5ebf711d3d93d7f1496bff530f93f2fc49b96cb43a",
+    "matchesVerifiedReleaseArchive": true
+  },
+  "method": {
+    "input": "Authorized CGEvent keyboard and drag events; native screencapture selector launched by installed app",
+    "observations": "Native accessibility tree, window bounds and screenshots",
+    "provider": "Configured DeepSeek service, real translation responses",
+    "mockedScreenshot": false,
+    "mockedOCR": false,
+    "mockedProvider": false,
+    "networkPacketCapture": false,
+    "appCodeChanged": false,
+    "systemPermissionsChanged": false,
+    "accessibilityEvidenceFormatting": "Trailing line whitespace removed; text otherwise unchanged"
+  },
+  "workflow": "passed",
+  "automaticRecognition": "mixed; Adam required operator correction",
+  "cases": [
+    {
+      "name": "attention",
+      "source": "Attention Is All You Need, page 4; prior PDF pixel crop displayed in Preview and recaptured from screen",
+      "screenRegionPoints": {
+        "x1": 214,
+        "y1": 396,
+        "x2": 1020,
+        "y2": 557
+      },
+      "nativeSelectorObserved": true,
+      "formulaCount": 2,
+      "flaggedFormulaCount": 2,
+      "reviewBeforeTranslation": true,
+      "originalScreenshotViewed": true,
+      "operatorCorrections": [],
+      "preserved": [
+        "transpose",
+        "fraction",
+        "square root and subscript"
+      ],
+      "realTranslationCompleted": true,
+      "evidence": [
+        "attention-captured-region.jpg",
+        "attention-source-latex.ax.txt",
+        "attention-translation.jpg",
+        "attention-translation.ax.txt"
+      ]
+    },
+    {
+      "name": "adam",
+      "source": "Adam: A Method for Stochastic Optimization, actual PDF page 2 in Preview",
+      "screenRegionPoints": {
+        "x1": 434,
+        "y1": 437,
+        "x2": 1127,
+        "y2": 764
+      },
+      "nativeSelectorObserved": true,
+      "formulaCount": 17,
+      "flaggedFormulaCount": 7,
+      "reviewBeforeTranslation": true,
+      "preservedWithoutCorrection": [
+        "m-hat and v-hat",
+        "beta subscripts and powers",
+        "square root over v-hat"
+      ],
+      "recognitionErrors": [
+        "stepsize alpha read as a",
+        "parameter theta read as 0",
+        "spurious dot over second-moment correction denominator",
+        "two duplicated colons"
+      ],
+      "operatorCorrections": [
+        "Replaced a with alpha and 0 with theta using the PDF",
+        "Removed the spurious dot and duplicate colons in the source editor"
+      ],
+      "realTranslationCompleted": true,
+      "translationUsedCorrectedInput": true,
+      "evidence": [
+        "adam-preview-source.jpg",
+        "adam-raw.txt",
+        "adam-corrected.txt",
+        "adam-translation.jpg",
+        "adam-translation.ax.txt"
+      ]
+    }
+  ],
+  "pinOperations": {
+    "drag": "passed; window bounds changed from (1038,345,460,574) to (1026,287,460,574)",
+    "collapseAndExpand": "passed; translation retained",
+    "close": "passed; both test cards closed"
+  },
+  "escapeCancellation": {
+    "nativeSelectorObserved": true,
+    "selectorExited": true,
+    "newCardCreated": false,
+    "permissionAlert": false,
+    "existingReadingCardPreserved": true
+  },
+  "remainingFindings": [
+    "Adam OCR errors are recorded, not fixed by this acceptance run",
+    "English 1st and 2nd were treated as math and remained in the Chinese translation",
+    "The screenshot tab correction button is disabled while waiting for review; the Review tab still exposes the editor"
+  ],
+  "limits": [
+    "Two excerpts on one Apple Silicon Mac; no Intel device or minimum macOS acceptance",
+    "Not a general OCR accuracy or timing benchmark",
+    "No new first-install permission, quarantine or updater download/install test",
+    "The preview setup initially captured the wrong foreground region; that failed attempt is excluded and its card was closed"
+  ],
+  "artifactSha256": {
+    "adam-corrected.txt": "54b1d0e18596d1184deeed116a4dd1fa00f3802db2270d6575952c32bd7c16c2",
+    "adam-preview-source.jpg": "0ff4aacf3dbdabcd956ea2ede3c7d78dd75900e5098b37b186c8797a43610f4a",
+    "adam-raw.txt": "eea73f070a86a6798d489816d2c6597357cd027b5861162ce8003e0661f049ea",
+    "adam-review.jpg": "7974df41ec653e1bdf76a26dda75349f80c359812986801e6f1bfce88418357e",
+    "adam-source-corrected.ax.txt": "e5030074d6778dc99ba035a4502b767b3c2b2a87f7362662a2cde258f1bff628",
+    "adam-source-raw.ax.txt": "daeb31333ad15d54ee0910995414e6739b29c534b0f4758082ca1f3bda59f70f",
+    "adam-translation.ax.txt": "f31f1801f80387519b504f82662b121450c3a31d04bfe426eccfba6a1ecc33a6",
+    "adam-translation.jpg": "9964658466c4920b627c0fd64494060e297343dc7dbb93af713fb51671f2bbae",
+    "attention-captured-region.jpg": "d5767f87eb9de2891bf9d4a0f37769a0cb16fc0d50802c6009802ea84fc1c4a1",
+    "attention-collapsed.jpg": "711f2403e2173d00ba672c1da36ba83e8a2edae5eafabf3ac715145bab3dd774",
+    "attention-preview-source.jpg": "a8da1b901a10aa1bedf3a326c04f72dd2bab0378ade4e46875095990aa3ea9f8",
+    "attention-review.jpg": "048563549dde4ee5f0cd982412e3732996357b7a4cc258a23588be9bf74744ad",
+    "attention-source-latex.ax.txt": "5060180f499d5c0f16db177c6ceea4fa9bf8628d437beaeb732e2e743c21d81b",
+    "attention-translation.ax.txt": "02be2e0f6b6caafe0649c8910eb4656eab5547a0e0c9c2fcaf08d85149086506",
+    "attention-translation.jpg": "d4e2aeab782bda8f2d6427ebd3a22840d8bcb40b31606f850f11429a544dfb40",
+    "native-input.swift": "9c6d01c63d970f53197deb20d7201af7ef4884b87be7a6ad0fe204a7e022e5c3"
+  }
+}

@@ -113,9 +113,9 @@
   },
   "limits": [
     "x64 execution used Rosetta on Apple Silicon; no Intel device test",
-    "OS screenshot drag could not be completed with available desktop automation; no claim of interactive capture to translation acceptance",
     "Not a first-install quarantine, minimum macOS, or updater download/install acceptance test",
-    "Recognition corpus is small and does not establish general accuracy"
+    "Recognition corpus is small and does not establish general accuracy",
+    "Native capture acceptance revealed small-symbol, punctuation and spurious-dot OCR errors in Adam; corrections were made in the review UI, not in the recognizer."
   ],
   "githubReleaseId": 391466393,
   "assets": [
@@ -175,5 +175,14 @@
     "publicUpdateFeedMatches": true,
     "publicChecksumsMatch": true,
     "publicAssetDigestsMatch": true
+  },
+  "nativeCaptureAcceptance": {
+    "date": "2026-09-21",
+    "workflow": "passed",
+    "automaticRecognition": "mixed; Adam needed operator correction",
+    "report": "../usability/2026-09-21/native-capture/README.md",
+    "evidence": "../usability/2026-09-21/native-capture/results.json",
+    "previousGapClosed": "native shortcut to region drag to OCR review to real translation card",
+    "productionCodeChanged": false
   }
 }

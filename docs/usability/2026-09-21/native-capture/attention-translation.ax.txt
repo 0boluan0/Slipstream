@@ -1,0 +1,80 @@
+Window: "Slipstream · 阅读卡片", App: Slipstream.
+0 standard window Slipstream · 阅读卡片, Secondary Actions: Raise
+	1 container Slipstream · 阅读卡片
+		2 container
+			3 HTML content Slipstream · 阅读卡片, URL: file:///Applications/Slipstream.app/Contents/Resources/app.asar/src/main/reading-pin/index.html
+				4 container
+					5 text Slipstream 阅读
+					6 button Description: 收起卡片, Help: 收起卡片 · 双击顶部
+					7 toggle button Description: 置顶, Help: 取消置顶, Value: 1
+					8 button Description: 关闭这张卡片, Help: 关闭卡片 · Esc
+				9 tab group 阅读方式
+					10 tab (selected) 译文, Value: 1
+					11 tab (settable, integer) 对照, Value: 0
+					12 tab (settable, integer) 截图, Value: 0
+				13 container 阅读字号
+					14 button 缩小字号
+					15 button 放大字号
+				16 container
+					17 text 这张卡片所属的阅读
+					18 pop-up button 这张卡片所属的阅读, Value: DML · 9月18日体验测试
+						19 (selected) DML · 9月18日体验测试
+					20 button 本文速查 · 0
+				21 container
+					22 container 译文
+						23 container
+							24 text 01
+							25 button 查看第 1 段英文原文
+							26 container
+								27 text 在实践中，我们同时在一组查询上计算注意力函数，这些查询被打包成一个矩阵
+								28 text 𝑄
+								29 text 。键和值也被打包成矩阵 K 和 V。我们将输出矩阵计算为：
+							30 text 术语
+							31 toggle button Description: 解释 注意力函数 · attention function, Help: attention function, Value: 0
+							32 toggle button Description: 解释 查询 · queries, Help: queries, Value: 0
+							33 toggle button Description: 解释 键 · keys, Help: keys, Value: 0
+							34 toggle button Description: 解释 值 · values, Help: values, Value: 0
+							35 text 02
+							36 button 查看第 2 段英文原文
+							37 container
+								38 text A
+								39 text t
+								40 text t
+								41 text e
+								42 text n
+								43 text t
+								44 text i
+								45 text o
+								46 text n
+								47 text ( 𝑄 , 𝐾 , 𝑉 ) =
+								48 text s
+								49 text o
+								50 text f
+								51 text t
+								52 text m
+								53 text a
+								54 text x
+								55 text (
+								56 container
+									57 text 𝑄
+									58 text 𝐾
+									59 text 𝑇
+								60 container
+									61 text 𝑑 𝑘
+								62 text ) 𝑉
+							63 text 03
+							64 button 查看第 3 段英文原文
+							65 text (1)
+					66 button 整理这段的符号定义
+				67 container
+					68 text 3 段 · 已完成
+					69 button 卡片盒
+					70 disclosure triangle Description: 查看处理位置, Help: 处理位置
+						71 text 处理位置
+					72 button 复制完整译文
+73 menu bar
+	74 Slipstream
+	75 编辑
+	76 窗口
+
+The focused UI element is 3 HTML content Slipstream · 阅读卡片, URL: file:///Applications/Slipstream.app/Contents/Resources/app.asar/src/main/reading-pin/index.html
