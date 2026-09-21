@@ -4,8 +4,25 @@ const { mathRanges, needsMathReview, isMathOnly } = require('../src/shared/readi
 const { readingSegments } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
 const { createReadingProcessor } = require('../src/main/reading-service');
+const { mergeFormulaDocument } = require('../src/main/formula-document');
 
 async function main() {
+  const size = { width: 100, height: 100 };
+  const word = (text, x, w) => ({ text, characters: [...text].map((char) => ({ text: char,
+    boundingBox: { x: x / 100, y: .7, w: w / 100, h: .2 } })) });
+  const formula = { x: 10, y: 10, w: 18, h: 20, latex: 'x', display: false };
+  const original = { blocks: [word('x:', 10, 24), word('label', 45, 30)] };
+  const masked = { blocks: [word(':', 29, 5), word('label', 45, 30)] };
+  assert.equal(mergeFormulaDocument(masked, [formula], size, original).text, '$x$: label',
+    'the same punctuation recovered from an original word and masked OCR must appear once');
+  for (const [tex, expected] of [
+    [String.raw`1 ^ { \mathrm { s t } }`, '1st'],
+    [String.raw`2 ^ { \text { n d } }`, '2nd'],
+    [String.raw`x ^ { s t }`, String.raw`$x ^ { s t }$`],
+    [String.raw`\dot{x}`, String.raw`$\dot{x}$`],
+  ]) {
+    assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, latex: tex }], size).text, expected);
+  }
   const source = String.raw`Conditional expectation is $\mathbb{E}[Y\mid X=x]$.
 
 $$\mathbb{E}[Y\mid X=x]=\int_{-\infty}^{\infty}y f_{Y\mid X}(y\mid x)\,\mathrm{d}y.$$

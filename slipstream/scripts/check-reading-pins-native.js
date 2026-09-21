@@ -205,6 +205,11 @@ app.whenReady().then(async () => {
   await until(phaseIs(second, 'review'), 'low confidence review');
   assert.equal(providerCalls, callsBeforeReview, 'low OCR confidence must not send text');
   assert.equal((await stateOf(first)).translation, chinese);
+  await second.webContents.executeJavaScript('document.getElementById("review-image").click()');
+  assert(await second.webContents.executeJavaScript('!document.getElementById("edit-source").disabled'),
+    'the screenshot correction action must be available during OCR review');
+  await second.webContents.executeJavaScript('document.getElementById("edit-source").click()');
+  await until(() => second.webContents.executeJavaScript('document.getElementById("source-correction").open && document.activeElement.id === "source-editor"'), 'screenshot correction editor');
   await action(second, 'translate', { revision: (await stateOf(second)).revision, text: english });
   await until(phaseIs(second, 'done'), 'reviewed translation');
   void action(first, 'close').catch(() => {});

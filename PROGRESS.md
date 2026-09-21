@@ -1,6 +1,12 @@
 # Slipstream — Progress
 
-## Current — 2026-09-21 native capture acceptance
+## Current — 2026-09-21 formula recognition and review iteration
+
+Implemented the 1.2.1 candidate from the real-screen failures: proportional detector margins, gated weak Greek-symbol candidates, tighter vertical crops, provenance-aware punctuation deduplication and prose ordinal recovery. The same Adam screenshot now retains alpha/theta and removes the spurious dot and duplicated punctuation without operator correction. Eleven bounded pixel cases pass, including genuine derivative dots and ordinary prose. [Before/after evidence](docs/usability/2026-09-21/ocr-iteration/README.md).
+
+Review supports clicking a rendered formula to select its LaTeX, comparing the original screenshot while editing, and submitting edited text directly. The screenshot correction action works during review, and switching views preserves the draft. Reading-card regressions pass. Packaging, installed-app verification and publication are in progress; no new release is claimed here yet.
+
+## Previous — 2026-09-21 native capture acceptance
 
 Completed the installed 1.2.0 flow with authorized CGEvent input: global shortcut, real system region drag, local OCR review, real DeepSeek translation and floating card. Attention passed without editing its OCR; Adam preserved hats and core mathematical structures but required source correction for small Greek letters, a spurious dot and duplicate punctuation. Drag, collapse/reopen, close and Escape cancellation passed; the existing reading card was preserved. [Report and screenshots](docs/usability/2026-09-21/native-capture/README.md).
 

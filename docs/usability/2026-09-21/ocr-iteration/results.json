@@ -1,0 +1,17 @@
+{
+  "date": "2026-09-21",
+  "baselineCommit": "eef4614",
+  "candidateVersion": "1.2.1",
+  "input": "adam-screen.png",
+  "inputSha256": "dda4e7415ad24c6b8476f82ff9b9cc6f952fb10d742e501a726a92bb0cb3b709",
+  "inputOrigin": "Actual Preview PDF window, native screen region 434,437,693,327; original screen pixels preserved",
+  "baseline": "before.txt",
+  "candidate": "after.txt",
+  "operatorCorrections": false,
+  "regressionCases": 11,
+  "regressions": "pixel-regressions.json",
+  "limits": [
+    "One native screenshot and a bounded paper/synthetic corpus; not a general accuracy benchmark",
+    "Native packaged-app acceptance and release checks are recorded separately"
+  ]
+}

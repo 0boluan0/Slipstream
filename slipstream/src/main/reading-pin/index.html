@@ -63,8 +63,15 @@
     <section id="review" aria-labelledby="review-title" hidden>
       <h2 id="review-title" tabindex="-1">核对识别文字</h2>
       <div class="review-actions"><button id="confirm" class="primary">确认并翻译</button><button id="review-image">查看截图</button></div>
-      <details id="formula-preview"><summary>排版后的原文</summary><div id="source-preview"></div></details>
-      <details id="source-correction"><summary>校正文字与公式</summary><p class="muted">行内用 $...$，独立公式用 $$...$$。修改后会更新排版预览。</p><label for="source-editor" class="sr-only">识别出的英文原文</label><textarea id="source-editor" lang="en" maxlength="10000" spellcheck="false"></textarea></details>
+      <details id="formula-preview"><summary>排版后的原文</summary><p id="formula-edit-hint" class="muted" hidden>点击有误的公式，直接定位到这一处校正。</p><div id="source-preview"></div></details>
+      <details id="source-correction"><summary>校正文字与公式</summary>
+        <div id="correction-reference" hidden>
+          <div class="source-caption"><span>对照原始截图</span><button id="correction-zoom" aria-pressed="false">放大</button></div>
+          <div id="correction-image-frame" tabindex="0" aria-label="原始截图，可滚动核对"><img id="correction-image" alt="校正时对照的原始截图"></div>
+        </div>
+        <p class="muted">行内用 $...$，独立公式用 $$...$$。修改后会更新排版预览。</p><label for="source-editor" class="sr-only">识别出的英文原文</label><textarea id="source-editor" lang="en" maxlength="10000" spellcheck="false"></textarea>
+        <div class="review-actions"><button id="confirm-edits" class="primary">用校正内容翻译</button></div>
+      </details>
     </section>
     <div id="reading-content" role="tabpanel" aria-labelledby="tab-translation" tabindex="0">
       <p id="reading-hint" class="muted" hidden>选中英文词句，查看这一处的意思。</p>

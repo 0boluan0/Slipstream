@@ -12,6 +12,34 @@ const scrollPositions = { translation: 0, parallel: 0, image: 0 };
 const sourceOpen = new Set();
 const segmentNodes = new Map();
 
+function renderSourcePreview() {
+  const text = byId('source-editor').value;
+  window.renderReadingMath(byId('source-preview'), text);
+  const ranges = window.readingMath.mathRanges(text);
+  byId('formula-edit-hint').hidden = !ranges.length;
+  const nodes = [...byId('source-preview').children];
+  nodes.forEach((node, index) => {
+    const range = ranges[index];
+    node.setAttribute('role', 'button');
+    node.tabIndex = 0;
+    node.setAttribute('aria-label', `校正公式：${range.tex}`);
+    node.title = '点击校正这一处公式';
+    node.onclick = () => {
+      const editor = byId('source-editor');
+      byId('source-correction').open = true;
+      byId('formula-preview').open = false;
+      const delimiter = (range.end - range.start - range.tex.length) / 2;
+      editor.focus();
+      editor.setSelectionRange(range.start + delimiter, range.end - delimiter);
+      editor.scrollTop = Math.max(0, (text.slice(0, range.start).split('\n').length - 2)
+        * parseFloat(getComputedStyle(editor).lineHeight));
+    };
+    node.onkeydown = (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); node.click(); }
+    };
+  });
+}
+
 async function act(action, payload) {
   try {
     const result = await window.readingPin.act(action, payload);
@@ -175,7 +203,7 @@ function render(next) {
   byId('tab-image').hidden = !state.image;
   if (state.phase === 'review' && previousPhase !== 'review') {
     byId('source-editor').value = state.sourceText || '';
-    window.renderReadingMath(byId('source-preview'), state.sourceText || '');
+    renderSourcePreview();
     byId('formula-preview').open = window.readingMath.mathRanges(state.sourceText || '').length > 0;
     byId('source-correction').open = !byId('formula-preview').open;
     byId('review-title').focus({ preventScroll: true });
@@ -187,12 +215,14 @@ function render(next) {
   byId('recovery').hidden = !['error', 'partial'].includes(state.phase);
   byId('retry').hidden = !state.sourceText;
   byId('original').hidden = mode !== 'image' || !state.image;
-  if (byId('source-image').getAttribute('src') !== state.image) {
-    if (state.image) byId('source-image').src = state.image;
-    else byId('source-image').removeAttribute('src');
+  for (const id of ['source-image', 'correction-image']) {
+    if (byId(id).getAttribute('src') === state.image) continue;
+    if (state.image) byId(id).src = state.image;
+    else byId(id).removeAttribute('src');
   }
+  byId('correction-reference').hidden = !state.image;
   byId('source-text').textContent = state.sourceText || '';
-  byId('edit-source').disabled = working || state.phase === 'review';
+  byId('edit-source').disabled = working;
   byId('copy').disabled = state.phase !== 'done' || !state.translation;
   byId('formula-tools').hidden = !state.image || (!['review', 'recognizing', 'error'].includes(state.phase) && mode !== 'image');
   byId('recognize-formulas').hidden = !state.formulaSupported;
@@ -259,7 +289,13 @@ byId('pin').onclick = () => act('toggle-top');
 byId('collapse').onclick = () => act('collapse');
 byId('titlebar').ondblclick = (event) => { if (!event.target.closest('button')) act('collapse'); };
 byId('confirm').onclick = () => { setMode('translation'); return act('translate', { revision: state?.revision, text: byId('source-editor').value }); };
-byId('source-editor').oninput = () => window.renderReadingMath(byId('source-preview'), byId('source-editor').value);
+byId('confirm-edits').onclick = byId('confirm').onclick;
+byId('source-editor').oninput = renderSourcePreview;
+byId('correction-zoom').onclick = () => {
+  const zoomed = byId('correction-image-frame').classList.toggle('zoomed');
+  byId('correction-zoom').setAttribute('aria-pressed', String(zoomed));
+  byId('correction-zoom').textContent = zoomed ? '适应宽度' : '放大';
+};
 byId('recognize-formulas').onclick = async () => {
   await act('recognize-formulas', { revision: state?.revision, sendImage: true,
     ...(state?.phase === 'review' ? { text: byId('source-editor').value } : {}) });
@@ -269,9 +305,10 @@ byId('retry').onclick = () => act('translate', { revision: state?.revision, retr
 byId('retake').onclick = () => act('retake');
 for (const id of ['settings', 'footer-settings', 'lookup-settings']) byId(id).onclick = () => act('settings');
 byId('edit-source').onclick = async () => {
-  await act('review');
+  if (state?.phase !== 'review') await act('review');
   setMode('translation');
   byId('source-correction').open = true;
+  byId('formula-preview').open = false;
   byId('source-editor').focus();
 };
 byId('review-image').onclick = () => setMode('image');

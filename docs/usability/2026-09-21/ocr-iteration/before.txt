@@ -1,0 +1,17 @@
+Require: a: Stepsize
+Require: $\beta _ { 1 }, \beta _ { 2 } \in [ 0, 1 )$:: Exponential decay rates for the moment estimates
+Require: $f ( \theta )$: Stochastic objective function with parameters 0
+Require: $\theta _ { 0 }$: Initial parameter vector
+$m _ { 0 } \gets 0$ (Initialize $1 ^ { \mathrm { s t } }$ moment vector)
+$v _ { 0 } \gets 0$ (Initialize $2 ^ { \mathrm { n d } }$ moment vector)
+$t \gets 0$ (Initialize timestep)
+while $\theta _ { t }$ not converged do
+$t \gets t + 1$
+$g _ { t } \gets \nabla _ { \theta } f _ { t } ( \theta _ { t - 1 } )$ (Get gradients w.r.t. stochastic objective at timestep t)
+$m _ { t } \gets \beta _ { 1 } \cdot m _ { t - 1 } + ( 1 - \beta _ { 1 } ) \cdot g _ { t }$ (Update biased first moment estimate)
+$v _ { t } \gets \beta _ { 2 } \cdot v _ { t - 1 } + ( 1 - \beta _ { 2 } ) \cdot g _ { t } ^ { 2 }$ (Update biased second raw moment estimate)
+$\widehat { m } _ { t } \gets m _ { t } / ( 1 - \beta _ { 1 } ^ { t } )$ (Compute bias-corrected first moment estimate)
+$\widehat { v } _ { t } \gets v _ { t } / \dot { ( 1 - \beta _ { 2 } ^ { t } ) }$ (Compute bias-corrected second raw moment estimate)
+$\theta _ { t } \gets \theta _ { t - 1 } - \alpha \cdot \widehat { m } _ { t } / ( \sqrt { \widehat { v } _ { t } } + \epsilon )$ (Update parameters)
+end while
+return $\theta _ { t }$ (Resulting parameters)
