@@ -2578,6 +2578,8 @@ async function main() {
       'reply-copy-settlement-native',
     ));
     assertIsolationProof(replyCopyProof);
+    assert.equal(replyCopyProof.replyCpuThrottlingRate, 6,
+      'reply editing must survive slower renderer scheduling');
     const settlement = replyCopyProof.renderer.replyCopySettlement;
     assert.ok(settlement, 'native fixture did not return guided reply copy settlement evidence');
     assert.equal(settlement.pendingActionDisabled, true);
