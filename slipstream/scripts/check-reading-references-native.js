@@ -88,6 +88,10 @@ app.whenReady().then(async () => {
   await js(reference, 'document.getElementById("paper-create").click()');
   await until(async () => (await snapshot(reference)).paperId, 'new paper');
   const paperA = (await snapshot(reference)).paperId;
+  // The main-process paper id may update before the create action publishes
+  // the corresponding controls. Operate only once the actual form is ready.
+  await until(() => js(reference, `document.getElementById('paper-select').value === ${JSON.stringify(paperA)}
+    && !document.getElementById('reference-paper-tools').hidden`), 'new paper form rendered');
   await js(reference, 'document.getElementById("paper-title").value = "正则化 · 阅读速查"; document.getElementById("paper-rename").click()');
   await until(async () => (await snapshot(reference)).references.paper.title === '正则化 · 阅读速查', 'paper rename');
   const definitionPin = await openText(source);

@@ -126,7 +126,19 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   }
   function update(pin, patch) {
     if (!alive(pin)) return;
+    const hadLookup = Boolean(pin.view.lookup || pin.view.lookupNotice);
     Object.assign(pin.view, patch);
+    const hasLookup = Boolean(pin.view.lookup || pin.view.lookupNotice);
+    if (hadLookup !== hasLookup && !pin.manuallyResized && !pin.view.collapsed && !pin.view.referenceOnly) {
+      const bounds = pin.window.getBounds(), area = screen.getDisplayMatching(bounds).workArea;
+      const compact = pin.compactLookupBounds;
+      const height = Math.min(area.height, hasLookup ? Math.max(bounds.height, 680) : compact?.height || bounds.height);
+      const proposedY = !hasLookup && bounds.y === pin.lookupExpandedY ? compact?.y ?? bounds.y : bounds.y;
+      const y = Math.max(area.y, Math.min(proposedY, area.y + area.height - height));
+      if (hasLookup) { pin.compactLookupBounds = bounds; pin.lookupExpandedY = y; }
+      if (height !== bounds.height || y !== bounds.y) pin.window.setBounds({ ...bounds, height, y });
+      if (!hasLookup) pin.compactLookupBounds = null;
+    }
     if (patch.phase === 'review' && patch.formulaStatus === 'local' && !pin.manuallyResized && !pin.reviewFitted) {
       pin.reviewFitted = true;
       const bounds = pin.window.getBounds(), area = screen.getDisplayMatching(bounds).workArea;
@@ -412,10 +424,16 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             try {
               const result = await processReadingText({ text: segment.source, kind: 'translate', withTerms: true,
                 withReferences: Boolean(referenceStore && requestPaperId),
-                settingsSnapshot: configuration.settings, signal: controller.signal });
+                settingsSnapshot: configuration.settings, signal: controller.signal,
+                onTranslation: (early) => {
+                  if (!active()) return;
+                  Object.assign(segment, { translation: early.translation, terms: [], termsStatus: 'reviewing', status: 'done', error: '' });
+                  report();
+                } });
               if (!active()) return;
               segment.translation = result.translation;
               segment.terms = result.terms || [];
+              segment.termsStatus = result.termsStatus || 'ready';
               segment.referenceCandidates = pin.view.paperId === requestPaperId ? result.references || [] : [];
               segment.status = 'done';
               segment.error = '';
@@ -724,7 +742,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       return true;
     }
     if (action === 'copy') {
-      if (pin.view.phase !== 'done' || !pin.view.translation) return false;
+      if (!['done', 'translating'].includes(pin.view.phase) || !pin.view.translation
+        || !pin.view.segments.length || pin.view.segments.some((segment) => segment.status !== 'done')) return false;
       copyText(pin.view.translation);
       return true;
     }

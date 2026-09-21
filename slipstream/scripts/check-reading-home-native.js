@@ -56,6 +56,7 @@ app.whenReady().then(async () => {
   const provider = createReadingProcessor(async (...args) => {
     providerCalls += 1;
     const input = JSON.parse(args[4]);
+    if (input.candidates) return JSON.stringify({ keep: input.candidates.map((_term, index) => index) });
     if (input.selection === 'confounder') return JSON.stringify({ quote: input.selection,
       meaning: '混杂变量是同时影响处理与结果的变量。', note: '本段用它说明关联不一定意味着因果效应。' });
     if (input.selection) return JSON.stringify({ quote: input.selection,
@@ -65,8 +66,8 @@ app.whenReady().then(async () => {
     return JSON.stringify({ translation: second
       ? '混杂变量同时影响处理与结果，因此即使处理没有因果效应，也可能观察到关联。'
       : '相关关系并不意味着因果关系。两个变量之间观察到的关联，可能由一个共同原因来解释。',
-    terms: second ? [{ quote: 'confounder', label: '混杂变量' }, { quote: 'causal effect', label: '因果效应' }]
-      : [{ quote: 'Correlation', label: '相关关系' }, { quote: 'causation', label: '因果关系' }] });
+    terms: second ? [{ quote: 'confounder', label: '混杂变量', role: 'core' }, { quote: 'causal effect', label: '因果效应', role: 'core' }]
+      : [{ quote: 'Correlation', label: '相关关系', role: 'core' }, { quote: 'causation', label: '因果关系', role: 'core' }] });
   });
   pins = createReadingPins({ BrowserWindow, ipcMain, screen, getSettings: () => settings, getMainWindow: () => main,
     referenceStore: createReadingReferenceStore(path.join(work, 'references')),

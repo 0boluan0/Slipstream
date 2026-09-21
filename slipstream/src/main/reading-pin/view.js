@@ -6,6 +6,7 @@ let previousPhase = '';
 let mode = 'translation';
 let fontSize = 16;
 let selected = null;
+let lookupOrigin = null;
 let fitRequested = false;
 let copyTimer;
 const scrollPositions = { translation: 0, parallel: 0, image: 0 };
@@ -93,22 +94,32 @@ function createSegment(segment) {
   translation.className = 'translation-paragraph';
   const terms = document.createElement('div');
   terms.className = 'term-list';
+  const termsNotice = document.createElement('p');
+  termsNotice.className = 'muted terms-notice';
   const referenceHits = document.createElement('div');
   referenceHits.className = 'reference-hit-list';
-  section.append(tools, source, translation, terms, referenceHits);
+  section.append(tools, source, translation, terms, termsNotice, referenceHits);
   byId('translation').append(section);
-  const node = { section, source, translation, toggle, terms, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  const node = { section, source, translation, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
   segmentNodes.set(segment.id, node);
   return node;
 }
 
 function requestLookup(selection) {
+  if (!byId('lookup-panel').contains(document.activeElement)) lookupOrigin = document.activeElement;
+  byId('lookup-panel').scrollTop = 0;
   selected = selection;
   byId('selection-bar').hidden = true;
   return act('lookup', { ...selection, revision: state?.revision });
 }
 
+async function dismissLookup() {
+  await act('dismiss-lookup');
+  if (lookupOrigin?.isConnected && lookupOrigin.getClientRects().length) lookupOrigin.focus({ preventScroll: true });
+}
+
 function renderSegments(segments) {
+  const shownTerms = new Set();
   for (const [id, node] of segmentNodes) {
     if (!segments.some((segment) => segment.id === id && segment.source === node.sourceValue)) {
       node.section.remove();
@@ -127,15 +138,21 @@ function renderSegments(segments) {
       : segment.status === 'error' ? segment.error
         : segment.status === 'translating' ? '正在翻译这一段…' : '等待翻译…';
     window.renderReadingMath(node.translation, value);
-    const termsKey = JSON.stringify(segment.terms || []);
+    const visibleTerms = (segment.terms || []).filter((term) => {
+      const key = JSON.stringify([term.quote.trim().toLowerCase(), term.label.trim()]);
+      if (shownTerms.has(key)) return false;
+      shownTerms.add(key);
+      return true;
+    });
+    const termsKey = JSON.stringify(visibleTerms);
     if (node.termsKey !== termsKey) {
       node.termsKey = termsKey;
       node.terms.replaceChildren();
-      if (segment.terms?.length) {
+      if (visibleTerms.length) {
         const label = document.createElement('span');
         label.textContent = '术语';
         node.terms.append(label);
-        for (const term of segment.terms) {
+        for (const term of visibleTerms) {
           const button = document.createElement('button');
           button.className = 'term-chip';
           button.dataset.quote = term.quote;
@@ -153,7 +170,9 @@ function renderSegments(segments) {
         }
       }
     }
-    node.terms.hidden = !segment.terms?.length;
+    node.terms.hidden = !visibleTerms.length;
+    node.termsNotice.hidden = segment.termsStatus !== 'unavailable';
+    node.termsNotice.textContent = segment.termsStatus === 'unavailable' ? '术语推荐暂未完成，可展开原文选词查询。' : '';
     node.terms.querySelectorAll('button').forEach((button) => {
       button.setAttribute('aria-pressed', String(state.lookup?.quote === button.dataset.quote));
     });
@@ -179,6 +198,7 @@ function renderSegments(segments) {
 }
 
 function render(next) {
+  const previousLookup = state?.lookup;
   state = next;
   const segments = state.segments || [];
   const completed = segments.filter((segment) => segment.status === 'done').length;
@@ -224,7 +244,8 @@ function render(next) {
   byId('correction-reference').hidden = !state.image;
   byId('source-text').textContent = state.sourceText || '';
   byId('edit-source').disabled = working;
-  byId('copy').disabled = state.phase !== 'done' || !state.translation;
+  byId('copy').disabled = !['done', 'translating'].includes(state.phase) || !state.translation
+    || !segments.length || segments.some((segment) => segment.status !== 'done');
   byId('formula-tools').hidden = !state.image || (!['review', 'recognizing', 'error'].includes(state.phase) && mode !== 'image');
   byId('recognize-formulas').hidden = !state.formulaSupported;
   byId('recognize-formulas').disabled = working;
@@ -236,6 +257,7 @@ function render(next) {
   const lookup = state.lookup;
   byId('lookup-panel').hidden = !lookup && !state.lookupNotice;
   if (lookup || state.lookupNotice) {
+    if (!previousLookup || previousLookup.quote !== lookup?.quote) byId('lookup-panel').scrollTop = 0;
     const contextual = lookup?.contextual ?? state.explainSupported;
     byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : contextual ? '术语与词句解释' : '词句翻译';
     window.renderReadingMath(byId('lookup-quote'), lookup?.reference ? window.readingReferences.symbolText(lookup.quote) : lookup?.quote || '');
@@ -314,7 +336,7 @@ byId('edit-source').onclick = async () => {
   byId('source-correction').scrollIntoView({ block: 'start' });
 };
 byId('review-image').onclick = () => setMode('image');
-byId('lookup-close').onclick = () => act('dismiss-lookup');
+byId('lookup-close').onclick = dismissLookup;
 byId('save-term').onclick = () => act(state?.saveStatus === 'saved' ? 'library' : 'save-term');
 byId('library').onclick = () => act('library');
 byId('lookup-retry').onclick = () => selected && requestLookup(selected);
@@ -359,7 +381,8 @@ document.addEventListener('keydown', (event) => {
     if (byId('processing-info').open) byId('processing-info').open = false;
     else if (window.readingReferences.isEditing()) window.readingReferences.closeEditor();
     else if (!byId('selection-bar').hidden) { window.getSelection()?.removeAllRanges(); byId('selection-bar').hidden = true; }
-    else act(state?.lookup || state?.lookupNotice ? 'dismiss-lookup' : 'close');
+    else if (state?.lookup || state?.lookupNotice) dismissLookup();
+    else act('close');
   }
 });
 window.readingReferences.init(act);
