@@ -172,6 +172,12 @@ app.whenReady().then(async () => {
   })()`);
   assert.equal(selectedFormula, mathRanges(state.sourceText)[0].tex, 'clicking a formula selects only that formula for correction');
   assert(await pin.webContents.executeJavaScript('document.getElementById("source-correction").open && !document.getElementById("correction-reference").hidden && document.getElementById("correction-image").naturalWidth > 0'), 'original screenshot stays beside the correction editor');
+  assert(await pin.webContents.executeJavaScript(`(() => {
+    const image = document.getElementById('correction-reference').getBoundingClientRect();
+    const editor = document.getElementById('source-editor').getBoundingClientRect();
+    const footer = document.querySelector('footer').getBoundingClientRect();
+    return image.bottom <= editor.top && editor.top >= image.top && editor.top + 45 < footer.top;
+  })()`), 'the reference screenshot must not cover the selected formula in the editor');
   fs.writeFileSync(path.join(work, 'local-formula-review.png'), (await pin.webContents.capturePage()).toPNG());
   await pin.webContents.executeJavaScript(`(() => {
     const editor = document.getElementById('source-editor');

@@ -29,10 +29,11 @@ function renderSourcePreview() {
       byId('source-correction').open = true;
       byId('formula-preview').open = false;
       const delimiter = (range.end - range.start - range.tex.length) / 2;
-      editor.focus();
+      editor.focus({ preventScroll: true });
       editor.setSelectionRange(range.start + delimiter, range.end - delimiter);
       editor.scrollTop = Math.max(0, (text.slice(0, range.start).split('\n').length - 2)
         * parseFloat(getComputedStyle(editor).lineHeight));
+      byId('source-correction').scrollIntoView({ block: 'start' });
     };
     node.onkeydown = (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); node.click(); }
@@ -309,7 +310,8 @@ byId('edit-source').onclick = async () => {
   setMode('translation');
   byId('source-correction').open = true;
   byId('formula-preview').open = false;
-  byId('source-editor').focus();
+  byId('source-editor').focus({ preventScroll: true });
+  byId('source-correction').scrollIntoView({ block: 'start' });
 };
 byId('review-image').onclick = () => setMode('image');
 byId('lookup-close').onclick = () => act('dismiss-lookup');
