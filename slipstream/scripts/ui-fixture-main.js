@@ -2063,6 +2063,15 @@ async function finishUiFixtureRuntimeCheck() {
     const trapPort = Number(fixtureUrl.searchParams.get('trapPort'));
     const trapUrl = `http://127.0.0.1:${trapPort}/slipstream-ui-fixture-network-trap`;
     const fixtureRun = fixtureUrl.searchParams.get('run') || 'native-runtime';
+    // Slow scheduling exposes an old parent acknowledgement overwriting a
+    // newer local edit. Exercise that race inside this isolated fixture only.
+    const replyCpuThrottlingRate = fixtureRun === 'reply-copy-settlement-native' ? 6 : 1;
+    if (replyCpuThrottlingRate > 1) {
+      getMainWindow().webContents.debugger.attach('1.3');
+      await getMainWindow().webContents.debugger.sendCommand('Emulation.setCPUThrottlingRate', {
+        rate: replyCpuThrottlingRate,
+      });
+    }
     if (fixtureRun === COMMAND_Q_SAFE_EXIT_TRUSTED_INPUT_RUN) {
       await finishCommandQSafeExitRuntimeCheck();
       return;
@@ -11169,6 +11178,7 @@ async function finishUiFixtureRuntimeCheck() {
         bounds: { width: windowBounds.width, height: windowBounds.height },
         zoomFactor: getMainWindow().webContents.getZoomFactor(),
       },
+      replyCpuThrottlingRate,
       renderer,
     };
     process.stdout.write(`${outputPrefix}${JSON.stringify(payload)}\n`, () => app.exit(0));

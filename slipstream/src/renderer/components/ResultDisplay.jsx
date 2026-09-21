@@ -517,6 +517,7 @@ export default function ResultDisplay({
   const actionCopyResetTimerRef = useRef(null);
   const replyDraftModelIdentityRef = useRef(replyDraftModelIdentity);
   const lastReportedReplyDraftStateRef = useRef(JSON.stringify(initialReplyDraftState));
+  const lastReceivedReplyDraftStateRef = useRef(JSON.stringify(initialReplyDraftState));
   const officialSourcesTriggerRef = useRef(null);
   const deadlineDisclosureRef = useRef(null);
   const verificationApprovalRef = useRef(null);
@@ -620,7 +621,11 @@ export default function ResultDisplay({
     }) || createEmptyReplyDraftState(replyDraftModelIdentity);
     const nextKey = JSON.stringify(next);
     replyDraftModelIdentityRef.current = replyDraftModelIdentity;
-    if (!modelChanged && nextKey === lastReportedReplyDraftStateRef.current) return;
+    // Local edits can render before the parent acknowledges them. Repeated
+    // incoming props must not restore the old draft over those newer edits.
+    const controlledChanged = nextKey !== lastReceivedReplyDraftStateRef.current;
+    lastReceivedReplyDraftStateRef.current = nextKey;
+    if (!modelChanged && (!controlledChanged || nextKey === lastReportedReplyDraftStateRef.current)) return;
     lastReportedReplyDraftStateRef.current = nextKey;
     const selectionChanged = replySelection.start !== next.selection.start
       || replySelection.end !== next.selection.end
