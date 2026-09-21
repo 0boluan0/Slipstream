@@ -1,0 +1,279 @@
+{
+  "version": "1.2.1",
+  "sourceCommit": "43af40cbba9bd655d74891bb7683ba0b33d31b0e",
+  "archives": [
+    {
+      "architecture": "arm64",
+      "filesMatched": 113,
+      "asarSha256": "199f8d803bfe602e47a5bc752583c11854934dc1ef6c92c07b83a1d667d57900",
+      "version": "1.2.1"
+    },
+    {
+      "architecture": "x64",
+      "filesMatched": 113,
+      "asarSha256": "199f8d803bfe602e47a5bc752583c11854934dc1ef6c92c07b83a1d667d57900",
+      "version": "1.2.1"
+    }
+  ],
+  "packagedFormulaOCR": [
+    {
+      "version": "1.2.1",
+      "architecture": "arm64",
+      "cases": [
+        {
+          "name": "attention-equation",
+          "count": 2,
+          "elapsedMs": 2174
+        },
+        {
+          "name": "adam-algorithm",
+          "count": 17,
+          "elapsedMs": 4620
+        },
+        {
+          "name": "dml-equations",
+          "count": 2,
+          "elapsedMs": 1472
+        }
+      ],
+      "network": "blocked",
+      "source": "packaged ASAR, models, native runtime and Swift OCR"
+    },
+    {
+      "version": "1.2.1",
+      "architecture": "x64",
+      "cases": [
+        {
+          "name": "attention-equation",
+          "count": 2,
+          "elapsedMs": 7283
+        },
+        {
+          "name": "adam-algorithm",
+          "count": 17,
+          "elapsedMs": 9158
+        },
+        {
+          "name": "dml-equations",
+          "count": 2,
+          "elapsedMs": 2797
+        }
+      ],
+      "network": "blocked",
+      "source": "packaged ASAR, models, native runtime and Swift OCR"
+    }
+  ],
+  "sourceRegression": {
+    "isolatedGitArchive": true,
+    "freshNpmCi": true,
+    "signedReleaseCommandExitCode": 0,
+    "fullNpmTest": "passed",
+    "lint": "passed",
+    "rendererBuild": "passed",
+    "formulaPixelCases": 11,
+    "formulaReviewGeometry": "passed",
+    "dependencyAudit": "passed"
+  },
+  "packageVerification": {
+    "releaseInfo": "passed",
+    "archiveContents": "passed",
+    "checksums": "passed",
+    "distributionTrust": "passed",
+    "updateManifest": "passed",
+    "installedAsarMatchesBothArchives": true
+  },
+  "notarization": {
+    "x64App": {
+      "id": "f2580e57-4fe7-424d-9581-d6926293c850",
+      "status": "Accepted"
+    },
+    "arm64App": {
+      "id": "96420388-5b5d-4837-9403-f1e936219478",
+      "status": "Accepted"
+    },
+    "x64Dmg": {
+      "id": "0d97c6c6-b45e-4830-ad55-e7cc12ba1ad3",
+      "status": "Accepted"
+    },
+    "arm64Dmg": {
+      "id": "587e2929-dd43-4dc6-a35a-ce748f573d04",
+      "status": "Accepted"
+    }
+  },
+  "installation": {
+    "previousVersion": "1.2.0",
+    "installedVersion": "1.2.1",
+    "profile": "preserved",
+    "bundleBackup": "retained",
+    "asarSha256": "199f8d803bfe602e47a5bc752583c11854934dc1ef6c92c07b83a1d667d57900",
+    "postPublicationUpdateCheck": {
+      "result": "Slipstream 已经是最新版本",
+      "evidence": "../usability/2026-09-21/ocr-iteration/installed-update-check.ax.txt"
+    }
+  },
+  "nativeCaptureAcceptance": {
+    "commit": "43af40cbba9bd655d74891bb7683ba0b33d31b0e",
+    "version": "1.2.1",
+    "asarSha256": "199f8d803bfe602e47a5bc752583c11854934dc1ef6c92c07b83a1d667d57900",
+    "nativeInput": "Option+Shift+S and CGEvent drag 434,437 to 1127,764",
+    "selectorProcessObserved": true,
+    "operatorCorrections": false,
+    "formulaCount": 17,
+    "uncertainCount": 7,
+    "formulaClickSelectedLatex": "\\alpha",
+    "selectedFirstLineVisible": true,
+    "originalImageVisible": true,
+    "originalImageZoom": true,
+    "translationActionVisible": true,
+    "translationCompleted": true,
+    "translationSegments": 3,
+    "translationProvider": "DeepSeek",
+    "mathPreserved": [
+      "alpha",
+      "theta",
+      "hats",
+      "subscripts",
+      "superscripts",
+      "square root"
+    ],
+    "testCardClosed": true,
+    "nativeEscapeReturnedToHomeWithoutPermissionError": true,
+    "termOrReferenceSaveActions": 0,
+    "translationWordingLimitation": "1st moment vector was rendered as 第 1 矩向量; not a general terminology accuracy result",
+    "evidence": [
+      "installed-review.jpg",
+      "installed-review.ax.txt",
+      "installed-correction.jpg",
+      "installed-correction.ax.txt",
+      "installed-zoom.jpg",
+      "installed-translation.jpg",
+      "installed-translated-formulas.jpg",
+      "installed-translation.ax.txt"
+    ]
+  },
+  "limits": [
+    "Small paper and authored corpus, not a general recognition accuracy benchmark",
+    "Translation wording still varies: 1st moment vector became 第 1 矩向量 in the live run",
+    "x64 execution used Rosetta on Apple Silicon; no Intel device test",
+    "Not a first-install quarantine, minimum macOS, or updater download/install acceptance test"
+  ],
+  "ciEarlierAttempts": [
+    {
+      "attempt": 1,
+      "step": "npm test / reply-copy-settlement-native",
+      "failure": "Newer reply draft did not reach controlled state",
+      "productionAndFixtureFilesForThisFlowUnchanged": true,
+      "sourceCommit": "72a9a3c235ede748f4e4c51998b872979ddc06d0",
+      "url": "https://github.com/0boluan0/Slipstream/actions/runs/35601998372"
+    },
+    {
+      "attempt": 2,
+      "step": "check:formula-ocr",
+      "failure": "First Adam case returned formulaOcr.status failed; underlying cause not emitted by the service",
+      "sourceCommit": "72a9a3c235ede748f4e4c51998b872979ddc06d0",
+      "url": "https://github.com/0boluan0/Slipstream/actions/runs/35601998372"
+    },
+    {
+      "attempt": 3,
+      "sourceCommit": "72a9a3c235ede748f4e4c51998b872979ddc06d0",
+      "step": "npm test / reply-copy-settlement-native",
+      "failure": "Newer reply draft did not reach controlled state",
+      "resolution": "Reproduced locally with CPU slowdown and fixed in 43af40c",
+      "url": "https://github.com/0boluan0/Slipstream/actions/runs/35601998372"
+    }
+  ],
+  "replyEditRegression": {
+    "harness": "reply-copy-settlement-native",
+    "failure": "Previous parent draft overwrote newer local input before acknowledgement",
+    "baselineNormalRuns": {
+      "passed": 5,
+      "failed": 0
+    },
+    "baselineSlowRuns": {
+      "passed": 0,
+      "failed": 2,
+      "cpuThrottlingRate": 6
+    },
+    "fixedSlowRuns": {
+      "passed": 5,
+      "failed": 0,
+      "cpuThrottlingRate": 6
+    },
+    "checks": [
+      "newer input preserved while copy is pending",
+      "pending copy still serialized",
+      "clear and Undo restore the newer draft",
+      "no extra clipboard write"
+    ],
+    "fix": "Apply incoming controlled draft only when its value or model identity changes; unchanged old props cannot overwrite newer local edits",
+    "productionFixCommit": "43af40cbba9bd655d74891bb7683ba0b33d31b0e"
+  },
+  "ci": {
+    "attempt": 1,
+    "conclusion": "success",
+    "headSha": "43af40cbba9bd655d74891bb7683ba0b33d31b0e",
+    "startedAt": "2026-09-21T13:23:21Z",
+    "status": "completed",
+    "updatedAt": "2026-09-21T13:31:01Z",
+    "url": "https://github.com/0boluan0/Slipstream/actions/runs/35605292788"
+  },
+  "githubReleaseId": 392968798,
+  "assets": [
+    {
+      "name": "SHA256SUMS.txt",
+      "size": 651,
+      "sha256": "8dd152a1f9a28fa94a6ed5224d32a5e06a94bff5df30e3e36c37d5f4b489137d",
+      "assetId": 579106513
+    },
+    {
+      "name": "Slipstream-1.2.1-arm64.dmg",
+      "size": 385518456,
+      "sha256": "16633bb9123a00778c36633bfe695a0bbb27eeff370c8a5fb0391f80f712e017",
+      "assetId": 579106425
+    },
+    {
+      "name": "Slipstream-1.2.1-arm64.zip",
+      "size": 376888390,
+      "sha256": "b36d36233e302c3881d01fe46d05895cc6f469643f6859dc33b71f3b956107a4",
+      "assetId": 579106423
+    },
+    {
+      "name": "Slipstream-1.2.1-arm64.zip.blockmap",
+      "size": 393458,
+      "sha256": "70b5f8f5efabe242d877f47739b8549333c387c0e43e140b735fe969da676647",
+      "assetId": 579106427
+    },
+    {
+      "name": "Slipstream-1.2.1-x64.dmg",
+      "size": 390263342,
+      "sha256": "e2dbaee182cbce625ce1d8b2aaf8bc967800cfa7d1e661647ec81534ea8d8fe9",
+      "assetId": 579106426
+    },
+    {
+      "name": "Slipstream-1.2.1-x64.zip",
+      "size": 381691740,
+      "sha256": "1bc9bd4521f274022ea7391a9d104341a6f76be7ec0333437916b0c0e4a54a20",
+      "assetId": 579106421
+    },
+    {
+      "name": "Slipstream-1.2.1-x64.zip.blockmap",
+      "size": 400636,
+      "sha256": "21e07b91b25fca3bd56a37ce0eb21a9b6b3c4745308931dd241028798a99982b",
+      "assetId": 579106452
+    },
+    {
+      "name": "latest-mac.yml",
+      "size": 502,
+      "sha256": "6ee662337557e926c9d94f818576f6fbb4afb5e1c73e7b451d31142a6bcdd1b8",
+      "assetId": 579106483
+    }
+  ],
+  "publication": {
+    "publishedAt": "2026-09-21T13:37:05Z",
+    "url": "https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1",
+    "latest": true,
+    "publicUpdateFeedMatches": true,
+    "publicChecksumsMatch": true,
+    "publicAssetDigestsMatch": true
+  }
+}

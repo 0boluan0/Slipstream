@@ -13,5 +13,58 @@
   "limits": [
     "One native screenshot and a bounded paper/synthetic corpus; not a general accuracy benchmark",
     "Native packaged-app acceptance and release checks are recorded separately"
-  ]
+  ],
+  "candidateCommit": "43af40cbba9bd655d74891bb7683ba0b33d31b0e",
+  "firstInstalledAttempt": {
+    "commit": "1e9776d2714b401b2f9ad55886996d9c84c344a8",
+    "nativeInput": "Option+Shift+S and CGEvent drag 434,437 to 1127,764",
+    "selectorProcessObserved": true,
+    "operatorCorrections": false,
+    "formulaCount": 17,
+    "uncertainCount": 7,
+    "translationCompleted": true,
+    "translationSegments": 3,
+    "layoutFinding": "Sticky original image obscured the first lines of the editor; fixed in the candidateCommit and covered by a geometry assertion",
+    "evidence": "candidate-1e9776d-overlap.jpg"
+  },
+  "finalInstalledAcceptance": {
+    "commit": "43af40cbba9bd655d74891bb7683ba0b33d31b0e",
+    "version": "1.2.1",
+    "asarSha256": "199f8d803bfe602e47a5bc752583c11854934dc1ef6c92c07b83a1d667d57900",
+    "nativeInput": "Option+Shift+S and CGEvent drag 434,437 to 1127,764",
+    "selectorProcessObserved": true,
+    "operatorCorrections": false,
+    "formulaCount": 17,
+    "uncertainCount": 7,
+    "formulaClickSelectedLatex": "\\alpha",
+    "selectedFirstLineVisible": true,
+    "originalImageVisible": true,
+    "originalImageZoom": true,
+    "translationActionVisible": true,
+    "translationCompleted": true,
+    "translationSegments": 3,
+    "translationProvider": "DeepSeek",
+    "mathPreserved": [
+      "alpha",
+      "theta",
+      "hats",
+      "subscripts",
+      "superscripts",
+      "square root"
+    ],
+    "testCardClosed": true,
+    "nativeEscapeReturnedToHomeWithoutPermissionError": true,
+    "termOrReferenceSaveActions": 0,
+    "translationWordingLimitation": "1st moment vector was rendered as 第 1 矩向量; not a general terminology accuracy result",
+    "evidence": [
+      "installed-review.jpg",
+      "installed-review.ax.txt",
+      "installed-correction.jpg",
+      "installed-correction.ax.txt",
+      "installed-zoom.jpg",
+      "installed-translation.jpg",
+      "installed-translated-formulas.jpg",
+      "installed-translation.ax.txt"
+    ]
+  }
 }

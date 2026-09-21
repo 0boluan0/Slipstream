@@ -1,0 +1,215 @@
+Window: "Slipstream · 阅读卡片", App: Slipstream.
+0 standard window Slipstream · 阅读卡片, Secondary Actions: Raise
+	1 container Slipstream · 阅读卡片
+		2 container
+			3 HTML content Slipstream · 阅读卡片, URL: file:///Applications/Slipstream.app/Contents/Resources/app.asar/src/main/reading-pin/index.html
+				4 container
+					5 text Slipstream 阅读
+					6 button Description: 收起卡片, Help: 收起卡片 · 双击顶部
+					7 toggle button Description: 置顶, Help: 取消置顶, Value: 1
+					8 button Description: 关闭这张卡片, Help: 关闭卡片 · Esc
+				9 tab group 阅读方式
+					10 tab (selected) 核对, Value: 1
+					11 tab (settable, integer) 对照, Value: 0
+					12 tab (settable, integer) 截图, Value: 0
+				13 container 阅读字号
+					14 button 缩小字号
+					15 button 放大字号
+				16 container
+					17 text 这张卡片所属的阅读
+					18 pop-up button 这张卡片所属的阅读, Value: DML · 9月18日体验测试
+						19 (selected) DML · 9月18日体验测试
+					20 button 本文速查 · 0
+				21 container
+					22 text 已在本机识别 17 处公式（7 处需留意）。请对照原图核对。
+					23 container 核对识别文字
+						24 heading 核对识别文字, Value: 2
+							25 text 核对识别文字
+						26 button 确认并翻译
+						27 button 查看截图
+						28 container
+							29 disclosure triangle 排版后的原文
+								30 text 排版后的原文
+							31 text 点击有误的公式，直接定位到这一处校正。 Require:
+							32 button Description: 校正公式：\alpha, Help: 点击校正这一处公式
+								33 text 𝛼
+							34 text : Stepsize
+Require:
+							35 button Description: 校正公式：\beta _ { 1 }, \beta _ { 2 } \in [ 0, 1 ), Help: 点击校正这一处公式
+								36 container
+									37 text 𝛽
+									38 text 1
+									39 text ,
+									40 text 𝛽
+									41 text 2
+									42 text ∈ [ 0 , 1 )
+							43 text : Exponential decay rates for the moment estimates
+Require:
+							44 button Description: 校正公式：f ( \theta ), Help: 点击校正这一处公式
+								45 container
+									46 text 𝑓 ( 𝜃 )
+							47 text : Stochastic objective function with parameters
+							48 button Description: 校正公式：\theta, Help: 点击校正这一处公式
+								49 text 𝜃
+							50 text
+Require:
+							51 button Description: 校正公式：\theta _ { 0 }, Help: 点击校正这一处公式
+								52 container
+									53 text 𝜃 0
+							54 text : Initial parameter vector
+
+							55 button Description: 校正公式：m _ { 0 } \gets 0, Help: 点击校正这一处公式
+								56 container
+									57 text 𝑚
+									58 text 0
+									59 text ← 0
+							60 text  (Initialize 1st moment vector)
+
+							61 button Description: 校正公式：v _ { 0 } \gets 0, Help: 点击校正这一处公式
+								62 container
+									63 text 𝑣
+									64 text 0
+									65 text ← 0
+							66 text  (Initialize 2nd moment vector)
+
+							67 button Description: 校正公式：t \gets 0, Help: 点击校正这一处公式
+								68 container
+									69 text 𝑡 ← 0
+							70 text  (Initialize timestep)
+while
+							71 button Description: 校正公式：\theta _ { t }, Help: 点击校正这一处公式
+								72 container
+									73 text 𝜃 𝑡
+							74 text  not converged do
+
+
+							75 button Description: 校正公式：t \gets t + 1, Help: 点击校正这一处公式
+								76 container
+									77 text 𝑡 ← 𝑡 + 1
+							78 button Description: 校正公式：g _ { t } \leftarrow \nabla _ { \theta } f _ { t } ( \theta _ { t - 1 } ), Help: 点击校正这一处公式
+								79 container
+									80 text 𝑔
+									81 text 𝑡
+									82 text ←
+									83 text ∇
+									84 text 𝜃
+									85 text 𝑓
+									86 text 𝑡
+									87 text (
+									88 text 𝜃
+									89 container
+										90 text 𝑡 − 1
+									91 text )
+							92 text  (Get gradients w.r.t. stochastic objective at timestep t)
+
+							93 button Description: 校正公式：m _ { t } \gets \beta _ { 1 } \cdot m _ { t - 1 } + ( 1 - \beta _ { 1 } ) \cdot g _ { t }, Help: 点击校正这一处公式
+								94 container
+									95 text 𝑚
+									96 text 𝑡
+									97 text ←
+									98 text 𝛽
+									99 text 1
+									100 text ⋅
+									101 text 𝑚
+									102 container
+										103 text 𝑡 − 1
+									104 text + ( 1 −
+									105 text 𝛽
+									106 text 1
+									107 text ) ⋅
+									108 text 𝑔
+									109 text 𝑡
+							110 text  (Update biased first moment estimate)
+
+							111 button Help: 点击校正这一处公式, Description: 校正公式：v _ { t } \gets \beta _ { 2 } \cdot v _ { t - 1 } + ( 1 - \beta _ { 2 } ) \cdot g _ { t } ^ { 2 }
+								112 container
+									113 text 𝑣
+									114 text 𝑡
+									115 text ←
+									116 text 𝛽
+									117 text 2
+									118 text ⋅
+									119 text 𝑣
+									120 container
+										121 text 𝑡 − 1
+									122 text + ( 1 −
+									123 text 𝛽
+									124 text 2
+									125 text ) ⋅
+									126 text 𝑔
+									127 text 𝑡
+									128 text 2
+							129 text  (Update biased second raw moment estimate)
+
+							130 button Description: 校正公式：\widehat { m } _ { t } \gets m _ { t } / ( 1 - \beta _ { 1 } ^ { t } ), Help: 点击校正这一处公式
+								131 container
+									132 container
+										133 text 𝑚 ^
+									134 text 𝑡
+									135 text ←
+									136 text 𝑚
+									137 text 𝑡
+									138 text / ( 1 −
+									139 text 𝛽
+									140 text 1
+									141 text 𝑡
+									142 text )
+							143 text  (Compute bias-corrected first moment estimate)
+
+							144 button Description: 校正公式：\widehat { v } _ { t } \gets v _ { t } / ( 1 - \beta _ { 2 } ^ { t } ), Help: 点击校正这一处公式
+								145 container
+									146 container
+										147 text 𝑣 ^
+									148 text 𝑡
+									149 text ←
+									150 text 𝑣
+									151 text 𝑡
+									152 text / ( 1 −
+									153 text 𝛽
+									154 text 2
+									155 text 𝑡
+									156 text )
+							157 text  (Compute bias-corrected second raw moment estimate)
+
+							158 button Help: 点击校正这一处公式, Description: 校正公式：\theta _ { t } \gets \theta _ { t - 1 } - \alpha \cdot \widehat { m } _ { t } / ( \sqrt { \widehat { v } _ { t } } + \epsilon )
+								159 container
+									160 text 𝜃
+									161 text 𝑡
+									162 text ←
+									163 text 𝜃
+									164 container
+										165 text 𝑡 − 1
+									166 text − 𝛼 ⋅
+									167 container
+										168 text 𝑚 ^
+									169 text 𝑡
+									170 text / (
+									171 container
+										172 text 𝑣
+										173 text ^
+										174 text 𝑡
+									175 text + 𝜖 )
+							176 text  (Update parameters)
+end while
+return
+							177 button Description: 校正公式：\theta _ { t }, Help: 点击校正这一处公式
+								178 container
+									179 text 𝜃 𝑡
+							180 text  (Resulting parameters)
+						181 disclosure triangle 校正文字与公式
+							182 text 校正文字与公式
+					183 disclosure triangle 公式识别与核对
+						184 text 公式识别与核对
+					185 text 已在本机识别 17 处公式（7 处需留意）。请对照原图核对。
+					186 text 需要重新识别时，可将本次截图交给 DeepSeek 视觉服务。图片只会在点击下方按钮后发送。
+					187 button 发送截图到 DeepSeek，重新识别
+				188 container
+					189 text 等待核对
+					190 button 卡片盒
+					191 disclosure triangle Description: 查看处理位置, Help: 处理位置
+						192 text 处理位置
+					193 button (disabled) 复制完整译文
+194 menu bar
+	195 Slipstream
+	196 编辑
+	197 窗口

@@ -8,7 +8,7 @@
   <p><a href="#开始使用">开始使用</a> · <a href="./docs/reading-pins.md">阅读功能说明</a> · <a href="https://github.com/0boluan0/Slipstream/issues">反馈问题</a></p>
 </div>
 
-> **阅读版 v1.2.0** · macOS 12+ · [下载安装包](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.0) · 已安装正式版可从菜单选择“检查更新”。
+> **阅读版 v1.2.1** · macOS 12+ · [下载安装包](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · 已安装正式版可从菜单选择“检查更新”。
 
 <p align="center"><img src="./docs/images/02-reading-home.png" width="520" alt="中文阅读首页，截图阅读是主要入口，也可粘贴英文或打开本地卡片盒"></p>
 
@@ -57,14 +57,16 @@
 
 安装包自带[本地公式识别](./docs/local-formula-ocr.md)：截图时自动识别公式区域，恢复 LaTeX 并放回原句，再对照原图核对。不需要 API Key 或通用大模型，使用时无需另装组件。
 
+点击核对页中的公式，可以直接定位到对应 LaTeX。校正时原始截图就在编辑框上方，可放大查看；切换截图与核对页会保留尚未提交的修改。
+
 使用支持的 DeepSeek 配置时，可以主动选择“识别公式”，将当前截图交给视觉模型转写；转写后仍需对照截图确认。该操作会单独说明图片去向。公式支持用于保留和阅读数学内容，复杂排版与识别结果仍需要人工核对。
 
 ## 开始使用
 
 支持 **macOS 12 及以上**。下载与你的 Mac 对应的安装包，将 Slipstream 拖入“应用程序”：
 
-- [Apple 芯片版](https://github.com/0boluan0/Slipstream/releases/download/v1.2.0/Slipstream-1.2.0-arm64.dmg)
-- [Intel 版](https://github.com/0boluan0/Slipstream/releases/download/v1.2.0/Slipstream-1.2.0-x64.dmg)
+- [Apple 芯片版](https://github.com/0boluan0/Slipstream/releases/download/v1.2.1/Slipstream-1.2.1-arm64.dmg)
+- [Intel 版](https://github.com/0boluan0/Slipstream/releases/download/v1.2.1/Slipstream-1.2.1-x64.dmg)
 
 已安装正式版可从 Slipstream 菜单检查更新，下载完成后确认重启安装。独立“Slipstream 阅读预览”使用单独的配置与权限，请安装正式版并完成其首次配置。
 

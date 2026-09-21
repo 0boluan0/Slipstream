@@ -1,5 +1,15 @@
 # macOS release checklist
 
+## Published 1.2.1 — 2026-09-21
+
+- Release: [Slipstream 1.2.1](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1), source commit `43af40cbba9bd655d74891bb7683ba0b33d31b0e`, published at 13:37 UTC. [Machine-readable verification](releases/1.2.1-verification.json).
+- [Exact-commit CI](https://github.com/0boluan0/Slipstream/actions/runs/35605292788) and the complete isolated local `release:signed` command passed. Coverage includes eleven pixel cases, full npm test, lint, renderer build, dependency checks, Swift typecheck, archive inspection and distribution trust.
+- An earlier candidate repeatedly failed the reply-copy fixture. CPU slowdown reproduced a real race where old parent props overwrote newer edits; the fix passed five consecutive runs at 6× throttling, and the slow condition is retained in the native fixture gate. Earlier failures, including one OCR failure whose underlying cause was not emitted, remain in the verification record.
+- Both architectures contain 113 runtime/source/renderer files matching the tested build. Actual packaged OCR recognized Attention, Adam and DML with HTTP requests blocked, natively on arm64 and under Rosetta for x64. No physical Intel or general recognition-accuracy claim is made.
+- Apple accepted both app and both DMG submissions. Developer ID signatures, hardened runtime, stapled tickets, Gatekeeper and distribution checks passed. All eight public assets match local SHA-256 digests; the public latest feed and checksums were downloaded and matched byte for byte.
+- The installed final app completed the real shortcut, native system drag, local formula review, clickable LaTeX correction, original-image zoom, live DeepSeek translation, close and Escape flow. The Adam case preserved the checked symbols without operator correction. [Native evidence](usability/2026-09-21/ocr-iteration/README.md).
+- Existing local configuration was preserved, and the previous 1.2.0 app has a recoverable bundle backup. The installed ASAR matches both release archives, and its post-publication update check reported the latest version. First-install quarantine, minimum macOS and updater download/install acceptance remain unverified; live wording such as “第 1 矩向量” remains a recorded quality limitation.
+
 ## Published 1.2.0 — 2026-09-18
 
 - Release: [Slipstream 1.2.0](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.0), source commit `0c5ae1bcde7f0fdd9a22a04bda087da6d6984f5b`, published at 12:44 UTC. [Machine-readable verification](releases/1.2.0-verification.json).

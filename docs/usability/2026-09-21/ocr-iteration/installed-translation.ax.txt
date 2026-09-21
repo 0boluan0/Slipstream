@@ -1,0 +1,215 @@
+Window: "Slipstream · 阅读卡片", App: Slipstream.
+0 standard window Slipstream · 阅读卡片, Secondary Actions: Raise
+	1 container Slipstream · 阅读卡片
+		2 container
+			3 HTML content Slipstream · 阅读卡片, URL: file:///Applications/Slipstream.app/Contents/Resources/app.asar/src/main/reading-pin/index.html
+				4 container
+					5 text Slipstream 阅读
+					6 button Description: 收起卡片, Help: 收起卡片 · 双击顶部
+					7 toggle button Description: 置顶, Help: 取消置顶, Value: 1
+					8 button Description: 关闭这张卡片, Help: 关闭卡片 · Esc
+				9 tab group 阅读方式
+					10 tab (selected) 译文, Value: 1
+					11 tab (settable, integer) 对照, Value: 0
+					12 tab (settable, integer) 截图, Value: 0
+				13 container 阅读字号
+					14 button 缩小字号
+					15 button 放大字号
+				16 container
+					17 text 这张卡片所属的阅读
+					18 pop-up button 这张卡片所属的阅读, Value: DML · 9月18日体验测试
+						19 (selected) DML · 9月18日体验测试
+					20 button 本文速查 · 0
+				21 container
+					22 container 译文
+						23 container
+							24 text 01
+							25 button 查看第 1 段英文原文
+							26 container
+								27 text Require:
+								28 text 𝛼
+								29 text ：步长
+Require:
+								30 container
+									31 text 𝛽
+									32 text 1
+									33 text ,
+									34 text 𝛽
+									35 text 2
+									36 text ∈ [ 0 , 1 )
+								37 text ：矩估计的指数衰减率
+Require:
+								38 container
+									39 text 𝑓 ( 𝜃 )
+								40 text ：带参数
+								41 text 𝜃
+								42 text  的随机目标函数
+Require:
+								43 container $\theta _ { 0 }$
+									44 container
+										45 text 𝜃 0
+								46 text ：初始参数向量
+
+								47 container
+									48 text 𝑚
+									49 text 0
+									50 text ← 0
+								51 text （初始化第 1 矩向量）
+
+								52 container
+									53 text 𝑣
+									54 text 0
+									55 text ← 0
+								56 text （初始化第 2 矩向量）
+
+								57 container
+									58 text 𝑡 ← 0
+								59 text （初始化时间步）
+while
+								60 container $\theta _ { t }$
+									61 container
+										62 text 𝜃 𝑡
+								63 text  未收敛 do
+							64 text 术语
+							65 toggle button Description: 解释 步长 · Stepsize, Help: Stepsize, Value: 0
+							66 toggle button Description: 解释 矩估计的指数衰减率 · Exponential decay rates for the moment estimates, Help: Exponential decay rates for the moment estimates, Value: 0
+							67 toggle button Description: 解释 随机目标函数 · Stochastic objective function, Help: Stochastic objective function, Value: 0
+							68 toggle button Description: 解释 初始参数向量 · Initial parameter vector, Help: Initial parameter vector, Value: 0
+							69 toggle button Description: 解释 第 1 矩向量 · 1st moment vector, Help: 1st moment vector, Value: 0
+							70 toggle button Description: 解释 第 2 矩向量 · 2nd moment vector, Help: 2nd moment vector, Value: 0
+							71 text 02
+							72 button 查看第 2 段英文原文
+							73 container
+								74 text 𝑡 ← 𝑡 + 1
+							75 text 03
+							76 button 查看第 3 段英文原文
+							77 container
+								78 container
+									79 text 𝑔
+									80 text 𝑡
+									81 text ←
+									82 text ∇
+									83 text 𝜃
+									84 text 𝑓
+									85 text 𝑡
+									86 text (
+									87 text 𝜃
+									88 container
+										89 text 𝑡 − 1
+									90 text )
+								91 text （获取随机目标函数在时间步 t 关于
+								92 text 𝜃
+								93 text  的梯度）
+
+								94 container $m _ { t } \gets \beta _ { 1 } \cdot m _ { t - 1 } + ( 1 - \beta _ { 1 } ) \cdot g _ { t }$
+									95 container
+										96 text 𝑚
+										97 text 𝑡
+										98 text ←
+										99 text 𝛽
+										100 text 1
+										101 text ⋅
+										102 text 𝑚
+										103 container
+											104 text 𝑡 − 1
+										105 text + ( 1 −
+										106 text 𝛽
+										107 text 1
+										108 text ) ⋅
+										109 text 𝑔
+										110 text 𝑡
+								111 text （更新有偏一阶矩估计）
+
+								112 container $v _ { t } \gets \beta _ { 2 } \cdot v _ { t - 1 } + ( 1 - \beta _ { 2 } ) \cdot g _ { t } ^ { 2 }$
+									113 container
+										114 text 𝑣
+										115 text 𝑡
+										116 text ←
+										117 text 𝛽
+										118 text 2
+										119 text ⋅
+										120 text 𝑣
+										121 container
+											122 text 𝑡 − 1
+										123 text + ( 1 −
+										124 text 𝛽
+										125 text 2
+										126 text ) ⋅
+										127 text 𝑔
+										128 text 𝑡
+										129 text 2
+								130 text （更新有偏二阶原始矩估计）
+
+								131 container
+									132 container
+										133 text 𝑚 ^
+									134 text 𝑡
+									135 text ←
+									136 text 𝑚
+									137 text 𝑡
+									138 text / ( 1 −
+									139 text 𝛽
+									140 text 1
+									141 text 𝑡
+									142 text )
+								143 text （计算偏差校正后的一阶矩估计）
+
+								144 container
+									145 container
+										146 text 𝑣 ^
+									147 text 𝑡
+									148 text ←
+									149 text 𝑣
+									150 text 𝑡
+									151 text / ( 1 −
+									152 text 𝛽
+									153 text 2
+									154 text 𝑡
+									155 text )
+								156 text （计算偏差校正后的二阶原始矩估计）
+
+								157 container
+									158 text 𝜃
+									159 text 𝑡
+									160 text ←
+									161 text 𝜃
+									162 container
+										163 text 𝑡 − 1
+									164 text − 𝛼 ⋅
+									165 container
+										166 text 𝑚 ^
+									167 text 𝑡
+									168 text / (
+									169 container
+										170 text 𝑣
+										171 text ^
+										172 text 𝑡
+									173 text + 𝜖 )
+								174 text （更新参数）
+end while
+return
+								175 container $\theta _ { t }$
+									176 container
+										177 text 𝜃 𝑡
+								178 text （最终得到的参数）
+							179 text 术语
+							180 toggle button Description: 解释 随机目标函数 · stochastic objective, Help: stochastic objective, Value: 0
+							181 toggle button Description: 解释 一阶矩估计 · first moment estimate, Help: first moment estimate, Value: 0
+							182 toggle button Description: 解释 二阶原始矩估计 · second raw moment estimate, Help: second raw moment estimate, Value: 0
+							183 toggle button Description: 解释 偏差校正 · bias-corrected, Help: bias-corrected, Value: 0
+							184 toggle button Description: 解释 梯度 · gradients, Help: gradients, Value: 0
+					185 text 找到 11 条本文定义
+					186 button 查看并留下
+					187 button 整理这段的符号定义
+				188 container
+					189 text 3 段 · 已完成
+					190 button 卡片盒
+					191 disclosure triangle Description: 查看处理位置, Help: 处理位置
+						192 text 处理位置
+					193 button 复制完整译文
+194 menu bar
+	195 Slipstream
+	196 编辑
+	197 窗口
+
+The focused UI element is 3 HTML content Slipstream · 阅读卡片, URL: file:///Applications/Slipstream.app/Contents/Resources/app.asar/src/main/reading-pin/index.html

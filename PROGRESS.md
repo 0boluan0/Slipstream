@@ -1,10 +1,14 @@
 # Slipstream — Progress
 
-## Current — 2026-09-21 formula recognition and review iteration
+## Current — 2026-09-21 version 1.2.1 published
 
-Implemented the 1.2.1 candidate from the real-screen failures: proportional detector margins, gated weak Greek-symbol candidates, tighter vertical crops, provenance-aware punctuation deduplication and prose ordinal recovery. The same Adam screenshot now retains alpha/theta and removes the spurious dot and duplicated punctuation without operator correction. Eleven bounded pixel cases pass, including genuine derivative dots and ordinary prose. [Before/after evidence](docs/usability/2026-09-21/ocr-iteration/README.md).
+Published [v1.2.1](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) at 13:37 UTC from `43af40cbba9bd655d74891bb7683ba0b33d31b0e`. The eight public asset digests match the verified local files; the public latest update feed and checksums match byte for byte. The verified arm64 app is installed locally with the existing profile and a recoverable 1.2.0 bundle backup; the installed update check reports the latest version. [Release verification](docs/releases/1.2.1-verification.json).
 
-Review supports clicking a rendered formula to select its LaTeX, comparing the original screenshot while editing, and submitting edited text directly. The screenshot correction action works during review, and switching views preserves the draft. Reading-card regressions pass. Packaging, installed-app verification and publication are in progress; no new release is claimed here yet.
+The Adam screenshot now retains alpha/theta and removes the spurious dot and duplicated punctuation without operator correction. Prose ordinals reach the translator. Review supports clicking a formula to select its LaTeX, comparing and zooming the original image above the editor, and submitting edits directly. Switching views preserves the draft; the original image no longer obscures the selected text. Eleven bounded pixel cases and the actual shortcut → system drag → local OCR → real DeepSeek translation → close/Escape flow passed. [Before/after and installed evidence](docs/usability/2026-09-21/ocr-iteration/README.md).
+
+Release testing also exposed a reply-draft race on slower rendering: unchanged old parent props could overwrite a newer edit. The isolated fixture reproduced the loss at 6× CPU throttling; the fix passed five consecutive slow runs and is now covered by the full native fixture gate. [Exact-commit CI](https://github.com/0boluan0/Slipstream/actions/runs/35605292788) and the complete local signed-release command passed. Both architectures have 113 matching runtime/source/renderer files, passed packaged OCR with network requests blocked, and passed signature, app/DMG notarization, Gatekeeper and distribution checks. x64 execution used Rosetta, not a physical Intel Mac.
+
+These samples do not establish general OCR or terminology accuracy. Live translation still rendered “1st moment vector” as “第 1 矩向量”. First-install, minimum-macOS and updater download/install acceptance remain outside this iteration.
 
 ## Previous — 2026-09-21 native capture acceptance
 

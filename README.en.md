@@ -6,7 +6,7 @@
 
 A macOS reading companion for native Chinese speakers working through English textbooks, research papers, and specialist articles. Capture a passage, keep a Chinese translation beside it, explore unfamiliar concepts in context, and save useful explanations as local Markdown cards.
 
-> **Reading release v1.2.0** · macOS 12+ · [Download](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.0) · Existing production installations can check for updates from the Slipstream menu.
+> **Reading release v1.2.1** · macOS 12+ · [Download](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · Existing production installations can check for updates from the Slipstream menu.
 
 <p align="center"><img src="./docs/images/02-reading-home.png" width="520" alt="Chinese reading home with screenshot capture, text input and a local card box"></p>
 
@@ -28,7 +28,7 @@ Slipstream includes [paper-specific references](./docs/reading-references.md): r
 - **Suggestions are optional.** A passage may have no recommended terms. There is no minimum quota, and the model does not know which concepts you already understand.
 - **Context matters.** Explanations distinguish what a concept means from how the passage uses it.
 - **Cards are ordinary Markdown.** They live under `Slipstream/术语卡片/` in the system Documents directory. Search, edit, add notes, and create links and backlinks in the app, or open the files directly.
-- **LaTeX stays readable.** Inline and display math render locally in translations, explanations, and saved cards. Copying retains LaTeX; standalone equations retain their source.
+- **LaTeX stays readable.** Inline and display math render locally in translations, explanations, and saved cards. Copying retains LaTeX; standalone equations retain their source. Click a formula in the review view to select its LaTeX, compare it with the zoomable original screenshot, and correct it before translation. Draft edits survive view changes.
 
 <p align="center"><img src="./docs/images/03-reading-concept.png" width="460" alt="A contextual explanation of correlation with an explicit save-to-card action"></p>
 
@@ -36,7 +36,7 @@ Screenshots use authored passages and fixed illustrative responses in the actual
 
 ## Get started
 
-Requires **macOS 12+**. Download the [Apple silicon installer](https://github.com/0boluan0/Slipstream/releases/download/v1.2.0/Slipstream-1.2.0-arm64.dmg) or [Intel installer](https://github.com/0boluan0/Slipstream/releases/download/v1.2.0/Slipstream-1.2.0-x64.dmg), then drag Slipstream into Applications. Existing production installations can check for updates in the app and confirm a restart after downloading.
+Requires **macOS 12+**. Download the [Apple silicon installer](https://github.com/0boluan0/Slipstream/releases/download/v1.2.1/Slipstream-1.2.1-arm64.dmg) or [Intel installer](https://github.com/0boluan0/Slipstream/releases/download/v1.2.1/Slipstream-1.2.1-x64.dmg), then drag Slipstream into Applications. Existing production installations can check for updates in the app and confirm a restart after downloading.
 
 The separate “Slipstream 阅读预览” app has its own settings and permissions. Install and configure the production app to use the public update channel.
 

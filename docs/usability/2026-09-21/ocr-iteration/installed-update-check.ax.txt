@@ -1,0 +1,10 @@
+Window: "Unknown", App: Slipstream.
+0 sheet Description: alert, Secondary Actions: Raise
+	1 text Slipstream 已经是最新版本
+	2 button 好, ID: action-button--999
+3 menu bar
+	4 Slipstream
+	5 编辑
+	6 窗口
+
+The focused UI element is 2 button 好, ID: action-button--999
