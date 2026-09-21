@@ -130,8 +130,8 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, original);
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
-      formulaOcr: { status: 'done', count: recognized.formulas.length,
-        uncertain: recognized.formulas.filter((item) => item.confidence < .6).length,
+      formulaOcr: { status: 'done', count: document.formulaCount,
+        uncertain: document.uncertainFormulaCount,
         milliseconds: recognized.milliseconds } };
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 }

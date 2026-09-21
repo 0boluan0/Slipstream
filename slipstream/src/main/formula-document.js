@@ -35,10 +35,18 @@ function mergeFormulaDocument(masked, formulas, size, original) {
       const last = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x).at(-1);
       if (last && /[,.;:!?]$/.test(last.text)) punctuation = last.text.at(-1);
     }
-    items.push({ ...formula, math: true, text: (formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
+    // Superscripted prose ordinals belong to the sentence, so translation can
+    // turn "1st moment" into Chinese instead of protecting it as mathematics.
+    const ordinal = latex.replace(/\s+/g, '').match(/^(\d+)\^\{\\(?:mathrm|text)\{(st|nd|rd|th)\}\}$/);
+    items.push({ ...formula, math: !ordinal, punctuation,
+      text: (ordinal ? ordinal[1] + ordinal[2] : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
   }
   for (const word of words(masked)) {
     if (formulas.some((f) => intersects(f, word)) || items.some((item) => intersects(item, word))) continue;
+    // Vision can put "x:" in one box, then recover the same colon beyond the
+    // formula mask. It has already been retained from that removed source word.
+    if (items.some((item) => item.punctuation === word.text
+      && removed.some((lost) => intersects(lost, item) && intersects(lost, word)))) continue;
     // Only fill a genuine removed-word gap; never append unrelated masked OCR.
     if (removed.some((lost) => intersects(lost, word) && word.h < lost.h * 1.4)) items.push(word);
   }
@@ -62,7 +70,9 @@ function mergeFormulaDocument(masked, formulas, size, original) {
     text += (text ? paragraph ? '\n\n' : '\n' : '') + line;
     previous = row;
   }
-  return { text, layoutReview };
+  const mathematical = items.filter((item) => item.math);
+  return { text, layoutReview, formulaCount: mathematical.length,
+    uncertainFormulaCount: mathematical.filter((item) => item.confidence < .6).length };
 }
 
 module.exports = { mergeFormulaDocument };
