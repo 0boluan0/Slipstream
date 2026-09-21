@@ -9,6 +9,7 @@ const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
 const { createReadingReferenceStore } = require('../src/main/reading-reference-store');
 const { createTermLibrary } = require('../src/main/term-library');
+const { testProviderReadiness } = require('../src/main/provider-readiness');
 const before = process.argv.includes('--before');
 const windowsUi = process.platform === 'win32' || process.argv.includes('--windows-ui');
 const work = process.env.SLIPSTREAM_READING_HOME_WORK
@@ -37,6 +38,7 @@ let library;
 let providerCalls = 0;
 let screenRequests = 0;
 let rejectTextHandoff = false;
+let rejectSetupTrial = false;
 const invocations = [];
 const js = (code) => main.webContents.executeJavaScript(code);
 async function shot(window, name) {
@@ -54,6 +56,8 @@ app.whenReady().then(async () => {
   const provider = createReadingProcessor(async (...args) => {
     providerCalls += 1;
     const input = JSON.parse(args[4]);
+    if (input.selection === 'confounder') return JSON.stringify({ quote: input.selection,
+      meaning: '混杂变量是同时影响处理与结果的变量。', note: '本段用它说明关联不一定意味着因果效应。' });
     if (input.selection) return JSON.stringify({ quote: input.selection,
       meaning: '相关关系描述两个变量在统计上一起变化的程度，不能单凭这种共同变化判断因果。',
       note: '这段指出，共同原因也可能让两个变量一起变化。' });
@@ -74,10 +78,20 @@ app.whenReady().then(async () => {
   const channels = ['settings:get', 'shortcut:status-get', 'app:renderer-recovery-status-get', 'window:set-mode',
     'app:session-risk-update', 'terms:get', 'clipboard:pending-status', 'app:quit-listener-ready',
     'app:settings-listener-ready', 'capture:listener-ready', 'app:settings-request-handled',
-    'reading:open-text', 'reading:library-open', 'reading:references-open', 'screenshot:capture', 'llm:process'];
-  for (const channel of channels) ipcMain.handle(channel, (_event, value) => {
+    'reading:open-text', 'reading:library-open', 'reading:references-open', 'screenshot:capture', 'llm:process',
+    'settings:set', 'provider:connection-test'];
+  for (const channel of channels) ipcMain.handle(channel, (_event, value, settingValue) => {
     invocations.push(channel);
     if (channel === 'settings:get') return { ...settings };
+    if (channel === 'settings:set') {
+      settings[value] = settingValue;
+      return { status: 'saved', key: value, customEndpointApiKeyCleared: false };
+    }
+    if (channel === 'provider:connection-test') return testProviderReadiness({ ...settings }, {
+      testProviderConnection: async () => ({ status: 'connected', code: 'ok' }),
+      processReadingText: rejectSetupTrial
+        ? async () => { throw new Error('reading-invalid-output'); } : provider,
+    });
     if (channel === 'shortcut:status-get') return { allRegistered: true,
       screenshot: { accelerator: 'Alt+Shift+S', registered: true }, clipboard: { accelerator: 'Alt+C', registered: true } };
     if (channel === 'app:renderer-recovery-status-get') return { recovered: false, clipboardResidueRisk: null };
@@ -172,6 +186,37 @@ app.whenReady().then(async () => {
     assert(await js('document.body.textContent.includes("Windows 预览暂不支持截图识字")'));
     assert.equal(await js('document.body.textContent.includes("截图读译文")'), false);
   }
+  await js(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('配置阅读服务')).click()`);
+  await until(() => js('Boolean(document.querySelector(".settings-panel"))'), 'reading setup settings');
+  await js(`Array.from(document.querySelectorAll('[role="radio"]')).find(b => b.textContent.includes('使用在线分析服务')).click()`);
+  await until(() => js(`Boolean(Array.from(document.querySelectorAll('[role="radio"]')).find(b => b.textContent.includes('DeepSeek')))`), 'provider choices');
+  await js(`Array.from(document.querySelectorAll('[role="radio"]')).find(b => b.textContent.includes('DeepSeek')).click()`);
+  await until(() => js('document.querySelector(".provider-connection-test-button")?.disabled === false'), 'saved provider ready');
+  await js('document.querySelector(".provider-connection-test-button").click()');
+  await until(() => js('Boolean(document.querySelector(".reading-setup-sample"))'), 'actual reading result through main IPC and renderer');
+  assert.equal(settings.setupMode, 'unconfigured', 'a completed trial must wait for explicit activation');
+  assert(await js('document.querySelector(".reading-setup-sample").textContent.includes("混杂变量是同时影响处理与结果的变量")'));
+  await shot(main, '07-reading-setup-result.png');
+
+  rejectSetupTrial = true;
+  await js('document.querySelector(".provider-connection-test-button").click()');
+  await until(() => js('document.querySelector(".provider-connection-result")?.dataset.status === "failed"'), 'failed reading trial');
+  assert.equal(await js('Boolean(document.querySelector(".reading-setup-sample"))'), false, 'a failed retry must remove the previous model result');
+  assert.equal(await js('document.querySelector(".full-analysis-enable-button").disabled'), true);
+  rejectSetupTrial = false;
+  await js(`Array.from(document.querySelectorAll('button')).find(b => b.textContent === '重新试读').click()`);
+  await until(() => js('Boolean(document.querySelector(".reading-setup-sample"))'), 'recovered reading trial');
+
+  main.setSize(400, 400); main.webContents.setZoomFactor(2);
+  await pause(120);
+  assert(await js('document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1'), 'trial results must reflow at 200%');
+  assert(await js('Array.from(document.querySelectorAll(".reading-setup-sample")).every(e => e.scrollWidth <= e.clientWidth + 1)'));
+  main.webContents.setZoomFactor(1); main.setSize(820, 720);
+  const callsBeforeActivation = providerCalls;
+  await js('document.querySelector(".full-analysis-enable-button").click()');
+  await until(() => js('Boolean(document.querySelector(".capture-card"))'), 'activated reading home');
+  assert.equal(settings.setupMode, 'full');
+  assert.equal(providerCalls, callsBeforeActivation, 'activation must not submit a user excerpt or start another trial');
   console.log('Reading home passed: platform-specific capture entry, explicit sample loading, text to independent reading card, no screen permission for text, contextual lookup, local save and correct card-box entry, first use and 200% reflow. Model responses are illustrative fixtures; all state is temporary.');
   pins.dispose(); main.destroy(); cleanupWork(); app.exit(0);
 }).catch(error => { console.error(error); library?.dispose(); pins?.dispose(); cleanupWork(); app.exit(1); });

@@ -31,6 +31,18 @@ exports.run = function run() {
       deepseekApiKey: safeStorage.decryptString(Buffer.from(raw.deepseekApiKey.slice(4), 'base64')) };
     const { processReadingText, recognizeReadingFormulas } = require('./llm-service');
     report.provider = settings.activeBackend; report.model = settings.activeModel;
+    if (process.argv.includes('--reading-check-setup')) {
+      stage = 'reading-setup';
+      const started = Date.now();
+      const result = await require('./provider-readiness').testProviderReadiness(settings);
+      report.capture = 'Setup trial using only the built-in authored excerpt, through the configured real provider.';
+      report.source = require('../shared/reading-setup.mjs').READING_SETUP_SOURCE;
+      report.setup = { ...result, elapsedMs: Date.now() - started };
+      saveReport();
+      fs.rmSync(work, { recursive: true, force: true });
+      app.exit(result.status === 'connected' ? 0 : 1);
+      return;
+    }
     if (process.argv.includes('--reading-check-references')) {
       stage = 'paper-references';
       const passed = await require('./reading-reference-check').run({ processReadingText, settings, report, saveReport });

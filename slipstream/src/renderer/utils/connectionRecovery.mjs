@@ -164,8 +164,8 @@ export function buildConnectionRecoveryPlan({ code, backend, model } = {}) {
 
   if (code === 'structured-output-invalid') {
     return {
-      title: '换一个更适合完整分析的模型',
-      description: '服务和模型可以响应，但结果没有通过 Slipstream 的结构与证据校验，因此完整分析保持关闭。',
+      title: '重新试读，或更换阅读模型',
+      description: '这次响应无法显示为中文译文或术语解释。先重试一次；如果重复出现，再检查模型对阅读输出格式的支持。',
       steps: [
         {
           title: '选择遵循结构化指令更稳定的模型',
@@ -175,14 +175,14 @@ export function buildConnectionRecoveryPlan({ code, backend, model } = {}) {
           action: focusAction('更换模型', 'provider-model-input'),
         },
       ],
-      actions: [retryAction('更换后重新验证')],
+      actions: [retryAction('重新试读')],
     };
   }
 
   if (code === 'generation-failed') {
     return {
       title: '当前模型没有完成生成测试',
-      description: '模型已找到，但内置虚构文本没有成功生成；没有使用你的任务内容。',
+      description: '模型已找到，但内置段落没有完成试读；没有使用你的任务内容。',
       steps: [
         {
           title: isOllama ? '检查本机资源或改用更小模型' : '检查模型、额度与服务状态',

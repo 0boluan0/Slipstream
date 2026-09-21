@@ -71,7 +71,7 @@
     "check:credential-visibility": "node scripts/check-credential-visibility.mjs",
     "check:deepseek-live": "node scripts/check-deepseek-live.js",
     "check:deepseek-quality-live": "node scripts/check-deepseek-quality-live.js",
-    "check:provider-connection": "node scripts/check-provider-connection.js",
+    "check:provider-connection": "node scripts/check-provider-connection.js && node scripts/check-reading-readiness.js",
     "check:user-errors": "node scripts/check-user-facing-errors.js",
     "check:redaction": "node scripts/check-settings-redaction.js",
     "check:prompts": "node scripts/check-prompt-templates.js",
