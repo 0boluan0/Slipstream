@@ -90,6 +90,43 @@ app.whenReady().then(async () => {
   await until(() => js('document.querySelectorAll("#source-preview .katex").length === 2'), 'local equation preview');
   await js('document.getElementById("confirm").click()');
   await until(async () => (await state()).phase === 'done', 'LaTeX translation');
+  await js('document.getElementById("tab-parallel").click()');
+  assert.equal(await js('document.querySelectorAll(".source-paragraph .katex").length'), 2, 'the original formulas must be readable in the parallel view');
+  const selectionSource = String.raw`The mean $\bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i$ is a sample statistic. Its scale is $1$.`;
+  manager.openText(selectionSource);
+  const selectionPin = BrowserWindow.getAllWindows().find(window => window !== pin);
+  const selectionJs = code => selectionPin.webContents.executeJavaScript(code);
+  await until(() => selectionJs('window.readingPin.act("ready").then(r=>r.state.phase === "done")'), 'math source for selection');
+  await selectionJs('document.getElementById("tab-parallel").click()');
+  assert.equal(await selectionJs('document.querySelectorAll(".source-paragraph .katex").length'), 2);
+  await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph');
+    const node = [...paragraph.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.includes('sample statistic'));
+    const range = document.createRange(), start = node.textContent.indexOf('sample statistic');
+    range.setStart(node, start); range.setEnd(node, start + 'sample statistic'.length);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+  })()`);
+  await until(() => selectionJs('!document.getElementById("selection-bar").hidden'), 'select prose after a rendered formula');
+  await selectionJs('document.getElementById("lookup-selection").click()');
+  await until(() => selectionJs('window.readingPin.act("ready").then(r=>r.state.lookupStatus === "done")'), 'exact source selection');
+  assert.equal(await selectionJs('window.readingPin.act("ready").then(r=>r.state.lookup.quote)'), 'sample statistic', 'rendered math must not shift subsequent source offsets');
+  const acrossMath = await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph'), math = paragraph.querySelector('.katex-html');
+    const range = document.createRange(); range.setStart(paragraph.firstChild, 4); range.setEnd(math.firstChild, 1);
+    return window.readingMathSelection(paragraph, range);
+  })()`);
+  assert.equal(acrossMath.text, selectionSource.slice(4, selectionSource.indexOf('$ is') + 1), 'a selection ending inside a formula includes its complete original LaTeX');
+  assert.equal(await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph'), range = document.createRange();
+    range.selectNodeContents(paragraph); return window.readingMathSelection(paragraph, range).text;
+  })()`), selectionSource, 'whole-source selection preserves raw LaTeX exactly once');
+  assert.equal(await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph'), range = document.createRange();
+    range.selectNodeContents(paragraph.querySelector('.katex-html')); range.collapse(true);
+    return window.readingMathSelection(paragraph, range);
+  })()`), null, 'a caret inside mathematics is not a selected formula');
+  selectionPin.close();
   assert(await js('document.querySelectorAll("#translation .katex").length >= 2'));
   assert(await js('document.querySelector("#translation math") !== null'), 'math must expose accessible MathML');
   await js('document.getElementById("copy").click()'); assert.match(copied, /\\frac\{1\}\{n\}/);

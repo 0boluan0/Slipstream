@@ -89,7 +89,7 @@ function createSegment(segment) {
   source.className = 'source-paragraph';
   source.lang = 'en';
   source.dataset.segmentId = segment.id;
-  source.textContent = segment.source;
+  window.renderReadingMath(source, segment.source);
   const translation = document.createElement('p');
   translation.className = 'translation-paragraph';
   const terms = document.createElement('div');
@@ -295,13 +295,10 @@ function captureSelection() {
   const element = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
   const paragraph = element?.closest('.source-paragraph');
   if (!paragraph || !paragraph.contains(range.endContainer)) { byId('selection-bar').hidden = true; return; }
-  const prefix = range.cloneRange();
-  prefix.selectNodeContents(paragraph);
-  prefix.setEnd(range.startContainer, range.startOffset);
-  const start = prefix.toString().length;
-  const text = range.toString();
-  if (!text.trim() || text.length > 1500) { byId('selection-bar').hidden = true; return; }
-  selected = { segmentId: Number(paragraph.dataset.segmentId), start, end: start + text.length };
+  const sourceSelection = window.readingMathSelection(paragraph, range);
+  if (!sourceSelection?.text.trim() || sourceSelection.text.length > 1500) { byId('selection-bar').hidden = true; return; }
+  const { start, end, text } = sourceSelection;
+  selected = { segmentId: Number(paragraph.dataset.segmentId), start, end };
   byId('selection-preview').textContent = text;
   byId('lookup-selection').lastChild.textContent = state.explainSupported ? '解释所选' : '翻译所选';
   byId('selection-bar').hidden = false;
