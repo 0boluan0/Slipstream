@@ -15,6 +15,10 @@ async function main() {
   const masked = { blocks: [word(':', 29, 5), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument(masked, [formula], size, original).text, '$x$: label',
     'the same punctuation recovered from an original word and masked OCR must appear once');
+  const uncertain = mergeFormulaDocument(masked, [{ ...formula, confidence: .4 }], size, original);
+  assert.deepEqual(uncertain.uncertainFormulaStarts, [mathRanges(uncertain.text)[0].start],
+    'a low-confidence formula identifies its actual location in the source shown for review');
+  assert.deepEqual(mergeFormulaDocument(masked, [{ ...formula, confidence: .9 }], size, original).uncertainFormulaStarts, []);
   const periodSource = { blocks: [word('x.', 10, 24), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument({ blocks: [word('•', 29, 5)] }, [formula], size, periodSource).text, '$x$. label',
     'masked OCR may call the same source period a bullet; preserve the original punctuation once');
@@ -72,6 +76,11 @@ async function main() {
     assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, latex: tex }], size).text, expected);
   }
   const superscriptWord = { ...formula, score: .2, latex: 'b i a s e d ^ { 2 }' };
+  const uncertainSuperscript = mergeFormulaDocument({ blocks: [] }, [{ ...superscriptWord, confidence: .4 }], size,
+    { blocks: [word('biased', 10, 18), word('estimate', 45, 30)] });
+  assert.deepEqual(uncertainSuperscript.uncertainFormulaStarts,
+    [mathRanges(uncertainSuperscript.text)[0].start],
+    'a footnote attached to prose marks the superscript, not the English word');
   for (const score of [.2, .44, .9]) assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...superscriptWord, score }], size,
     { blocks: [word('biased', 10, 18), word('estimate', 45, 30)] }).text, 'biased$^{2}$ estimate',
   'a source-confirmed word keeps translatable prose and its superscript regardless of layout confidence');

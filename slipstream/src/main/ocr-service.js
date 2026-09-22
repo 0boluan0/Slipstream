@@ -140,6 +140,7 @@ async function performReadingOCR(imagePath, { signal } = {}) {
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
         uncertain: document.uncertainFormulaCount,
+        uncertainStarts: document.uncertainFormulaStarts,
         milliseconds: recognized.milliseconds } };
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 }

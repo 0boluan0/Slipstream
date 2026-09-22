@@ -50,6 +50,7 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 #source-preview { white-space: pre-wrap; font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
 #source-preview > [role="button"] { cursor: pointer; border-radius: 3px; }
 #source-preview > [role="button"]:hover { background: var(--soft); outline: 1px solid var(--line); }
+#source-preview > .math-needs-review { background: #c789312c; outline: 2px dashed #b7792a; outline-offset: 2px; }
 #correction-reference { background: var(--paper); padding-bottom: 8px; }
 #correction-reference .source-caption { margin: 0 0 7px; }
 #correction-image-frame { max-height: 170px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: white; }

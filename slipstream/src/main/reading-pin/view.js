@@ -17,14 +17,19 @@ function renderSourcePreview() {
   const text = byId('source-editor').value;
   window.renderReadingMath(byId('source-preview'), text);
   const ranges = window.readingMath.mathRanges(text);
+  const uncertain = new Set(text === state?.sourceText ? state.formulaUncertainStarts || [] : []);
+  if (state?.formulaNotice) byId('formula-notice').textContent = text === state.sourceText
+    ? state.formulaNotice : state.formulaNotice.replace('，已在公式预览标出', '');
   byId('formula-edit-hint').hidden = !ranges.length;
   const nodes = [...byId('source-preview').children];
   nodes.forEach((node, index) => {
     const range = ranges[index];
+    const needsReview = uncertain.has(range.start);
+    node.classList.toggle('math-needs-review', needsReview);
     node.setAttribute('role', 'button');
     node.tabIndex = 0;
-    node.setAttribute('aria-label', `校正公式：${range.tex}`);
-    node.title = '点击校正这一处公式';
+    node.setAttribute('aria-label', `${needsReview ? '需核对并校正' : '校正'}公式：${range.tex}`);
+    node.title = needsReview ? '这处公式识别不够确定。点击并对照原图核对。' : '点击校正这一处公式';
     node.onclick = () => {
       const editor = byId('source-editor');
       byId('source-correction').open = true;

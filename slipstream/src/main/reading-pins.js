@@ -127,6 +127,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   function update(pin, patch) {
     if (!alive(pin)) return;
     const hadLookup = Boolean(pin.view.lookup || pin.view.lookupNotice);
+    if (Object.hasOwn(patch, 'sourceText') && patch.sourceText !== pin.view.sourceText
+      && !Object.hasOwn(patch, 'formulaUncertainStarts')) pin.view.formulaUncertainStarts = [];
     Object.assign(pin.view, patch);
     const hasLookup = Boolean(pin.view.lookup || pin.view.lookupNotice);
     if (hadLookup !== hasLookup && !pin.manuallyResized && !pin.view.collapsed && !pin.view.referenceOnly) {
@@ -184,7 +186,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         segments: [], lookup: null, lookupStatus: '', lookupNotice: '', saveStatus: '', savedCardId: null, collapsed: false,
         notice: '', destination: '', topmost: true, explainSupported: false,
         formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-        formulaStatus: '', formulaNotice: '', imageSent: false } };
+        formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], imageSent: false } };
     pins.set(pin.id, pin);
     window.setAlwaysOnTop(true, 'floating');
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -578,7 +580,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     try {
       const result = await recognizeReadingFormulas({ image: pin.view.image, settingsSnapshot: settings, signal: controller.signal });
       if (!active()) return false;
-      update(pin, { sourceText: result.text, phase: 'review', formulaStatus: 'done', segments: [], translation: '',
+      update(pin, { sourceText: result.text, phase: 'review', formulaStatus: 'done', formulaUncertainStarts: [], segments: [], translation: '',
         formulaNotice: result.uncertain.length ? `需要核对：${result.uncertain.join('；')}` : '转写已完成。请对照原图检查符号、上下标和公式边界。',
         notice: '公式识别结果待核对。确认后才会翻译与解释。' });
       return true;
@@ -658,12 +660,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const mathReview = needsMathReview(document.text);
         const localFormula = ocr.formulaOcr;
         const formulaIssue = localFormula?.status === 'failed' || (localFormula?.status === 'unavailable' && mathReview);
+        const uncertainStarts = Array.isArray(localFormula?.uncertainStarts) ? localFormula.uncertainStarts : [];
+        const markedUncertain = localFormula?.uncertain && uncertainStarts.length === localFormula.uncertain;
         const formulaNotice = localFormula?.count
-          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意）` : ''}。请对照原图核对。`
+          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。请对照原图核对。`
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,
-          formulaNotice, formulaStatus: localFormula?.count ? 'local' : '',
+          formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
           phase: review.required || changed || document.layoutReview || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'

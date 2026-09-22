@@ -145,21 +145,38 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     else rows.push({ items: [item], center: item.y + item.h / 2, height: item.h, display: item.display });
   }
   let text = '', previous, layoutReview = false;
+  const uncertainFormulaStarts = [];
   for (const row of rows) {
     row.items.sort((a, b) => a.x - b.x);
     for (let i = 1; i < row.items.length; i++) {
       const a = row.items[i - 1], b = row.items[i];
       if (!a.math && !b.math && b.x - a.x - a.w > size.width * .08) layoutReview = true;
     }
-    const line = row.items.map((item) => item.text.trim()).filter(Boolean).join(' ').replace(/\s+([,.;:!?])/g, '$1');
+    const fragments = row.items.map((item) => ({ item, text: item.text.trim() })).filter(({ text: value }) => value);
+    const line = fragments.map(({ text: value }) => value).join(' ').replace(/\s+([,.;:!?])/g, '$1');
     const paragraph = previous && (row.display || previous.display
       || row.center - previous.center > Math.max(row.height, previous.height) * 2);
-    text += (text ? paragraph ? '\n\n' : '\n' : '') + line;
+    const separator = text ? paragraph ? '\n\n' : '\n' : '';
+    let cursor = 0;
+    for (const fragment of fragments) {
+      const normalized = fragment.text.replace(/\s+([,.;:!?])/g, '$1');
+      const at = line.indexOf(normalized, cursor);
+      if (at < 0) continue;
+      // A source-confirmed footnote can be attached to prose (biased$^{2}$).
+      // The marker belongs on the math delimiter, not on the English word.
+      const mathStart = normalized.indexOf('$');
+      if (fragment.item.math && fragment.item.confidence < .6 && mathStart >= 0) {
+        uncertainFormulaStarts.push(text.length + separator.length + at + mathStart);
+      }
+      cursor = at + normalized.length;
+    }
+    text += separator + line;
     previous = row;
   }
   const mathematical = items.filter((item) => item.math);
   return { text, layoutReview, formulaCount: mathematical.length,
-    uncertainFormulaCount: mathematical.filter((item) => item.confidence < .6).length };
+    uncertainFormulaCount: mathematical.filter((item) => item.confidence < .6).length,
+    uncertainFormulaStarts };
 }
 
 module.exports = { mergeFormulaDocument, proseSuperscript };
