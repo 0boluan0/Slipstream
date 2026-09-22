@@ -22,9 +22,9 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
         const box = pixelBox(char.boundingBox);
         if (!box.w || !box.h || !char.text.trim()) { word = null; continue; }
         if (word && ['x', 'y', 'w', 'h'].every((key) => word[key] === box[key])) word.text += char.text;
-        else { word = { ...box, text: char.text }; result.push(word); }
+        else { word = { ...box, text: char.text, confidence: line.confidence }; result.push(word); }
       }
-      if (!line.characters?.length && line.boundingBox) result.push({ ...pixelBox(line.boundingBox), text: line.text });
+      if (!line.characters?.length && line.boundingBox) result.push({ ...pixelBox(line.boundingBox), text: line.text, confidence: line.confidence });
     }
     return result;
   }
@@ -105,6 +105,18 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     else {
       const last = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x).at(-1);
       if (last && /[,.;:!?]$/.test(last.text)) punctuation = last.text.at(-1);
+    }
+    if (!punctuation && !formula.display) {
+      // A repaired masked row may have lost the punctuation beside its math.
+      // The existing padded pass can supply it only when the whole formula
+      // agrees literally at the same location. Never borrow its prose spelling.
+      const matches = edgeWords.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x);
+      const alternative = matches.map((word) => word.text).join('').replace(/\s+/g, '');
+      if (matches.length && matches.every((word) => word.confidence >= .9) && /[,.;:!?]$/.test(alternative)
+        && alternative.slice(0, -1) === latex.replace(/\s+/g, '')
+        && !items.some((word) => word.text.trim() === alternative.at(-1) && intersects(word, matches.at(-1)))) {
+        punctuation = alternative.at(-1);
+      }
     }
     // Superscripted prose ordinals belong to the sentence, so translation can
     // turn "1st moment" into Chinese instead of protecting it as mathematics.

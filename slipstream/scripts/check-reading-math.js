@@ -28,6 +28,30 @@ async function main() {
   assert.equal(mergeFormulaDocument({ blocks: [] }, [formula], size,
     { blocks: [word('x.', 10, 24), word('•', 36, 5), word('label', 45, 30)] }).text, '$x$. • label',
   'a separate source bullet must survive punctuation deduplication');
+  const relation = { ...formula, w: 26, latex: 'p = q' };
+  const relationWords = [word('p', 10, 5), word('=', 20, 5), word('q,', 29, 13)]
+    .map(block => ({ ...block, confidence: 1 }));
+  const trailingText = { blocks: [word('next', 70, 25)] };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [relation], size, trailingText,
+    { blocks: relationWords }).text, '$p = q$, next',
+  'an agreeing secondary OCR span preserves punctuation lost with a repaired source row');
+  for (const alternatives of [
+    relationWords.map(block => ({ ...block, confidence: .5 })),
+    [{ ...word('p', 10, 5), confidence: 1 }, { ...word('=', 20, 5), confidence: 1 }, { ...word('r,', 29, 13), confidence: 1 }],
+    relationWords.slice(-1),
+    [{ ...word('p=q,', 70, 25), confidence: 1 }],
+  ]) assert.equal(mergeFormulaDocument({ blocks: [] }, [relation], size, trailingText,
+    { blocks: alternatives }).text, '$p = q$ next',
+  'uncertain, different, partial or displaced secondary text cannot supply punctuation');
+  assert.equal(mergeFormulaDocument({ blocks: [word(',', 38, 4)] }, [relation], size,
+    { blocks: [word('p=q', 10, 30), ...trailingText.blocks] }, { blocks: relationWords }).text, '$p = q$, next',
+  'secondary punctuation and a masked punctuation fragment appear only once');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [relation], size,
+    { blocks: [word(',', 38, 4), ...trailingText.blocks] }, { blocks: relationWords }).text, '$p = q$, next',
+  'a retained source comma must not be duplicated by the secondary OCR');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [relation], size,
+    { blocks: [word('p=q;', 10, 32), ...trailingText.blocks] }, { blocks: relationWords }).text, '$p = q$; next',
+  'existing original punctuation has precedence over a different secondary reading');
   const edgeSize = { width: 1000, height: 100 };
   const edgeWord = (text, x, w) => ({ ...word(text, x / 10, w / 10),
     characters: [...text].map((char) => ({ text: char, boundingBox: { x: x / 1000, y: .7, w: w / 1000, h: .2 } })) });
