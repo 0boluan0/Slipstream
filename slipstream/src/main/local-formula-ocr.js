@@ -95,6 +95,48 @@ function trimFormulaCrop(image) {
   return image.crop({ x: left, y: top, width: Math.min(width - left, right - left + 2), height: Math.min(height - top, bottom - top + 2) });
 }
 
+function padFormulaCrop(image, ratio) {
+  const size = image.getSize(), margin = Math.max(1, Math.round(size.height * ratio));
+  const paddedSize = { width: size.width + margin * 2, height: size.height + margin * 2 };
+  const source = image.toBitmap(), pixels = Buffer.alloc(paddedSize.width * paddedSize.height * 4, 255);
+  for (let y = 0; y < size.height; y++) source.copy(pixels,
+    ((y + margin) * paddedSize.width + margin) * 4, y * size.width * 4, (y + 1) * size.width * 4);
+  return nativeImage.createFromBitmap(pixels, paddedSize);
+}
+
+function styledAtom(latex) {
+  // Both \\mathcal{H} and {\\mathcal H} denote the same single glyph.
+  const compact = latex.replace(/\\(mathcal|mathbb|mathfrak|mathscr)\s+([A-Za-z])\b/g, '\\$1{$2}')
+    .replace(/\s+/g, '').replace(/^\{(\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\})\}([,.;:!?]?)$/, '$1$2');
+  return /^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}[,.;:!?]?$/.test(compact) ? compact : null;
+}
+
+async function recognizeCrop(model, image, signal, deadline) {
+  cancelled(signal, deadline);
+  const encoded = await model.encoder.run({ pixel_values: rgbTensor(image, 384, true, model.ort) });
+  const ids = [1];
+  let confidence = 1;
+  for (let step = 0; step < 384; step++) {
+    cancelled(signal, deadline);
+    const output = await model.decoder.run({
+      input_ids: new model.ort.Tensor('int64', BigInt64Array.from(ids, BigInt), [1, ids.length]),
+      encoder_hidden_states: encoded.last_hidden_state,
+    });
+    const logits = output.logits.data, vocab = output.logits.dims[2], offset = logits.length - vocab;
+    let best = 0;
+    for (let i = 1; i < vocab; i++) if (logits[offset + i] > logits[offset + best]) best = i;
+    let sum = 0;
+    for (let i = 0; i < vocab; i++) sum += Math.exp(logits[offset + i] - logits[offset + best]);
+    confidence = Math.min(confidence, 1 / sum);
+    ids.push(best);
+    if (best === 2) break;
+  }
+  if (ids.at(-1) !== 2) throw new Error('formula-token-limit');
+  const latex = model.decode(ids);
+  if (!latex || latex.includes('�')) throw new Error('formula-invalid-latex');
+  return { latex, confidence };
+}
+
 // Decode the published ByteLevel tokenizer without importing a language-model
 // framework. IDs 0–3 are its special tokens; regular tokens include UTF-8 bytes.
 function tokenDecoder(json) {
@@ -156,28 +198,24 @@ function createLocalFormulaOcr(modelDir) {
       for (const box of boxes) {
         cancelled(signal, deadline);
         const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
-        const pixels = rgbTensor(trimFormulaCrop(crop), 384, true, model.ort);
-        const encoded = await model.encoder.run({ pixel_values: pixels });
-        const ids = [1];
-        let confidence = 1;
-        for (let step = 0; step < 384; step++) {
-          cancelled(signal, deadline);
-          const output = await model.decoder.run({
-            input_ids: new model.ort.Tensor('int64', BigInt64Array.from(ids, BigInt), [1, ids.length]),
-            encoder_hidden_states: encoded.last_hidden_state,
-          });
-          const logits = output.logits.data, vocab = output.logits.dims[2], offset = logits.length - vocab;
-          let best = 0;
-          for (let i = 1; i < vocab; i++) if (logits[offset + i] > logits[offset + best]) best = i;
-          let sum = 0;
-          for (let i = 0; i < vocab; i++) sum += Math.exp(logits[offset + i] - logits[offset + best]);
-          confidence = Math.min(confidence, 1 / sum);
-          ids.push(best);
-          if (best === 2) break;
+        const trimmed = trimFormulaCrop(crop);
+        let { latex, confidence } = await recognizeCrop(model, trimmed, signal, deadline);
+        let agreedStyledAtom = false;
+        // Tight isolated glyphs can look like another font or letter when
+        // stretched to the model input. Recheck only uncertain styled atoms;
+        // two modest margins must agree in case, font and punctuation.
+        if (!box.display && box.w < box.h * 2 && box.h < size.height * .12 && confidence < .75
+          && /\\(?:boldsymbol|mathbf|mathcal|mathbb|mathfrak|mathscr)\b/.test(latex)) {
+          const first = await recognizeCrop(model, padFormulaCrop(trimmed, .1), signal, deadline);
+          const second = await recognizeCrop(model, padFormulaCrop(trimmed, .2), signal, deadline);
+          const atom = styledAtom(first.latex);
+          if (atom && atom === styledAtom(second.latex) && Math.min(first.confidence, second.confidence) >= .6
+            && Math.max(first.confidence, second.confidence) > confidence + .1) {
+            latex = atom;
+            confidence = Math.min(first.confidence, second.confidence);
+            agreedStyledAtom = true;
+          }
         }
-        if (ids.at(-1) !== 2) throw new Error('formula-token-limit');
-        const latex = model.decode(ids);
-        if (!latex || latex.includes('�')) throw new Error('formula-invalid-latex');
         // A weak detection is not enough to turn prose into mathematics. Admit
         // only confident notation. Bare Latin atoms need stronger recognition;
         // the English words a/A/I still belong to prose in this weak-layout path.
@@ -187,7 +225,7 @@ function createLocalFormulaOcr(modelDir) {
         const list = /^(?:[A-Za-z],){2,}[A-Za-z][.;:!?]?$/.test(compact);
         const latin = /^[B-HJ-Zb-z][,.;:!?]?$/.test(compact);
         const indexed = /^(?:[A-Za-z]|\d+)(?:[_^]\{[A-Za-z0-9+-]+\}){1,2}[,.;:!?]?$/.test(compact);
-        if (box.score < .3 && !(confidence >= .75 && (greek || styled || list)
+        if (box.score < .3 && !(agreedStyledAtom || confidence >= .75 && (greek || styled || list)
           || confidence >= .95 && (latin || indexed))) continue;
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
       }
