@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createReadingReferenceStore } = require('../src/main/reading-reference-store');
-const { referenceKey, referenceCandidateKey, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
+const { referenceKey, referenceCandidateKey, referenceCandidateCovered, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { matchesReferenceSearch } = require('../src/shared/reading-notation.cjs');
 
@@ -136,6 +136,10 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
   ], textbookSource);
   assert.deepEqual(textbook.map((item) => item.symbol), [String.raw`N ( \mu, \sigma )`],
     'values assigned only for a special-case distribution must not become reusable parameter definitions');
+  assert(referenceCandidateCovered({ ...textbook[0], symbol: 'N' }, textbook[0]),
+    'a bare function head from the same sentence adds nothing after the full notation was saved');
+  assert(!referenceCandidateCovered(textbook[0], { ...textbook[0], symbol: 'N' }),
+    'the full notation must still be available when only its bare head was saved');
   const fixedSetting = 'Let $\\lambda = 0.1$ denote the regularization strength throughout the study.';
   assert.equal(parseReferenceCandidates([{ symbol: String.raw`\lambda`, meaning: '全篇固定的正则化系数，取值为 0.1',
     evidence: fixedSetting }], fixedSetting).length, 1,

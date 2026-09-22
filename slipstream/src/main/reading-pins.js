@@ -11,7 +11,7 @@ const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
 const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation');
 const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms } = require('./reading-document');
-const { referenceKey, referenceCandidateKey, referenceOccurrences, isNotation } = require('./reading-references');
+const { referenceKey, referenceCandidateKey, referenceCandidateCovered, referenceOccurrences, isNotation } = require('./reading-references');
 
 const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
 const ENTRY_URL = pathToFileURL(ENTRY).href;
@@ -80,13 +80,13 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   const paperFor = (pin) => referenceData.papers.find((paper) => paper.id === pin.view.paperId);
   function candidatesFor(pin) {
     if (!pin.view.paperId) return [];
-    const saved = new Set((paperFor(pin)?.entries || []).map(referenceCandidateKey));
+    const saved = paperFor(pin)?.entries || [];
     const candidates = new Map();
     for (const other of pins.values()) {
       if (other.view.paperId !== pin.view.paperId) continue;
       for (const entry of [...(other.referenceCandidates || []), ...other.view.segments.flatMap((segment) => segment.referenceCandidates || [])]) {
         const key = referenceCandidateKey(entry);
-        if (!saved.has(key)) candidates.set(key, { ...entry, key });
+        if (!saved.some((item) => referenceCandidateCovered(entry, item))) candidates.set(key, { ...entry, key });
       }
     }
     return [...candidates.values()];

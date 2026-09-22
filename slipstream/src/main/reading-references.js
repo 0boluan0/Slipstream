@@ -10,6 +10,15 @@ function referenceCandidateKey(entry) {
   return JSON.stringify([...identity, entry.evidence, entry.source, entry.scope, entry.meaning]);
 }
 
+function referenceCandidateCovered(candidate, saved) {
+  if (referenceCandidateKey(candidate) === referenceCandidateKey(saved)) return true;
+  if (candidate.origin !== 'excerpt' || saved.origin !== 'excerpt'
+    || candidate.evidence.replace(/\s+/gu, ' ') !== saved.evidence.replace(/\s+/gu, ' ')) return false;
+  const head = referenceKey(candidate.symbol);
+  if (!/^[A-Za-z]{1,4}$/u.test(head)) return false;
+  return new RegExp(`^${head}\\s*\\(`, 'u').test(saved.symbol.trim());
+}
+
 function referenceSymbol(value) {
   const symbol = value.trim();
   const range = mathRanges(symbol).find((item) => item.start === 0 && item.end === symbol.length);
@@ -128,4 +137,5 @@ function parseReferenceCandidates(items, source) {
   });
 }
 
-module.exports = { referenceKey, referenceCandidateKey, referenceOccurrences, referenceSymbol, isNotation, parseReferenceCandidates };
+module.exports = { referenceKey, referenceCandidateKey, referenceCandidateCovered,
+  referenceOccurrences, referenceSymbol, isNotation, parseReferenceCandidates };
