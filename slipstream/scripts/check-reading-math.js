@@ -48,9 +48,9 @@ async function main() {
     assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, latex: tex }], size).text, expected);
   }
   const superscriptWord = { ...formula, score: .2, latex: 'b i a s e d ^ { 2 }' };
-  assert.equal(mergeFormulaDocument({ blocks: [] }, [superscriptWord], size,
+  for (const score of [.2, .44, .9]) assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...superscriptWord, score }], size,
     { blocks: [word('biased', 10, 18), word('estimate', 45, 30)] }).text, 'biased$^{2}$ estimate',
-  'a weak word-shaped region with a source-confirmed word keeps both translatable prose and its superscript');
+  'a source-confirmed word keeps translatable prose and its superscript regardless of layout confidence');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [superscriptWord], size,
     { blocks: [word('unbiased', 10, 18), word('estimate', 45, 30)] }).text, 'unbiased estimate',
   'a disagreement must not replace the source word or attach an unsupported marker');
@@ -59,12 +59,33 @@ async function main() {
   'an adjacent article, multi-digit superscript and source punctuation survive as one prose span');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...superscriptWord, display: true }], size).text,
     '$$b i a s e d ^ { 2 }$$', 'display mathematics must not become prose');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, score: .8, latex: 'a b c d ^ { 2 }' }], size,
+    { blocks: [word('abcd', 10, 18)] }).text, '$a b c d ^ { 2 }$',
+  'an isolated product is not a footnote-bearing prose word');
   for (const score of [.2, .7]) {
     for (const tex of ['x ^ { 2 }', 'x y ^ { 2 }', 'x y z ^ { 2 }', String.raw`\mathrm{rate}^{2}`, 'loss_{i}^{2}', 'a+bcd^{2}']) {
       assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, score, latex: tex }], size).text,
         `$${tex}$`, 'ordinary powers, products, operators, named quantities and subscripts retain mathematical structure');
     }
   }
+  const line = (text, y, h, confidence = 1, x = .05, w = .9) =>
+    ({ text, confidence, boundingBox: { x, y, w, h } });
+  const mergedLines = { blocks: [line('Unreadable merged row', .2, .5, .5)] };
+  const separatedLines = { blocks: [line('First readable source line', .5, .2), line('Second readable source line', .2, .2)] };
+  assert.equal(mergeFormulaDocument(separatedLines, [], size, mergedLines).text,
+    'First readable source line\nSecond readable source line',
+    'confident separate rows can recover a low-confidence observation that merged multiple source lines');
+  for (const alternative of [
+    { blocks: [line('Only one replacement line', .2, .2)] },
+    { blocks: separatedLines.blocks.map(b => ({ ...b, confidence: .5 })) },
+    { blocks: [line('First side by side fragment', .2, .2, 1, .05, .4), line('Second side by side fragment', .2, .2, 1, .55, .4)] },
+  ]) assert.equal(mergeFormulaDocument(alternative, [], size, mergedLines).text, 'Unreadable merged row',
+    'a missing row, uncertain text or fragments on the same baseline cannot replace the original');
+  assert.equal(mergeFormulaDocument(separatedLines, [], size,
+    { blocks: [line('Keep a confident source observation', .2, .5)] }).text, 'Keep a confident source observation');
+  assert.match(mergeFormulaDocument(separatedLines,
+    [{ x: 10, y: 30, w: 70, h: 50, latex: 'x^2', display: true }], size, mergedLines).text, /\$\$x\^2\$\$/,
+  'multiple rows belonging to display mathematics remain under the formula recognizer');
   const source = String.raw`Conditional expectation is $\mathbb{E}[Y\mid X=x]$.
 
 $$\mathbb{E}[Y\mid X=x]=\int_{-\infty}^{\infty}y f_{Y\mid X}(y\mid x)\,\mathrm{d}y.$$

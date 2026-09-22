@@ -1,7 +1,7 @@
 'use strict';
 
 function proseSuperscript(latex) {
-  // A weak inline region can include a prose word and its footnote marker.
+  // An inline region can include a prose word and its footnote marker.
   // Keep commands, operators, short products and subscripts as mathematics.
   const compact = latex.replace(/\s+/g, '').replace(/\\(?:qquad|quad|[,;])/g, ' ');
   const match = compact.match(/^((?:[A-Za-z]+ )*[A-Za-z][a-z]{3,})\^\{(\d{1,3})\}([,.;:!?]?)$/);
@@ -34,16 +34,41 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     return area > Math.min(a.w * a.h, b.w * b.h) * .3
       && Math.abs(a.y + a.h / 2 - b.y - b.h / 2) < Math.max(a.h, b.h) * .6;
   };
-  const originalWords = words(original || masked);
+  // Vision sometimes combines two visible prose rows into one low-confidence
+  // observation. Use the masked pass only when it resolves that same rectangle
+  // into complete, confident, vertically separate rows. Keep normal source
+  // observations as anchors; a different spelling alone is not a replacement.
+  const sourceBlocks = (original || masked)?.blocks || [];
+  const anchored = sourceBlocks.flatMap((block) => {
+    if (!(block.confidence <= .5) || !block.boundingBox) return [block];
+    const box = pixelBox(block.boundingBox);
+    if (formulas.some((f) => f.display && intersects(f, box))) return [block];
+    const rows = (masked?.blocks || []).filter((candidate) => {
+      if (!(candidate.confidence >= .9) || !candidate.boundingBox
+        || (candidate.text.match(/\p{L}{3,}/gu) || []).length < 3) return false;
+      const row = pixelBox(candidate.boundingBox);
+      return row.h < box.h * .7 && row.x >= box.x - box.h * .2
+        && row.x + row.w <= box.x + box.w + box.h * .2
+        && row.y >= box.y - row.h * .2 && row.y + row.h <= box.y + box.h + row.h * .2;
+    }).sort((a, b) => pixelBox(a.boundingBox).y - pixelBox(b.boundingBox).y);
+    if (rows.length < 2) return [block];
+    const boxes = rows.map((row) => pixelBox(row.boundingBox));
+    if (boxes.some((row, i) => i && row.y < boxes[i - 1].y + boxes[i - 1].h * .8)
+      || boxes.at(-1).y + boxes.at(-1).h - boxes[0].y < box.h * .8) return [block];
+    return rows;
+  });
+  const originalWords = words({ blocks: anchored });
   const proseAnnotations = new Map();
   formulas = formulas.filter((formula) => {
-    const annotated = !formula.display && formula.score < .3 ? proseSuperscript(formula.latex) : null;
+    const annotated = !formula.display ? proseSuperscript(formula.latex) : null;
     if (!annotated) return true;
     // The math model may recover a superscript, but cannot rewrite prose.
     // Require the original text recognizer to agree on every word in its box.
     const source = originalWords.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x)
       .map((word) => word.text).join(' ').replace(/[,.;:!?]$/, '');
     if (source !== annotated.text) return false;
+    if (!originalWords.some((word) => !intersects(formula, word) && /^[A-Za-z]{3,}/.test(word.text)
+      && Math.abs(word.y + word.h / 2 - formula.y - formula.h / 2) < Math.max(word.h, formula.h) * .6)) return true;
     proseAnnotations.set(formula, annotated);
     return true;
   });
