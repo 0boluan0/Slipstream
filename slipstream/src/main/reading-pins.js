@@ -10,8 +10,8 @@ const { formulaRecognitionAvailable } = require('./formula-recognition');
 const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
 const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation');
-const { readingTextFromOcr, readingSegments, deduplicateReadingTerms } = require('./reading-document');
-const { referenceKey, referenceOccurrences, isNotation } = require('./reading-references');
+const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms } = require('./reading-document');
+const { referenceKey, referenceCandidateKey, referenceOccurrences, isNotation } = require('./reading-references');
 
 const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
 const ENTRY_URL = pathToFileURL(ENTRY).href;
@@ -78,15 +78,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   let referencesLoaded = !referenceStore;
 
   const paperFor = (pin) => referenceData.papers.find((paper) => paper.id === pin.view.paperId);
-  const candidateKey = (entry) => JSON.stringify([referenceKey(entry.symbol), entry.evidence, entry.source]);
   function candidatesFor(pin) {
     if (!pin.view.paperId) return [];
-    const saved = new Set((paperFor(pin)?.entries || []).map(candidateKey));
+    const saved = new Set((paperFor(pin)?.entries || []).map(referenceCandidateKey));
     const candidates = new Map();
     for (const other of pins.values()) {
       if (other.view.paperId !== pin.view.paperId) continue;
       for (const entry of [...(other.referenceCandidates || []), ...other.view.segments.flatMap((segment) => segment.referenceCandidates || [])]) {
-        const key = candidateKey(entry);
+        const key = referenceCandidateKey(entry);
         if (!saved.has(key)) candidates.set(key, { ...entry, key });
       }
     }
@@ -436,6 +435,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             const segment = queue.shift();
             if (isMathOnly(segment.source)) {
               segment.translation = segment.source;
+              segment.terms = [];
+              segment.status = 'done';
+              segment.error = '';
+              report();
+              continue;
+            }
+            if (isIsolatedNumericRow(segment.source)) {
+              segment.translation = '这行数字请以截图为准。';
               segment.terms = [];
               segment.status = 'done';
               segment.error = '';

@@ -3,7 +3,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
-const { referenceKey, referenceOccurrences, referenceSymbol } = require('./reading-references');
+const { referenceCandidateKey, referenceOccurrences, referenceSymbol } = require('./reading-references');
 
 const bounded = (value, limit) => typeof value === 'string' && value.length <= limit;
 const validId = (id) => typeof id === 'string' && /^[a-f0-9-]{36}$/u.test(id);
@@ -90,9 +90,8 @@ function createReadingReferenceStore(directory) {
       validateEntry(input);
       const symbol = input.origin === 'excerpt' ? referenceSymbol(input.symbol) : input.symbol.trim();
       const paper = find(data, id);
-      const existing = paper.entries.find((entry) => referenceKey(entry.symbol) === referenceKey(symbol)
-        && entry.evidence === input.evidence && entry.source === input.source && entry.scope === input.scope
-        && (input.origin === 'excerpt' || entry.meaning === input.meaning));
+      const key = referenceCandidateKey({ ...input, symbol });
+      const existing = paper.entries.find((entry) => referenceCandidateKey(entry) === key);
       if (existing) return existing;
       const entry = { ...input, symbol, meaning: input.meaning.trim(), id: randomUUID(), revision: 1 };
       paper.entries.push(entry);

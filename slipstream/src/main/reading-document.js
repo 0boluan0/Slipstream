@@ -68,6 +68,13 @@ function readingSegments(text) {
   return pieces.map((source, index) => ({ id: index, source, translation: '', status: 'pending' }));
 }
 
+function isIsolatedNumericRow(text) {
+  // Figure axes can look like a paragraph after OCR, including duplicated
+  // labels. Keep the source and screenshot available without presenting the
+  // unverified numbers as translated prose.
+  return /^(?:[-−+]?\d+(?:\.\d+)?\s+){5,}[-−+]?\d+(?:\.\d+)?$/u.test(text.trim());
+}
+
 function deduplicateReadingTerms(segments) {
   const termKey = (quote, label) => JSON.stringify([quote.trim().toLowerCase(), label.trim()]);
   const terms = segments.flatMap((segment) => segment.terms || []);
@@ -105,4 +112,4 @@ function deduplicateReadingTerms(segments) {
     }) });
 }
 
-module.exports = { readingTextFromOcr, readingSegments, deduplicateReadingTerms };
+module.exports = { readingTextFromOcr, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms };

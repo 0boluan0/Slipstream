@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createReadingReferenceStore } = require('../src/main/reading-reference-store');
-const { referenceKey, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
+const { referenceKey, referenceCandidateKey, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { matchesReferenceSearch } = require('../src/shared/reading-notation.cjs');
 
@@ -156,6 +156,11 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
     const saved = await store.add(a.id, definition);
     const duplicate = await store.add(a.id, { ...definition, meaning: '重新措辞' });
     assert.equal(duplicate.id, saved.id, 'the same source definition should not accumulate copies');
+    const otherCrop = { ...definition, source: `Context before. ${source} Context after.` };
+    assert.equal(referenceCandidateKey(otherCrop), referenceCandidateKey(saved),
+      'the same quoted definition must be hidden after it is saved from a different crop');
+    assert.equal((await store.add(a.id, otherCrop)).id, saved.id,
+      'repeating the same definition from an overlapping screenshot must not save another copy');
     const conflict = { ...definition, origin: 'manual', scope: '附录', meaning: '附录中重新定义的标量。' };
     await store.add(a.id, conflict);
     await store.add(b.id, { ...definition, origin: 'manual', meaning: '论文 B 的另一种含义。' });

@@ -4,6 +4,12 @@ const { mathRanges } = require('../shared/reading-math.cjs');
 
 const { referenceKey, isNotation } = require('../shared/reading-notation.cjs');
 
+function referenceCandidateKey(entry) {
+  const identity = [referenceKey(entry.symbol), entry.origin];
+  if (entry.origin === 'excerpt') return JSON.stringify([...identity, entry.evidence]);
+  return JSON.stringify([...identity, entry.evidence, entry.source, entry.scope, entry.meaning]);
+}
+
 function referenceSymbol(value) {
   const symbol = value.trim();
   const range = mathRanges(symbol).find((item) => item.start === 0 && item.end === symbol.length);
@@ -122,4 +128,4 @@ function parseReferenceCandidates(items, source) {
   });
 }
 
-module.exports = { referenceKey, referenceOccurrences, referenceSymbol, isNotation, parseReferenceCandidates };
+module.exports = { referenceKey, referenceCandidateKey, referenceOccurrences, referenceSymbol, isNotation, parseReferenceCandidates };

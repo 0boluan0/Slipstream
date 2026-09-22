@@ -5,7 +5,7 @@ const katex = require('katex');
 const { mathRanges } = require('../src/shared/reading-math.cjs');
 const { createReadingProcessor, parseReadingExplanations, readingMessages } = require('../src/main/reading-service');
 const { cardBounds, readingDestination } = require('../src/main/reading-pins');
-const { readingSegments, readingTextFromOcr, deduplicateReadingTerms } = require('../src/main/reading-document');
+const { readingSegments, readingTextFromOcr, isIsolatedNumericRow, deduplicateReadingTerms } = require('../src/main/reading-document');
 
 async function main() {
   const termSegment = (source, quote, label) => ({ source, translation: '译文保持原样', terms: [{ quote, label,
@@ -194,6 +194,9 @@ async function main() {
   const basicLookup = await free({ text: source, kind: 'lookup', selection: 'Correlation', settingsSnapshot: { activeBackend: 'free_translate' } });
   assert.equal(basicLookup.lookup.contextual, false, 'basic translation must not be presented as a concept definition');
   assert.deepEqual(readingSegments('First paragraph.\n\nSecond paragraph.').map((segment) => segment.source), ['First paragraph.', 'Second paragraph.']);
+  assert(isIsolatedNumericRow('500 700 700 900 1100 1300 1500 1700'), 'actual chart OCR needs a screenshot check, not a claimed translation');
+  assert(!isIsolatedNumericRow('N(μ=0,σ=1) and N(μ=19,σ=4)'));
+  assert(!isIsolatedNumericRow('SAT ACT\nMean 1100 21\nSD 200 6'));
   const longText = 'A complete sentence. '.repeat(250).trim();
   assert.equal(readingSegments(longText).map((segment) => segment.source).join(' '), longText, 'splitting must not lose source content');
   const block = (text, x, y, w = .8) => ({ text, boundingBox: { x, y, w, h: .04 } });
