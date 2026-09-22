@@ -44,6 +44,26 @@ function referenceOccurrences(source, symbol) {
   for (const range of mathRanges(source)) {
     if (referenceKey(range.tex) === key) add(range.start, range.end);
   }
+  // Formula OCR may separate the letters of a named mathematical function:
+  // Breiman's mg(X,Y) becomes `m g (X,Y)`, and PE^{\ast} becomes
+  // `P E ^ { \ast }`. Match only the exact atom inside a math span; a bare
+  // letter-spaced name must be followed by a function argument.
+  const atom = key.match(/^([A-Za-z]{2,4})(?:([_^])(?:\{(\\[A-Za-z]+|[A-Za-z0-9]+)\}|(\\[A-Za-z]+|[A-Za-z0-9]+)))?$/u);
+  if (atom) {
+    const escape = (value) => value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    const letters = [...atom[1]].map(escape).join('\\s+');
+    const tail = atom[2] ? `\\s*${escape(atom[2])}\\s*(?:\\{\\s*${escape(atom[3] || atom[4])}\\s*\\}|${escape(atom[3] || atom[4])})`
+      : '(?=\\s*\\()';
+    const spaced = new RegExp(`(?<![\\p{L}\\\\])${letters}${tail}(?![\\p{L}])`, 'gu');
+    for (const range of mathRanges(source)) {
+      const contentStart = source.indexOf(range.tex, range.start);
+      if (contentStart < 0 || contentStart >= range.end) continue;
+      for (const match of range.tex.matchAll(spaced)) {
+        const start = contentStart + match.index;
+        if (!operatorLabels.some((label) => start >= label.start && start < label.end)) add(start, start + match[0].length);
+      }
+    }
+  }
   if (!isNotation(symbol) && !/[\\$^_{}]/u.test(symbol)) {
     let start = source.indexOf(symbol);
     while (start >= 0) {
@@ -57,12 +77,21 @@ function referenceOccurrences(source, symbol) {
 
 function sourceEvidence(source, quoted) {
   const evidence = quoted.trim();
-  if (source.includes(evidence)) return evidence;
+  const variants = [evidence];
+  // Models sometimes move a sentence-ending period across the closing math
+  // delimiter while copying PDF OCR. The equation itself must stay identical.
+  const periodMoved = evidence.replace(/(\.)(\$\$|\$)$/u, '$2$1');
+  if (periodMoved !== evidence) variants.push(periodMoved);
   // A model may collapse PDF line breaks while quoting a real definition.
   // Accept only whitespace changes and retain the source's exact spelling.
-  const pattern = evidence.split(/\s+/u)
-    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('\\s+');
-  return source.match(new RegExp(pattern, 'u'))?.[0] || null;
+  for (const variant of variants) {
+    if (source.includes(variant)) return variant;
+    const pattern = variant.split(/\s+/u)
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('\\s+');
+    const match = source.match(new RegExp(pattern, 'u'))?.[0];
+    if (match) return match;
+  }
+  return null;
 }
 
 function parseReferenceCandidates(items, source) {

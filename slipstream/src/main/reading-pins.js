@@ -23,6 +23,14 @@ function looksLikeOwnReadingUi(text) {
       && /(?:卡片盒|本文速查|屏幕旁|术语卡片)/u.test(text));
 }
 
+function looksLikeClippedProse(ocr) {
+  // A tight right edge can silently turn a complete sentence into plausible
+  // OCR fragments. Two long lines touching that edge warrant a new crop.
+  return (ocr?.blocks || []).filter((block) => block?.text?.trim().length >= 25
+    && Number.isFinite(block.boundingBox?.x) && Number.isFinite(block.boundingBox?.w)
+    && block.boundingBox.x + block.boundingBox.w >= 0.985).length >= 2;
+}
+
 function cardBounds(point, workArea) {
   const width = Math.min(460, workArea.width);
   const height = Math.min(540, workArea.height);
@@ -660,6 +668,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const document = readingTextFromOcr(ocr);
         const review = assessOcrReview({ source: 'ocr', text: ocr.text, capture: ocr });
         const ownUiCapture = looksLikeOwnReadingUi(document.text);
+        const clippedProse = looksLikeClippedProse(ocr);
         pin.controller = null;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* continue through explicit review */ }
@@ -676,8 +685,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || review.required || changed || document.layoutReview || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedProse || review.required || changed || document.layoutReview || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
+            : clippedProse ? '选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
             : formulaNotice || (mathReview ? '检测到数学符号。请对照原始截图核对符号、上下标和分式。'

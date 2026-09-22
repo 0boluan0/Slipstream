@@ -101,6 +101,30 @@ async function main() {
   });
   assert.equal((await residualProcessor({ text: residualSource, kind: 'references', settingsSnapshot: settings })).references.length, 1,
     'an explicitly defined styled function is retained instead of being filtered after model extraction');
+  // Captured from the native Preview crop of Breiman's Random Forests, p. 4.
+  // The model returned all three explicit definitions, but local grounding
+  // previously discarded the two named formula atoms.
+  const forestSource = String.raw`define the
+margin function as
+
+$$m g ( { \bf X }, \! Y ) = a v _ { k } I ( h _ { k } ( { \bf X } ) \! = \! Y ) \! - \! \operatorname * { m a x } _ { j \neq Y } a v _ { k } I ( h _ { k } ( { \bf X } ) \! = \! j ) \,$$.
+
+where I(•) is the indicator function. The generalization error is given by
+
+$$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
+  const forestCandidates = parseReferenceCandidates([
+    { symbol: 'mg', meaning: '间隔函数', evidence: forestSource.slice(0, forestSource.indexOf('\n\nwhere')).replace('\\,$$.', () => String.raw`\,.$$`) },
+    { symbol: 'I', meaning: '指示函数', evidence: 'where I(•) is the indicator function.' },
+    { symbol: String.raw`PE^{\ast}`, meaning: '泛化误差', evidence: forestSource.slice(forestSource.indexOf('The generalization error')) },
+  ], forestSource);
+  assert.deepEqual(forestCandidates.map(({ symbol }) => symbol), ['mg', 'I', String.raw`PE^{\ast}`]);
+  assert(forestCandidates.every(({ evidence }) => forestSource.includes(evidence)), 'repaired quotes retain exact source bytes');
+  assert.equal(referenceOccurrences(forestSource, 'mg').length, 2, 'OCR-spaced function name remains clickable in both formulas');
+  assert.equal(referenceOccurrences(forestSource, String.raw`PE^{\ast}`).length, 1, 'OCR-spaced name with an exponent remains clickable');
+  assert.equal(referenceOccurrences(String.raw`$m g + x$`, 'mg').length, 0, 'a letter-spaced product is not a named function call');
+  assert.deepEqual(parseReferenceCandidates([{ symbol: 'mg', meaning: '间隔函数',
+    evidence: forestCandidates[0].evidence.replace('j )', 'z )') }], forestSource), [],
+  'math punctuation tolerance cannot change the defining equation');
   const empty = createReadingProcessor(async () => JSON.stringify({ translation: '下一节讨论实验。', terms: [], references: [] }));
   assert.deepEqual((await empty({ text: 'The next section discusses experiments.', withReferences: true, settingsSnapshot: settings })).references, []);
   await assert.rejects(processor({ text: source, kind: 'references', settingsSnapshot: { activeBackend: 'free_translate' } }), /reading-model-required/);

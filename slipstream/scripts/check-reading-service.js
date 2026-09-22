@@ -117,6 +117,14 @@ async function main() {
   assert.deepEqual(await plain({ text: 'The next section describes the results.', withTerms: true, settingsSnapshot: settings }),
     { translation: '下一节将介绍研究结果。', terms: [] }, 'an empty suggestion list is a successful translation');
   assert.equal(emptyTermCalls, 1, 'empty suggestions must not trigger a refill request');
+  const coordinateSource = 'The probability is over the X,Y space, while the sample space specifies all possible outcomes.';
+  const coordinate = createReadingProcessor(async (...args) => JSON.parse(args[4]).candidates
+    ? JSON.stringify({ keep: [0] }) : JSON.stringify({ translation: '概率是在 X,Y 空间上的；样本空间给出所有可能结果。', terms: [
+      { quote: 'X,Y space', label: 'X,Y 空间', role: 'core' },
+      { quote: 'sample space', label: '样本空间', role: 'core' },
+    ] }));
+  assert.deepEqual((await coordinate({ text: coordinateSource, withTerms: true, settingsSnapshot: settings })).terms.map((term) => term.quote),
+    ['sample space'], 'coordinate labels do not become concept buttons, while a real space definition remains available');
   const effectSource = 'An indirect effect differs from a direct effect. The estimator is unbiased.';
   const effectTerms = createReadingProcessor(async (...args) => JSON.parse(args[4]).candidates ? JSON.stringify({ keep: [0, 1] }) : JSON.stringify({ translation: '间接效应不同于直接效应。估计量是无偏的。',
     terms: [{ quote: 'direct effect', label: '直接效应', role: 'core' }, { quote: 'indirect effect', label: '间接效应', role: 'core' }, { quote: 'biased', label: '有偏的', role: 'core' }] }));

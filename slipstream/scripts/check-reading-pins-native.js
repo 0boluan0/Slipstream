@@ -58,6 +58,7 @@ app.whenReady().then(async () => {
   let ocrOverride = null;
   let failMatching = '';
   let noTerms = false;
+  let ocrClipped = false;
   let holdReview = false, resolveReview, reviewSignal;
   const provider = createReadingProcessor(async (...args) => {
     providerCalls += 1;
@@ -95,7 +96,10 @@ app.whenReady().then(async () => {
       return file;
     },
     performOCR: async (file, options) => {
-      if (ocrOverride) return { text: ocrOverride, confidence: .99, blocks: [{ text: ocrOverride, confidence: .99 }] };
+      if (ocrOverride) return { text: ocrOverride, confidence: .99, blocks: ocrClipped
+        ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
+        : [{ text: ocrOverride, confidence: .99 }] };
       if (!realOcrDone) {
         const result = await require('../src/main/ocr-service').performOCR(file, options);
         assert.match(result.text, /Correlation/);
@@ -294,6 +298,16 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(ownUi)).notice, /选区似乎包含 Slipstream 窗口/);
   assert.equal(providerCalls, beforeOwnUi, 'capturing Slipstream chrome must not automatically transmit OCR text');
   manager.clear();
+  ocrClipped = true;
+  ocrOverride = 'Given an ensemble of classifiers and a training set\nThe margin measures the extent of the correct vote';
+  const beforeClipped = providerCalls;
+  await manager.capture();
+  const clipped = cards()[0];
+  await until(phaseIs(clipped, 'review'), 'right-edge cropped prose review');
+  assert.match((await stateOf(clipped)).notice, /右侧可能截断/);
+  assert.equal(providerCalls, beforeClipped, 'cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrClipped = false;
   ocrOverride = 'The next section describes the results.';
   const beforePlain = providerCalls;
   await manager.capture();
