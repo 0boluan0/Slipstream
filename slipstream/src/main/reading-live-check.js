@@ -57,6 +57,13 @@ exports.run = function run() {
       app.exit(passed ? 0 : 1);
       return;
     }
+    if (process.argv.includes('--reading-check-explanations')) {
+      stage = 'concept-explanations';
+      const collected = await require('./reading-explanation-check').run({ processReadingText, settings, report, saveReport });
+      fs.rmSync(work, { recursive: true, force: true });
+      app.exit(collected ? 0 : 1);
+      return;
+    }
     for (const sample of [
       { term: 'conditional expectation', source: 'Let Y denote future demand and X the information available today. The conditional expectation E[Y | X] is a random variable determined by X. It differs from the unconditional expectation E[Y], which is a single average over all possible values of X.' },
       { term: 'confounder', source: 'A confounder is a variable that influences both a treatment and an outcome. An association between treatment and outcome may therefore persist even when the treatment has no causal effect.' },
