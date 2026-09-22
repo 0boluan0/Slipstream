@@ -493,8 +493,16 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       || payload.end - payload.start > 1500) throw new Error('Invalid reading selection');
     const quote = segment.source.slice(payload.start, payload.end);
     if (!quote.trim()) return;
-    const local = referenceLookup(pin, quote);
-    if (paperFor(pin) && (local.definitions.length || isNotation(quote))) {
+    let symbol = quote;
+    if (payload.referenceSymbol !== undefined) {
+      const entry = (paperFor(pin)?.entries || []).find((item) => item.symbol === payload.referenceSymbol);
+      if (!entry || !referenceOccurrences(segment.source, entry.symbol).some((hit) => hit.start === payload.start && hit.end === payload.end)) {
+        throw new Error('Invalid reading selection');
+      }
+      symbol = entry.symbol;
+    }
+    const local = referenceLookup(pin, symbol);
+    if (paperFor(pin) && (local.definitions.length || isNotation(symbol))) {
       pin.lookupController?.abort();
       pin.lookupSequence += 1;
       update(pin, { lookup: local, lookupStatus: 'done', lookupNotice: '', saveStatus: '', savedCardId: null });

@@ -29,6 +29,7 @@ const windows = (title) => BrowserWindow.getAllWindows().filter((window) => wind
 const referenceWindow = () => windows('Slipstream · 本文速查').at(-1);
 const source = 'Let $x_i$ denote the feature vector of sample i. Let $\\lambda$ denote the regularization strength.';
 const usage = 'We minimize $$L(\\theta) = \\sum_i \\ell(f_\\theta(x_i), y_i) + \\lambda R(\\theta).$$ The quantity $q$ is used below.';
+const spacedFormula = String.raw`The generalization error is $$P E ^ { \ast } = P _ { X,Y } ( m g ( X,Y ) < 0 )$$.`;
 const conflictingSource = 'In this section, let $\\lambda$ denote an eigenvalue.';
 const definitions = [
   { symbol: 'x_i', meaning: '第 i 个样本的特征向量。', evidence: source.split('. ')[0] + '.' },
@@ -115,6 +116,23 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, calls, 'unknown symbols are not guessed by a provider');
   assert(await js(reading, 'document.getElementById("lookup-references").textContent.includes("尚未留下")'));
   await lookup(reading, '\\lambda');
+  await act(reference, 'reference-save', { paperId: paperA,
+    entry: { symbol: String.raw`PE^{\ast}`, meaning: '间隔函数小于零的概率。', scope: '', evidence: '', source: '', origin: 'manual' } });
+  const spacedReading = await openText(spacedFormula);
+  await until(() => js(spacedReading, 'Array.from(document.querySelectorAll(".reference-hit-list button")).some(button => button.getAttribute("aria-label").startsWith("查本文定义：PE"))'),
+    'OCR-spaced formula reference button');
+  const beforeSpacedLookup = providerCalls;
+  await js(spacedReading, 'document.querySelector(".reference-hit-list button").click()');
+  const spacedLookup = (await snapshot(spacedReading)).lookup;
+  assert(spacedLookup.reference && spacedLookup.meaning.includes('间隔函数小于零'), 'formula hit must open the saved local definition');
+  assert.equal(providerCalls, beforeSpacedLookup, 'an OCR-spaced saved symbol must not request a new model explanation');
+  const spacedState = await snapshot(spacedReading);
+  const spacedSegment = spacedState.segments.find((item) => item.referenceHits?.some((hit) => hit.symbol === String.raw`PE^{\ast}`));
+  const spacedHit = spacedSegment.referenceHits.find((hit) => hit.symbol === String.raw`PE^{\ast}`);
+  await assert.rejects(act(spacedReading, 'lookup', { revision: spacedState.revision, segmentId: spacedSegment.id,
+    start: spacedHit.start, end: spacedHit.end, referenceSymbol: 'x_i' }), /Invalid reading selection/,
+  'a renderer cannot claim an unrelated saved symbol for the selected formula');
+  spacedReading.close();
   const entry = (await snapshot(reference)).references.paper.entries.find((item) => item.symbol === '\\lambda');
   await act(reference, 'reference-copy', { paperId: paperA, id: entry.id });
   assert(copied.includes('\\lambda'));

@@ -187,7 +187,7 @@ function renderSegments(segments) {
           const button = document.createElement('button');
           button.setAttribute('aria-label', `查本文定义：${hit.symbol}`);
           window.renderReadingMath(button, window.readingReferences.symbolText(hit.symbol));
-          button.onclick = () => requestLookup({ segmentId: segment.id, start: hit.start, end: hit.end });
+          button.onclick = () => requestLookup({ segmentId: segment.id, start: hit.start, end: hit.end, referenceSymbol: hit.symbol });
           node.referenceHits.append(button);
         }
       }
