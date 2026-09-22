@@ -179,13 +179,16 @@ function createLocalFormulaOcr(modelDir) {
         const latex = model.decode(ids);
         if (!latex || latex.includes('�')) throw new Error('formula-invalid-latex');
         // A weak detection is not enough to turn prose into mathematics. Admit
-        // only confident Greek/styled atoms or comma-separated symbol lists;
-        // words and isolated ordinary Latin letters still stay with text OCR.
+        // only confident notation. Bare Latin atoms need stronger recognition;
+        // the English words a/A/I still belong to prose in this weak-layout path.
         const compact = latex.replace(/\s+/g, '');
         const greek = /^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(?:[_^]\{[a-zA-Z0-9]+\})?[,.;:!?]?$/i.test(compact);
         const styled = /^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}[,.;:!?]?$/.test(compact);
         const list = /^(?:[A-Za-z],){2,}[A-Za-z][.;:!?]?$/.test(compact);
-        if (box.score < .3 && (confidence < .75 || !(greek || styled || list))) continue;
+        const latin = /^[B-HJ-Zb-z][,.;:!?]?$/.test(compact);
+        const indexed = /^(?:[A-Za-z]|\d+)(?:[_^]\{[A-Za-z0-9+-]+\}){1,2}[,.;:!?]?$/.test(compact);
+        if (box.score < .3 && !(confidence >= .75 && (greek || styled || list)
+          || confidence >= .95 && (latin || indexed))) continue;
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
       }
       // Mask only recognized regions; Vision will read the remaining prose.
