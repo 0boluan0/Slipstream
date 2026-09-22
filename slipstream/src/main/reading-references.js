@@ -94,6 +94,15 @@ function sourceEvidence(source, quoted) {
   return null;
 }
 
+function exampleValueCandidate(symbol, meaning, evidence) {
+  // Model output can turn parameters of one worked example into definitions
+  // reused for the entire paper. Numeric assignments in an explicitly local
+  // case are better left for the reader to save with a manual scope.
+  return isNotation(symbol)
+    && /(?:取值|数值|设(?:定)?|等于|固定|为|是|[=＝])\s*(?:为|是|等于|[=＝])?\s*[-−+]?\d+(?:\.\d+)?/u.test(meaning)
+    && /\b(?:example|for instance|suppose|consider|in this case|special case|standard normal distribution|with mean|with standard deviation|with variance|if|when)\b/iu.test(evidence);
+}
+
 function parseReferenceCandidates(items, source) {
   if (!Array.isArray(items)) return [];
   const seen = new Set();
@@ -105,6 +114,7 @@ function parseReferenceCandidates(items, source) {
     const evidence = sourceEvidence(source, item.evidence);
     if (!evidence || !referenceOccurrences(evidence, item.symbol).length) return [];
     const symbol = referenceSymbol(item.symbol);
+    if (exampleValueCandidate(symbol, item.meaning, evidence)) return [];
     const key = `${referenceKey(symbol)}\n${evidence}`;
     if (seen.has(key)) return [];
     seen.add(key);

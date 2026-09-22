@@ -50,6 +50,7 @@ async function main() {
   const processor = createReadingProcessor(async (...args) => {
     calls += 1;
     assert.match(args[3], /Do not infer a symbol meaning from convention/);
+    assert.match(args[3], /numerical value used only in an example/);
     return JSON.stringify({ translation: '令 $x_i$ 表示第 i 个样本的特征向量。', terms: [], references: [definition,
       { ...definition, symbol: 'q', evidence: 'q is the posterior.' },
       { ...definition, symbol: 'y_i' }, { ...definition, evidence: 'invented' }, definition] });
@@ -125,6 +126,20 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
   assert.deepEqual(parseReferenceCandidates([{ symbol: 'mg', meaning: '间隔函数',
     evidence: forestCandidates[0].evidence.replace('j )', 'z )') }], forestSource), [],
   'math punctuation tolerance cannot change the defining equation');
+  const notationEvidence = 'If a normal distribution has mean $\\mu$ and standard deviation $\\sigma$, we may write the distribution\nas $N ( \\mu, \\sigma )$.';
+  const specialEvidence = 'The normal distribution with mean $\\mu = 0$ and standard deviation\n$\\sigma = 1$ is called the standard normal distribution.';
+  const textbookSource = `${notationEvidence} The two distributions are examples.\n\n${specialEvidence}`;
+  const textbook = parseReferenceCandidates([
+    { symbol: String.raw`N ( \mu, \sigma )`, meaning: '均值为 μ、标准差为 σ 的正态分布的记法', evidence: notationEvidence },
+    { symbol: String.raw`\mu`, meaning: '标准正态分布的均值，取值为 0', evidence: specialEvidence },
+    { symbol: String.raw`\sigma`, meaning: '标准正态分布的标准差，取值为 1', evidence: specialEvidence },
+  ], textbookSource);
+  assert.deepEqual(textbook.map((item) => item.symbol), [String.raw`N ( \mu, \sigma )`],
+    'values assigned only for a special-case distribution must not become reusable parameter definitions');
+  const fixedSetting = 'Let $\\lambda = 0.1$ denote the regularization strength throughout the study.';
+  assert.equal(parseReferenceCandidates([{ symbol: String.raw`\lambda`, meaning: '全篇固定的正则化系数，取值为 0.1',
+    evidence: fixedSetting }], fixedSetting).length, 1,
+  'a value explicitly fixed for the whole reading remains available');
   const empty = createReadingProcessor(async () => JSON.stringify({ translation: '下一节讨论实验。', terms: [], references: [] }));
   assert.deepEqual((await empty({ text: 'The next section discusses experiments.', withReferences: true, settingsSnapshot: settings })).references, []);
   await assert.rejects(processor({ text: source, kind: 'references', settingsSnapshot: { activeBackend: 'free_translate' } }), /reading-model-required/);
