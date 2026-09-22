@@ -286,6 +286,14 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeRetry + 1);
   manager.clear();
   noTerms = true;
+  ocrOverride = '框选一段，译文贴在屏幕旁 Option+Shift+S';
+  const beforeOwnUi = providerCalls;
+  await manager.capture();
+  const ownUi = cards()[0];
+  await until(phaseIs(ownUi, 'review'), 'self UI screenshot review');
+  assert.match((await stateOf(ownUi)).notice, /选区似乎包含 Slipstream 窗口/);
+  assert.equal(providerCalls, beforeOwnUi, 'capturing Slipstream chrome must not automatically transmit OCR text');
+  manager.clear();
   ocrOverride = 'The next section describes the results.';
   const beforePlain = providerCalls;
   await manager.capture();

@@ -92,6 +92,29 @@ async function main() {
   'an adjacent article, multi-digit superscript and source punctuation survive as one prose span');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...superscriptWord, display: true }], size).text,
     '$$b i a s e d ^ { 2 }$$', 'display mathematics must not become prose');
+  const styledFootnote = { ...superscriptWord, latex: String.raw`\mathrm { f u n c t i o n s } ^ { 2 }` };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [styledFootnote], size,
+    { blocks: [word('functions²', 10, 18), word('then', 45, 30)] }).text,
+  'functions$^{2}$ then', 'a Vision-confirmed plural footnote stays translatable despite roman math styling');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...styledFootnote, latex: styledFootnote.latex + ',' }], size,
+    { blocks: [word('functions?,', 10, 18), word('then', 45, 30)] }).text,
+  'functions$^{2}$, then', 'a spurious Vision question mark before a comma cannot erase an independently read footnote');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [styledFootnote], size,
+    { blocks: [word('functions', 10, 18), word('then', 45, 30)] }).text,
+  'functions$^{2}$ then', 'a separate footnote marker is preserved when Vision reads only its prose word');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [styledFootnote], size,
+    { blocks: [word('function', 10, 18), word('then', 45, 30)] }).text,
+  'function then', 'a different Vision word cannot be silently replaced by formula recognition');
+  const abbreviationFormula = { ...formula, w: 50,
+    latex: String.raw`i. e., \, \mathcal { H } ( \mathbf { x } ) - \mathbf { x }` };
+  const abbreviationSource = { blocks: [word('i.e.,', 10, 20), word('H(x)', 34, 22), word('next', 75, 20)] };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [abbreviationFormula], size, abbreviationSource).text,
+    String.raw`i.e., $\mathcal { H } ( \mathbf { x } ) - \mathbf { x }$ next`,
+    'a Vision-confirmed i.e. prefix stays prose while the following formula remains TeX');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [abbreviationFormula], size,
+    { blocks: [word('e.g.,', 10, 20), word('H(x)', 34, 22), word('next', 75, 20)] }).text,
+    String.raw`$i. e., \, \mathcal { H } ( \mathbf { x } ) - \mathbf { x }$ next`,
+    'a conflicting source reading cannot rewrite the mathematical span');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, score: .8, latex: 'a b c d ^ { 2 }' }], size,
     { blocks: [word('abcd', 10, 18)] }).text, '$a b c d ^ { 2 }$',
   'an isolated product is not a footnote-bearing prose word');

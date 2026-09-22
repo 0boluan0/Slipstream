@@ -4,7 +4,10 @@ function proseSuperscript(latex) {
   // An inline region can include a prose word and its footnote marker.
   // Keep commands, operators, short products and subscripts as mathematics.
   const compact = latex.replace(/\s+/g, '').replace(/\\(?:qquad|quad|[,;])/g, ' ');
-  const match = compact.match(/^((?:[A-Za-z]+ )*[A-Za-z][a-z]{3,})\^\{(\d{1,3})\}([,.;:!?]?)$/);
+  const match = compact.match(/^((?:[A-Za-z]+ )*[A-Za-z][a-z]{3,})\^\{(\d{1,3})\}([,.;:!?]?)$/)
+    // MFR can style a long plural English word as roman mathematics. Only a
+    // matching Vision word and adjacent prose below can turn it back to text.
+    || compact.match(/^\\(?:mathrm|text)\{([a-z]{6,}s)\}\^\{(\d{1,3})\}([,.;:!?]?)$/);
   return match ? { text: match[1], superscript: match[2] } : null;
 }
 
@@ -64,9 +67,14 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     if (!annotated) return true;
     // The math model may recover a superscript, but cannot rewrite prose.
     // Require the original text recognizer to agree on every word in its box.
-    const source = originalWords.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x)
-      .map((word) => word.text).join(' ').replace(/[,.;:!?]$/, '');
-    if (source !== annotated.text) return false;
+    const observed = originalWords.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x)
+      .map((word) => word.text).join(' ');
+    let source = observed.replace(/[,.;:!?]$/, '');
+    // Vision can read a tiny footnote 2 as '?' immediately before the
+    // sentence comma. The math recognizer must independently see that 2.
+    if (observed.endsWith('?,') && source.endsWith('?')) source = source.slice(0, -1);
+    source = source.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/gu, (digit) => '⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(digit));
+    if (source !== annotated.text && source !== annotated.text + annotated.superscript) return false;
     if (!originalWords.some((word) => !intersects(formula, word) && /^[A-Za-z]{3,}/.test(word.text)
       && Math.abs(word.y + word.h / 2 - formula.y - formula.h / 2) < Math.max(word.h, formula.h) * .6)) return true;
     proseAnnotations.set(formula, annotated);
@@ -123,9 +131,19 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     const ordinal = latex.replace(/\s+/g, '').match(/^(\d+)\^\{\\(?:mathrm|text)\{(st|nd|rd|th)\}\}$/);
     const annotated = proseAnnotations.get(formula);
     const equationLabel = equationLabels.get(formula);
+    let prosePrefix = '';
+    if (!formula.display && !annotated) {
+      const abbreviation = latex.match(/^i\s*\.\s*e\s*\.\s*,\s*(?:\\[,;]\s*)?([\s\S]+)$/iu);
+      const observed = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x)
+        .map((word) => word.text).join(' ').trim();
+      if (abbreviation && /^i\s*\.\s*e\s*\.\s*,/iu.test(observed)) {
+        prosePrefix = 'i.e., ';
+        latex = abbreviation[1].trim();
+      }
+    }
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
-      text: (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
+      text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
   }
   for (const word of words(masked)) {

@@ -14,6 +14,8 @@ async function main() {
   assert.equal(referenceKey('xᵢ'), referenceKey('x_i'));
   assert.equal(referenceKey('λ'), referenceKey('\\lambda'));
   assert.notEqual(referenceKey('\\lambda R'), referenceKey('\\lambdaR'));
+  assert.equal(referenceKey(String.raw`\mathcal F`), referenceKey(String.raw`\mathcal { F }`));
+  assert.equal(referenceKey(String.raw`\bf x`), referenceKey(String.raw`\mathbf{x}`));
   for (const symbol of ['β1', 'β₁', '\\beta_1']) {
     for (const query of ['β1', 'β₁', '\\beta_1']) assert(matchesReferenceSearch({ symbol }, query));
   }
@@ -77,6 +79,21 @@ async function main() {
   assert.notEqual(referenceKey(String.raw`\mathbf { x }`), referenceKey('x'));
   assert.notEqual(referenceKey(String.raw`\mathbf { X }`), referenceKey(String.raw`\mathbf{x}`));
   assert.equal(referenceOccurrences(String.raw`The data $\mathbf{x}$ and $\mathbf { x }$ agree.`, String.raw`\mathbf{x}`).length, 2);
+  const residualSource = 'we explicitly let these layers approximate a residual function ${ \\mathcal F } ( { \\bf x } ) \\,: = \\, { \\mathcal H } ( { \\bf x } ) \\, - \\, { \\bf x }$.';
+  assert.equal(referenceOccurrences(residualSource, String.raw`\mathcal F`).length, 1,
+    'the actual ResNet OCR spelling of the explicitly defined function must anchor its name');
+  assert.equal(referenceOccurrences(residualSource, String.raw`\mathbf{x}`).length, 3,
+    'the old TeX boldface spelling keeps the same variable identity');
+  assert.equal(referenceOccurrences(residualSource, String.raw`\mathcal H`).length, 1);
+  assert.equal(referenceOccurrences(residualSource, String.raw`\mathcal G`).length, 0,
+    'anchoring a definition must not guess a different function');
+  const residualProcessor = createReadingProcessor(async (_settings, _backend, _model, prompt) => {
+    assert.match(prompt, /explicit definition with :=/);
+    return JSON.stringify({ references: [{ symbol: String.raw`\mathcal F`,
+      meaning: '残差函数；对输入 x 定义为 H(x)−x。', evidence: residualSource }] });
+  });
+  assert.equal((await residualProcessor({ text: residualSource, kind: 'references', settingsSnapshot: settings })).references.length, 1,
+    'an explicitly defined styled function is retained instead of being filtered after model extraction');
   const empty = createReadingProcessor(async () => JSON.stringify({ translation: '下一节讨论实验。', terms: [], references: [] }));
   assert.deepEqual((await empty({ text: 'The next section discusses experiments.', withReferences: true, settingsSnapshot: settings })).references, []);
   await assert.rejects(processor({ text: source, kind: 'references', settingsSnapshot: { activeBackend: 'free_translate' } }), /reading-model-required/);

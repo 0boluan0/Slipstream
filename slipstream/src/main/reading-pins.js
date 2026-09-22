@@ -17,6 +17,12 @@ const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
 const ENTRY_URL = pathToFileURL(ENTRY).href;
 const MAX_PINS = 12;
 
+function looksLikeOwnReadingUi(text) {
+  return /\b(?:Option|Alt)\s*\+\s*Shift\s*\+\s*S\b/iu.test(text)
+    || (/(?:截图阅读|读懂原文[，,]?留下概念)/u.test(text)
+      && /(?:卡片盒|本文速查|屏幕旁|术语卡片)/u.test(text));
+}
+
 function cardBounds(point, workArea) {
   const width = Math.min(460, workArea.width);
   const height = Math.min(540, workArea.height);
@@ -653,6 +659,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       } else {
         const document = readingTextFromOcr(ocr);
         const review = assessOcrReview({ source: 'ocr', text: ocr.text, capture: ocr });
+        const ownUiCapture = looksLikeOwnReadingUi(document.text);
         pin.controller = null;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* continue through explicit review */ }
@@ -669,8 +676,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: review.required || changed || document.layoutReview || mathReview || formulaIssue ? 'review' : 'waiting',
-          notice: review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
+          phase: ownUiCapture || review.required || changed || document.layoutReview || mathReview || formulaIssue ? 'review' : 'waiting',
+          notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
+            : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
             : formulaNotice || (mathReview ? '检测到数学符号。请对照原始截图核对符号、上下标和分式。'
               : changed ? '处理服务已经改变，请核对处理位置后继续。' : '') });
