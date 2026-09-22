@@ -3,7 +3,7 @@
 // Keep the original prose as the reading-order anchor. Masking can make Vision
 // merge adjacent lines or hallucinate short fragments, so it is only a fallback
 // for a prose word that shares a bounding box with a recognized formula.
-function mergeFormulaDocument(masked, formulas, size, original) {
+function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   const pixelBox = (box) => ({ x: box.x * size.width, y: (1 - box.y - box.h) * size.height,
     w: box.w * size.width, h: box.h * size.height });
   function words(ocr) {
@@ -26,8 +26,33 @@ function mergeFormulaDocument(masked, formulas, size, original) {
     return area > Math.min(a.w * a.h, b.w * b.h) * .3
       && Math.abs(a.y + a.h / 2 - b.y - b.h / 2) < Math.max(a.h, b.h) * .6;
   };
-  const sourceWords = words(original || masked), removed = sourceWords.filter((word) => formulas.some((f) => intersects(f, word)));
-  const items = sourceWords.filter((word) => !removed.includes(word));
+  const edgeWords = words(edgeProse);
+  const sourceWords = words(original || masked).map((word) => {
+    if (word.x > size.width * .06 || !/^\p{L}+$/u.test(word.text)
+      || formulas.some((f) => intersects(f, word))) return word;
+    // Recover only missing leading letters backed by the same image region.
+    // Never substitute another word, shorten one, or move text across a formula.
+    return edgeWords.find((candidate) => /^\p{L}+$/u.test(candidate.text)
+      && candidate.text.length > word.text.length && candidate.text.endsWith(word.text)
+      && candidate.x < word.x - 1 && intersects(candidate, word)
+      && Math.abs(candidate.x + candidate.w - word.x - word.w) < Math.max(candidate.h, word.h) * .2
+      && !formulas.some((f) => intersects(f, candidate))) || word;
+  });
+  const removed = sourceWords.filter((word) => formulas.some((f) => intersects(f, word)));
+  // A formula's baseline can sit above/below its right-aligned number. Keep
+  // the number with the display equation instead of making a prose paragraph.
+  const equationLabels = new Map();
+  for (const word of sourceWords.filter((word) => !removed.includes(word))) {
+    const label = word.text.match(/^\(([A-Za-z]?\d+(?:[.-]\d+)*[a-z]?)\)$/);
+    if (!label) continue;
+    const formula = formulas.filter((f) => f.display && !equationLabels.has(f)
+      && word.x >= f.x + f.w && Math.abs(word.y + word.h / 2 - f.y - f.h / 2) < f.h * .45)
+      .sort((a, b) => Math.abs(word.y + word.h / 2 - a.y - a.h / 2)
+        - Math.abs(word.y + word.h / 2 - b.y - b.h / 2))[0];
+    if (formula) equationLabels.set(formula, { word, label: label[1] });
+  }
+  const labelledWords = new Set([...equationLabels.values()].map(({ word }) => word));
+  const items = sourceWords.filter((word) => !removed.includes(word) && !labelledWords.has(word));
   for (const formula of formulas) {
     let latex = formula.latex.trim(), punctuation = '';
     if (/[,.;:!?]$/.test(latex)) { punctuation = latex.at(-1); latex = latex.slice(0, -1).trim(); }
@@ -38,6 +63,8 @@ function mergeFormulaDocument(masked, formulas, size, original) {
     // Superscripted prose ordinals belong to the sentence, so translation can
     // turn "1st moment" into Chinese instead of protecting it as mathematics.
     const ordinal = latex.replace(/\s+/g, '').match(/^(\d+)\^\{\\(?:mathrm|text)\{(st|nd|rd|th)\}\}$/);
+    const equationLabel = equationLabels.get(formula);
+    if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
       text: (ordinal ? ordinal[1] + ordinal[2] : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
   }
@@ -45,7 +72,7 @@ function mergeFormulaDocument(masked, formulas, size, original) {
     if (formulas.some((f) => intersects(f, word)) || items.some((item) => intersects(item, word))) continue;
     // Vision can put "x:" in one box, then recover the same colon beyond the
     // formula mask. It has already been retained from that removed source word.
-    if (items.some((item) => item.punctuation === word.text
+    if (items.some((item) => item.punctuation && /^[,.;:!?•·]+$/.test(word.text)
       && removed.some((lost) => intersects(lost, item) && intersects(lost, word)))) continue;
     // Only fill a genuine removed-word gap; never append unrelated masked OCR.
     if (removed.some((lost) => intersects(lost, word) && word.h < lost.h * 1.4)) items.push(word);

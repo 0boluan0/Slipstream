@@ -40,6 +40,8 @@ let screenRequests = 0;
 let rejectTextHandoff = false;
 let rejectSetupTrial = false;
 const invocations = [];
+const quitDecisions = [];
+let lastQuitRisk = true;
 const js = (code) => main.webContents.executeJavaScript(code);
 async function shot(window, name) {
   if (!output) return;
@@ -80,9 +82,11 @@ app.whenReady().then(async () => {
     'app:session-risk-update', 'terms:get', 'clipboard:pending-status', 'app:quit-listener-ready',
     'app:settings-listener-ready', 'capture:listener-ready', 'app:settings-request-handled',
     'reading:open-text', 'reading:library-open', 'reading:references-open', 'screenshot:capture', 'llm:process',
-    'settings:set', 'provider:connection-test'];
+    'settings:set', 'provider:connection-test', 'app:quit-decision'];
   for (const channel of channels) ipcMain.handle(channel, (_event, value, settingValue) => {
     invocations.push(channel);
+    if (channel === 'app:session-risk-update') { lastQuitRisk = value.hasRisk; return true; }
+    if (channel === 'app:quit-decision') { quitDecisions.push(value); return { status: 'preview-confirmed' }; }
     if (channel === 'settings:get') return { ...settings };
     if (channel === 'settings:set') {
       settings[value] = settingValue;
@@ -218,6 +222,18 @@ app.whenReady().then(async () => {
   await until(() => js('Boolean(document.querySelector(".capture-card"))'), 'activated reading home');
   assert.equal(settings.setupMode, 'full');
   assert.equal(providerCalls, callsBeforeActivation, 'activation must not submit a user excerpt or start another trial');
+  await until(() => lastQuitRisk === false, 'settled reading home');
+  assert.equal(pins.openText('Correlation does not imply causation.').success, true);
+  assert.equal(main.isVisible(), false, 'reading hides the home window');
+  assert.equal(await js('document.visibilityState'), 'hidden');
+  const quitRequest = { requestId: 'hidden-reading-home-quit' };
+  const quitStarted = Date.now();
+  main.webContents.send('app:quit-requested', quitRequest);
+  main.webContents.send('app:quit-requested', quitRequest);
+  await until(() => quitDecisions.length > 0, 'quit decision while the reading home is hidden');
+  assert.deepEqual(quitDecisions, [{ ...quitRequest, confirmed: true }], 'repeated native quit requests settle once');
+  assert.equal(main.isVisible(), false, 'safe reading quit must not flash the home window');
+  console.log(`Hidden reading home settled quit in ${Date.now() - quitStarted} ms without a paint or showing the window.`);
   console.log('Reading home passed: platform-specific capture entry, explicit sample loading, text to independent reading card, no screen permission for text, contextual lookup, local save and correct card-box entry, first use and 200% reflow. Model responses are illustrative fixtures; all state is temporary.');
   pins.dispose(); main.destroy(); cleanupWork(); app.exit(0);
 }).catch(error => { console.error(error); library?.dispose(); pins?.dispose(); cleanupWork(); app.exit(1); });

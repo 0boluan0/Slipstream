@@ -15,6 +15,30 @@ async function main() {
   const masked = { blocks: [word(':', 29, 5), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument(masked, [formula], size, original).text, '$x$: label',
     'the same punctuation recovered from an original word and masked OCR must appear once');
+  const periodSource = { blocks: [word('x.', 10, 24), word('label', 45, 30)] };
+  assert.equal(mergeFormulaDocument({ blocks: [word('•', 29, 5)] }, [formula], size, periodSource).text, '$x$. label',
+    'masked OCR may call the same source period a bullet; preserve the original punctuation once');
+  const numbered = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true }], size,
+    { blocks: [word('(2)', 80, 15)] });
+  assert.match(numbered.text, /\\tag\{2\}/, 'a right-aligned number belongs to its display equation');
+  assert(!mergeFormulaDocument({ blocks: [] }, [formula], size,
+    { blocks: [word('(2)', 80, 15)] }).text.includes('\\tag'), 'inline math must not absorb a nearby list label');
+  assert(!mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true }], size,
+    { blocks: [word('(2)', 0, 5)] }).text.includes('\\tag'), 'a number before the formula is not a right-aligned equation tag');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [formula], size,
+    { blocks: [word('x.', 10, 24), word('•', 36, 5), word('label', 45, 30)] }).text, '$x$. • label',
+  'a separate source bullet must survive punctuation deduplication');
+  const edgeSize = { width: 1000, height: 100 };
+  const edgeWord = (text, x, w) => ({ ...word(text, x / 10, w / 10),
+    characters: [...text].map((char) => ({ text: char, boundingBox: { x: x / 1000, y: .7, w: w / 1000, h: .2 } })) });
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [], edgeSize,
+    { blocks: [edgeWord('t', 30, 10)] }, { blocks: [edgeWord('Let', 10, 30)] }).text, 'Let',
+  'padding can restore a missing prefix at the same source location');
+  for (const alternate of [edgeWord('t', 30, 10), edgeWord('Net', 70, 30), edgeWord('Loss', 10, 30)]) {
+    assert.equal(mergeFormulaDocument({ blocks: [] }, [], edgeSize,
+      { blocks: [edgeWord('Let', 10, 30)] }, { blocks: [alternate] }).text, 'Let',
+    'a second OCR layout cannot shorten, move or substitute the original word');
+  }
   for (const [tex, expected] of [
     [String.raw`1 ^ { \mathrm { s t } }`, '1st'],
     [String.raw`2 ^ { \text { n d } }`, '2nd'],

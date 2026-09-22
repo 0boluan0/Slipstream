@@ -34,7 +34,7 @@ function cleanOcrText(rawText) {
  * @param {string} imagePath - Absolute path to the image file.
  * @returns {Promise<{text: string, confidence: number, blocks: Array}>}
  */
-function performOCR(imagePath, { signal, characters = false } = {}) {
+function performOCR(imagePath, { signal, characters = false, padEdges = false } = {}) {
   return new Promise((resolve, reject) => {
     const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
     let settled = false;
@@ -63,7 +63,7 @@ function performOCR(imagePath, { signal, characters = false } = {}) {
       finish(reject, error);
       return;
     }
-    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath, ...(characters ? ['--characters'] : [])], {
+    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath, ...(characters ? ['--characters'] : []), ...(padEdges ? ['--pad-edges'] : [])], {
       timeout: 15000,
       maxBuffer: 8 * 1024 * 1024,
       env: environment,
@@ -126,8 +126,16 @@ async function performReadingOCR(imagePath, { signal } = {}) {
   try {
     const maskedPath = path.join(temporary, 'prose.png');
     await fs.writeFile(maskedPath, recognized.masked, { mode: 0o600 });
-    const prose = await performOCR(maskedPath, { signal, characters: true });
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, original);
+    const [prose, edges] = await Promise.all([
+      performOCR(maskedPath, { signal, characters: true }),
+      // A second layout may recover a clipped edge word, but must not replace
+      // whole sentences: padding can also make correct OCR worse elsewhere.
+      performOCR(imagePath, { signal, characters: true, padEdges: true }).catch((error) => {
+        if (signal?.aborted || error?.isCancellation) throw error;
+        return null;
+      }),
+    ]);
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, original, edges);
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
