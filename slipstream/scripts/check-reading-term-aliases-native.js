@@ -38,7 +38,7 @@ app.whenReady().then(async () => {
     const index = excerpts.indexOf(input.excerpt);
     assert(index >= 0);
     return JSON.stringify({ translation: '这一段的译文。', terms: [{ quote: quotes[index], role: 'core',
-      label: index === 2 ? 'MMD 函数类' : '最大均值差异' }] });
+      label: index === 2 ? 'MMD 函数类' : index === 0 ? '最大均值差异（MMD）' : '最大均值差异' }] });
   });
   manager = createReadingPins({ BrowserWindow: OffscreenWindow, ipcMain, screen, processReadingText,
     getMainWindow: () => null, captureSupported: false,
@@ -48,7 +48,7 @@ app.whenReady().then(async () => {
   await until(async () => (await state(window)).phase === 'done');
   assert.equal((await state(window)).segments.length, 3);
   assert.deepEqual(await js(window, 'Array.from(document.querySelectorAll(".term-chip"), node => node.getAttribute("aria-label"))'),
-    ['解释 最大均值差异 · maximum mean discrepancy (MMD)', '解释 MMD 函数类 · MMD function class']);
+    ['解释 最大均值差异（MMD） · maximum mean discrepancy (MMD)', '解释 MMD 函数类 · MMD function class']);
   await js(window, 'document.querySelector(".term-chip").click()');
   await until(async () => (await state(window)).lookupStatus === 'done');
   assert.equal((await state(window)).lookup.quote, quotes[0]);

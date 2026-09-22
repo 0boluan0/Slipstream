@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const katex = require('katex');
+const { mathRanges } = require('../src/shared/reading-math.cjs');
 const { createReadingProcessor, parseReadingExplanations, readingMessages } = require('../src/main/reading-service');
 const { cardBounds, readingDestination } = require('../src/main/reading-pins');
 const { readingSegments, readingTextFromOcr, deduplicateReadingTerms } = require('../src/main/reading-document');
@@ -21,6 +23,18 @@ async function main() {
   assert.equal(JSON.stringify(mmdTerms), beforeDeduplication, 'deduplication must not edit source, model output or lookup anchors');
   assert.deepEqual(deduplicated.map(({ source, translation }) => ({ source, translation })), mmdTerms.map(({ source, translation }) => ({ source, translation })));
   const kept = (segments) => deduplicateReadingTerms(segments).flatMap((segment) => segment.terms || []).map((term) => term.quote);
+  for (const label of ['最大均值差异（MMD）', '最大均值差异 (MMD)', '最大均值差异（ MMD ）']) {
+    const expanded = termSegment(mmdTerms[0].source, mmdTerms[0].terms[0].quote, label);
+    assert.deepEqual(kept([expanded, mmdTerms[1]]), ['maximum mean discrepancy (MMD)'],
+      'a source-established acronym appended to a Chinese label does not create another concept');
+    assert.equal(deduplicateReadingTerms([expanded, mmdTerms[1]])[0].terms[0].label, label,
+      'deduplication does not rewrite the visible label');
+    assert.deepEqual(kept([mmdTerms[0], termSegment('We estimate MMD.', 'MMD', label)]), ['maximum mean discrepancy (MMD)']);
+  }
+  assert.equal(kept([mmdTerms[0], termSegment('We estimate MMD.', 'MMD', '最大均值差异（有偏）')]).length, 2,
+    'a qualifier describing a different variant is not an acronym suffix');
+  assert.equal(kept([mmdTerms[0], termSegment('We estimate MMD.', 'MMD', '最大均值差异（ABC）')]).length, 2,
+    'an unrelated acronym in the label is not normalized');
   assert.deepEqual(kept([mmdTerms[1], mmdTerms[0]]), ['MMD'], 'keep the first anchored mention when an expansion arrives later');
   assert.deepEqual(kept([mmdTerms[0], termSegment('The maximum mean discrepancy is zero.', 'maximum mean discrepancy', '最大均值差异')]), ['maximum mean discrepancy (MMD)']);
   assert.deepEqual(kept([termSegment('A field in algebra.', 'field', '域'), termSegment('A field in physics.', 'field', '场')]), ['field', 'field']);
@@ -56,6 +70,29 @@ async function main() {
   assert.equal(calls.length, 2);
   assert.throws(() => parseReadingExplanations('not json', source));
   assert.throws(() => parseReadingExplanations('{"terms":[]}', source));
+  const badLatex = { selection: 'root-N consistent estimation',
+    raw: String.raw`{"quote":"root-N consistent estimation","meaning":"以 $\sqrt{N}$ 缩放的误差。","note":""}` };
+  const mathLookup = createReadingProcessor(async () => badLatex.raw);
+  const mathResult = await mathLookup({ text: 'root-N consistent estimation', kind: 'lookup',
+    selection: badLatex.selection, settingsSnapshot: settings });
+  assert.equal(mathResult.lookup.quote, badLatex.selection);
+  assert(mathRanges(mathResult.lookup.meaning).some(({ tex }) => tex === String.raw`\sqrt{N}`));
+  for (const { tex } of mathRanges(mathResult.lookup.meaning + mathResult.lookup.note)) {
+    katex.renderToString(tex, { throwOnError: true, trust: false });
+  }
+  const unicodeMath = createReadingProcessor(async () => String.raw`{"quote":"root-N consistent estimation","meaning":"$\u03b8$","note":""}`);
+  assert.equal((await unicodeMath({ text: badLatex.selection, kind: 'lookup', selection: badLatex.selection,
+    settingsSnapshot: settings })).lookup.meaning, '$θ$');
+  const alreadyEscaped = createReadingProcessor(async () => JSON.stringify({ quote: badLatex.selection,
+    meaning: String.raw`$\text{"x"}+\theta$`, note: '' }));
+  assert.equal((await alreadyEscaped({ text: badLatex.selection, kind: 'lookup', selection: badLatex.selection,
+    settingsSnapshot: settings })).lookup.meaning, String.raw`$\text{"x"}+\theta$`);
+  const proseBackslash = createReadingProcessor(async () => String.raw`{"quote":"root-N consistent estimation","meaning":"broken \latex outside math","note":""}`);
+  await assert.rejects(proseBackslash({ text: badLatex.selection, kind: 'lookup',
+    selection: badLatex.selection, settingsSnapshot: settings }), SyntaxError);
+  const crossFieldMath = createReadingProcessor(async () => String.raw`{"quote":"root-N consistent estimation","meaning":"$x","note":"\theta$"}`);
+  await assert.rejects(crossFieldMath({ text: badLatex.selection, kind: 'lookup',
+    selection: badLatex.selection, settingsSnapshot: settings }), { message: 'reading-invalid-output' });
   assert.deepEqual(parseReadingExplanations('{"terms":[{"quote":"","explanation":"x"}],"sentences":[]}', source), { terms: [], sentences: [] });
   const aborted = new AbortController();
   aborted.abort();

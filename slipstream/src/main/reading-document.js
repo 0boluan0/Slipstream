@@ -70,6 +70,12 @@ function readingSegments(text) {
 
 function deduplicateReadingTerms(segments) {
   const termKey = (quote, label) => JSON.stringify([quote.trim().toLowerCase(), label.trim()]);
+  const terms = segments.flatMap((segment) => segment.terms || []);
+  const sense = (label, acronym) => {
+    const trimmed = label.trim();
+    const suffix = trimmed.match(/^(.*?)\s*[（(]\s*([A-Z][A-Z0-9-]{1,15})\s*[)）]$/u);
+    return suffix?.[2] === acronym && suffix[1].trim() ? suffix[1].trim() : trimmed;
+  };
   const expansions = new Map();
   // Use only an expansion actually quoted from this card. Keep different
   // Chinese senses and ambiguous acronyms distinct; do not infer synonyms.
@@ -78,9 +84,12 @@ function deduplicateReadingTerms(segments) {
     if (!expansion || !segment.source.includes(term.quote)) continue;
     const full = expansion[1].trim();
     if (!/[A-Za-z].*\s.*[A-Za-z]/u.test(full)) continue;
-    const target = termKey(full, term.label);
-    for (const spelling of [term.quote, full, expansion[2]]) {
-      const key = termKey(spelling, term.label);
+    const acronym = expansion[2], label = sense(term.label, acronym);
+    const target = termKey(full, label);
+    const spellings = new Set([term.quote, full, acronym].map((spelling) => spelling.trim().toLowerCase()));
+    for (const candidate of terms) {
+      if (!spellings.has(candidate.quote.trim().toLowerCase()) || sense(candidate.label, acronym) !== label) continue;
+      const key = termKey(candidate.quote, candidate.label);
       if (!expansions.has(key)) expansions.set(key, new Set());
       expansions.get(key).add(target);
     }
