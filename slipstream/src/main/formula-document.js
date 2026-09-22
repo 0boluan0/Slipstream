@@ -43,7 +43,19 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   // into complete, confident, vertically separate rows. Keep normal source
   // observations as anchors; a different spelling alone is not a replacement.
   const sourceBlocks = (original || masked)?.blocks || [];
-  const anchored = sourceBlocks.flatMap((block) => {
+  const firstSource = sourceBlocks.filter((block) => block.boundingBox)
+    .map((block) => pixelBox(block.boundingBox))
+    .sort((a, b) => a.y - b.y)[0];
+  // Vision can omit complete lines at the top of a tight screenshot while the
+  // padded pass sees them. Admit only confident, substantial rows clearly
+  // above the first source observation; never replace an existing source row.
+  const recoveredLeading = firstSource ? (edgeProse?.blocks || []).filter((block) => {
+    if (block.confidence < .9 || !block.boundingBox || block.text.trim().length < 25
+      || (block.text.match(/\p{L}{3,}/gu) || []).length < 4) return false;
+    const row = pixelBox(block.boundingBox);
+    return row.y + row.h / 2 < firstSource.y + firstSource.h / 2 - Math.min(row.h, firstSource.h) * .7;
+  }).sort((a, b) => pixelBox(a.boundingBox).y - pixelBox(b.boundingBox).y).slice(0, 4) : [];
+  const anchored = [...recoveredLeading, ...sourceBlocks].flatMap((block) => {
     if (!(block.confidence <= .5) || !block.boundingBox) return [block];
     const box = pixelBox(block.boundingBox);
     if (formulas.some((f) => f.display && intersects(f, box))) return [block];
@@ -200,7 +212,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     previous = row;
   }
   const mathematical = items.filter((item) => item.math);
-  return { text, layoutReview, formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
+  return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
+    formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaCount: mathematical.filter((item) => item.confidence < .6)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaStarts };

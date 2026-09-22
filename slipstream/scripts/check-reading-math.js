@@ -81,6 +81,15 @@ async function main() {
       { blocks: [edgeWord('Let', 10, 30)] }, { blocks: [alternate] }).text, 'Let',
     'a second OCR layout cannot shorten, move or substitute the original word');
   }
+  const row = (text, y) => ({ text, confidence: 1, boundingBox: { x: .05, y, w: .9, h: .1 },
+    characters: [{ text, boundingBox: { x: .05, y, w: .9, h: .1 } }] });
+  const missingTop = mergeFormulaDocument({ blocks: [] }, [], { width: 1000, height: 200 },
+    { blocks: [row('Third source line remains authoritative.', .4)] },
+    { blocks: [row('First source line recovered at top.', .78), row('Second source line recovered at top.', .59),
+      row('Different reading of third line ignored.', .4)] });
+  assert.equal(missingTop.text, 'First source line recovered at top.\nSecond source line recovered at top.\nThird source line remains authoritative.',
+    'a padded pass may restore missing top rows without replacing existing source rows');
+  assert(missingTop.edgeRecovered, 'a recovered edge requires explicit reader review');
   for (const [tex, expected] of [
     [String.raw`1 ^ { \mathrm { s t } }`, '1st'],
     [String.raw`2 ^ { \text { n d } }`, '2nd'],
