@@ -20,9 +20,25 @@ function referenceOccurrences(source, symbol) {
   const add = (start, end) => {
     if (!results.some((hit) => hit.start < end && hit.end > start)) results.push({ start, end });
   };
+  // OCR may spell an operator as `\operatorname* { s u p }`. Its label is
+  // text, while its subscript can still contain actual variables. Retain
+  // source offsets and skip only the balanced label, including nested styles.
+  const operatorLabels = [];
+  for (const label of source.matchAll(/\\operatorname\*?\s*\{/gu)) {
+    let depth = 1;
+    for (let end = label.index + label[0].length; end < source.length; end += 1) {
+      if (source[end] === '\\') { end += 1; continue; }
+      if (source[end] === '{') depth += 1;
+      if (source[end] === '}' && --depth === 0) {
+        operatorLabels.push({ start: label.index, end: end + 1 });
+        break;
+      }
+    }
+  }
   // Whole tokens protect against matching x inside x_i or an ordinary word.
   const tokens = /(?:\\(?:mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\s*\{[^{}]+\}|\\[A-Za-z]+|[\p{L}\p{N}]+)(?:(?:\s*[_^]\s*(?:\{[^{}]+\}|\\[A-Za-z]+|[A-Za-z0-9]))|[₀₁₂₃₄₅₆₇₈₉ᵢⱼₙₖ]+)*/gu;
   for (const token of source.matchAll(tokens)) {
+    if (operatorLabels.some((label) => token.index >= label.start && token.index < label.end)) continue;
     if (referenceKey(token[0]) === key) add(token.index, token.index + token[0].length);
   }
   for (const range of mathRanges(source)) {

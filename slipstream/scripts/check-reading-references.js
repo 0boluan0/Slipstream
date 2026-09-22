@@ -29,6 +29,18 @@ async function main() {
   assert.equal(referenceOccurrences('The value λ is positive.', '\\lambda').length, 1);
   assert.equal(referenceOccurrences('Our ELBO estimate is unbiased.', 'ELBO').length, 1);
   assert.equal(referenceOccurrences('x_{ij}', 'x_i').length, 0);
+  // Real MMD OCR spells the operator as separated letters. Its p is not a
+  // distribution variable and must not surface that paper's p definition.
+  const operatorSource = String.raw`$\operatorname* { s u p }_{f\in\mathcal{F}} f(x)$`;
+  assert.equal(referenceOccurrences(operatorSource, 'p').length, 0, 'an operator label must not become a saved-variable hit');
+  assert.equal(referenceOccurrences(operatorSource, 'f').length, 2, 'operator bounds and arguments still contain real variables');
+  assert.equal(referenceOccurrences(operatorSource, '\\mathcal{F}').length, 1);
+  const labelledOperator = String.raw`$\operatorname{\text{s u p}}_{p} g(p)$`;
+  const pHits = referenceOccurrences(labelledOperator, 'p');
+  assert.equal(pHits.length, 2, 'nested operator typography must not add a third variable');
+  assert.deepEqual(pHits.map(({ start, end }) => labelledOperator.slice(start, end)), ['p', 'p']);
+  const pExpression = String.raw`$\operatorname{p}+p$`;
+  assert.deepEqual(referenceOccurrences(pExpression, 'p'), [{ start: pExpression.lastIndexOf('p'), end: pExpression.lastIndexOf('p') + 1 }], 'the real variable keeps its original offset');
 
   const source = 'Let $x_i$ denote the feature vector of sample i. Let $\\lambda$ denote the regularization strength.';
   const definition = { symbol: 'x_i', meaning: '第 i 个样本的特征向量。', evidence: source.split('. ')[0] + '.', source, origin: 'excerpt', scope: '' };
