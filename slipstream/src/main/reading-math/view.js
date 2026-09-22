@@ -11,19 +11,25 @@ window.renderReadingMath = (element, value = '') => {
     element.append(document.createTextNode(value.slice(offset, range.start)));
     const node = document.createElement('span');
     node.className = range.display ? 'math-block' : 'math-inline';
+    // A display equation occupies its own line. Put an immediately following
+    // sentence mark on that line rather than leaving it alone below the tag.
+    // Keep the original string and source offsets for selection/copy.
+    const punctuation = range.display ? /^[.,;:!?。，；：！？]/u.exec(value.slice(range.end))?.[0] || '' : '';
+    const sourceEnd = range.end + punctuation.length;
     node.dataset.sourceStart = range.start;
-    node.dataset.sourceEnd = range.end;
-    node.title = value.slice(range.start, range.end);
+    node.dataset.sourceEnd = sourceEnd;
+    node.title = value.slice(range.start, sourceEnd);
     try {
-      window.katex.render(range.tex, node, { displayMode: range.display, throwOnError: true,
+      const latex = punctuation ? `${range.tex}\\;\\text{${punctuation}}` : range.tex;
+      window.katex.render(latex, node, { displayMode: range.display, throwOnError: true,
         trust: false, strict: 'ignore', maxExpand: 500, maxSize: 10, output: 'htmlAndMathml' });
     } catch {
       node.className += ' math-fallback';
-      node.textContent = value.slice(range.start, range.end);
+      node.textContent = value.slice(range.start, sourceEnd);
       node.title = '此公式暂时无法排版，已保留 LaTeX 原文。';
     }
     element.append(node);
-    offset = range.end;
+    offset = sourceEnd;
   }
   element.append(document.createTextNode(value.slice(offset)));
 };
