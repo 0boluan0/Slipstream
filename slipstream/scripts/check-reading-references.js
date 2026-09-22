@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createReadingReferenceStore } = require('../src/main/reading-reference-store');
-const { referenceKey, referenceOccurrences, isNotation } = require('../src/main/reading-references');
+const { referenceKey, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { matchesReferenceSearch } = require('../src/shared/reading-notation.cjs');
 
@@ -87,6 +87,13 @@ async function main() {
   assert.equal(referenceOccurrences(residualSource, String.raw`\mathcal H`).length, 1);
   assert.equal(referenceOccurrences(residualSource, String.raw`\mathcal G`).length, 0,
     'anchoring a definition must not guess a different function');
+  const lineBrokenResidual = residualSource.replace('we explicitly', 'we\nexplicitly');
+  const modelResidual = { symbol: String.raw`\mathcal { F }`, meaning: '残差函数，定义为 H(x)−x。', evidence: residualSource };
+  const restored = parseReferenceCandidates([modelResidual], lineBrokenResidual);
+  assert.equal(restored.length, 1, 'a model quote that collapses a PDF line break still anchors the explicit definition');
+  assert.equal(restored[0].evidence, lineBrokenResidual, 'stored evidence retains the exact source line break');
+  assert.deepEqual(parseReferenceCandidates([{ ...modelResidual, evidence: residualSource.replace('residual', 'original') }], lineBrokenResidual), [],
+    'whitespace tolerance cannot admit a changed definition');
   const residualProcessor = createReadingProcessor(async (_settings, _backend, _model, prompt) => {
     assert.match(prompt, /explicit definition with :=/);
     return JSON.stringify({ references: [{ symbol: String.raw`\mathcal F`,

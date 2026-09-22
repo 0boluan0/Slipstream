@@ -55,6 +55,16 @@ function referenceOccurrences(source, symbol) {
   return results.sort((a, b) => a.start - b.start || b.end - a.end);
 }
 
+function sourceEvidence(source, quoted) {
+  const evidence = quoted.trim();
+  if (source.includes(evidence)) return evidence;
+  // A model may collapse PDF line breaks while quoting a real definition.
+  // Accept only whitespace changes and retain the source's exact spelling.
+  const pattern = evidence.split(/\s+/u)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')).join('\\s+');
+  return source.match(new RegExp(pattern, 'u'))?.[0] || null;
+}
+
 function parseReferenceCandidates(items, source) {
   if (!Array.isArray(items)) return [];
   const seen = new Set();
@@ -62,13 +72,14 @@ function parseReferenceCandidates(items, source) {
     if (!item || typeof item.symbol !== 'string' || !item.symbol.trim() || item.symbol.length > 120
       || typeof item.meaning !== 'string' || !item.meaning.trim() || item.meaning.length > 1500
       || typeof item.evidence !== 'string' || !item.evidence.trim() || item.evidence.length > 3000
-      || !source.includes(item.evidence) || !referenceOccurrences(item.evidence, item.symbol).length
       || /[\b\f\r\t\v]/u.test(item.symbol + item.meaning + item.evidence)) return [];
+    const evidence = sourceEvidence(source, item.evidence);
+    if (!evidence || !referenceOccurrences(evidence, item.symbol).length) return [];
     const symbol = referenceSymbol(item.symbol);
-    const key = `${referenceKey(symbol)}\n${item.evidence}`;
+    const key = `${referenceKey(symbol)}\n${evidence}`;
     if (seen.has(key)) return [];
     seen.add(key);
-    return [{ symbol, meaning: item.meaning.trim(), evidence: item.evidence, source, origin: 'excerpt', scope: '' }];
+    return [{ symbol, meaning: item.meaning.trim(), evidence, source, origin: 'excerpt', scope: '' }];
   });
 }
 
