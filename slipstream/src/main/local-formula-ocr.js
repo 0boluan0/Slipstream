@@ -61,7 +61,7 @@ function detectBoxes(output, size) {
   // The published model labels display formulas 5 and inline formulas 15.
   for (let i = 0; i < data.length; i += 7) {
     const label = data[i], score = data[i + 1];
-    if ((label !== 5 && label !== 15) || score < .12) continue;
+    if ((label !== 5 && label !== 15) || score < .1) continue;
     const x = Math.max(0, Math.floor(data[i + 2] - margin) - 1);
     const y = Math.max(0, Math.floor(data[i + 3] - margin));
     const right = Math.min(size.width, Math.ceil(data[i + 4] - margin) + 1);
@@ -225,6 +225,9 @@ function createLocalFormulaOcr(modelDir) {
         const list = /^(?:[A-Za-z],){2,}[A-Za-z][.;:!?]?$/.test(compact);
         const latin = /^[B-HJ-Zb-z][,.;:!?]?$/.test(compact);
         const indexed = /^(?:[A-Za-z]|\d+)(?:[_^]\{[A-Za-z0-9+-]+\}){1,2}[,.;:!?]?$/.test(compact);
+        // The faintest layout candidates need near-certain short notation.
+        // Do not extend the lower detector floor to words or font guesses.
+        if (box.score < .12 && !(confidence >= .99 && (latin || indexed))) continue;
         if (box.score < .3 && !(agreedStyledAtom || confidence >= .75 && (greek || styled || list)
           || confidence >= .95 && (latin || indexed))) continue;
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
