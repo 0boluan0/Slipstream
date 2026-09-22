@@ -61,15 +61,15 @@ function detectBoxes(output, size) {
   // The published model labels display formulas 5 and inline formulas 15.
   for (let i = 0; i < data.length; i += 7) {
     const label = data[i], score = data[i + 1];
-    if ((label !== 5 && label !== 15) || score < .2) continue;
+    if ((label !== 5 && label !== 15) || score < .12) continue;
     const x = Math.max(0, Math.floor(data[i + 2] - margin) - 1);
     const y = Math.max(0, Math.floor(data[i + 3] - margin));
     const right = Math.min(size.width, Math.ceil(data[i + 4] - margin) + 1);
     const bottom = Math.min(size.height, Math.ceil(data[i + 5] - margin));
     const w = right - x, h = bottom - y;
-    // Isolated symbols receive weaker layout scores than equations. Only let
-    // compact inline candidates reach the recognizer at the lower threshold.
-    if (score < .3 && (label !== 15 || w > h * 2 || h > size.height * .12)) continue;
+    // Isolated symbols and short notation lists receive weaker layout scores
+    // than equations. Recognition below enforces their mathematical structure.
+    if (score < .3 && (label !== 15 || w > h * 6 || h > size.height * .12)) continue;
     if (w > 0 && h > 0) boxes.push({ x, y, w, h, score, display: label === 5 });
   }
   const selected = [];
@@ -178,9 +178,14 @@ function createLocalFormulaOcr(modelDir) {
         if (ids.at(-1) !== 2) throw new Error('formula-token-limit');
         const latex = model.decode(ids);
         if (!latex || latex.includes('�')) throw new Error('formula-invalid-latex');
-        // A low layout score alone must not turn a prose word into mathematics.
-        // Require a confidently recognized Greek atom, based on its pixels.
-        if (box.score < .3 && (confidence < .75 || !/^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(?:[_^]\{[a-zA-Z0-9]+\})?[,.;:!?]?$/i.test(latex.replace(/\s+/g, '')))) continue;
+        // A weak detection is not enough to turn prose into mathematics. Admit
+        // only confident Greek/styled atoms or comma-separated symbol lists;
+        // words and isolated ordinary Latin letters still stay with text OCR.
+        const compact = latex.replace(/\s+/g, '');
+        const greek = /^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(?:[_^]\{[a-zA-Z0-9]+\})?[,.;:!?]?$/i.test(compact);
+        const styled = /^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}[,.;:!?]?$/.test(compact);
+        const list = /^(?:[A-Za-z],){2,}[A-Za-z][.;:!?]?$/.test(compact);
+        if (box.score < .3 && (confidence < .75 || !(greek || styled || list))) continue;
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
       }
       // Mask only recognized regions; Vision will read the remaining prose.
