@@ -59,6 +59,7 @@ app.whenReady().then(async () => {
   let failMatching = '';
   let noTerms = false;
   let ocrClipped = false;
+  let ocrBottomClipped = false;
   let holdReview = false, resolveReview, reviewSignal;
   const provider = createReadingProcessor(async (...args) => {
     providerCalls += 1;
@@ -99,6 +100,8 @@ app.whenReady().then(async () => {
       if (ocrOverride) return { text: ocrOverride, confidence: .99, blocks: ocrClipped
         ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
           boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
+        : ocrBottomClipped ? [{ text: ocrOverride, confidence: .99,
+          boundingBox: { x: .08, y: .0163, w: .8, h: .08 } }]
         : [{ text: ocrOverride, confidence: .99 }] };
       if (!realOcrDone) {
         const result = await require('../src/main/ocr-service').performOCR(file, options);
@@ -308,6 +311,16 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeClipped, 'cropped prose must stay local until reviewed');
   manager.clear();
   ocrClipped = false;
+  ocrBottomClipped = true;
+  ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
+  const beforeBottom = providerCalls;
+  await manager.capture();
+  const bottom = cards()[0];
+  await until(phaseIs(bottom, 'review'), 'bottom-edge cropped prose review');
+  assert.match((await stateOf(bottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforeBottom, 'bottom-edge cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrBottomClipped = false;
   ocrOverride = 'The next section describes the results.';
   const beforePlain = providerCalls;
   await manager.capture();
