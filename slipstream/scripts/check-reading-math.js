@@ -47,6 +47,24 @@ async function main() {
   ]) {
     assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, latex: tex }], size).text, expected);
   }
+  const superscriptWord = { ...formula, score: .2, latex: 'b i a s e d ^ { 2 }' };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [superscriptWord], size,
+    { blocks: [word('biased', 10, 18), word('estimate', 45, 30)] }).text, 'biased$^{2}$ estimate',
+  'a weak word-shaped region with a source-confirmed word keeps both translatable prose and its superscript');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [superscriptWord], size,
+    { blocks: [word('unbiased', 10, 18), word('estimate', 45, 30)] }).text, 'unbiased estimate',
+  'a disagreement must not replace the source word or attach an unsupported marker');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...superscriptWord, w: 32, latex: 'A \\; b i a s e d ^ { 12 } ,' }], size,
+    { blocks: [word('A', 10, 5), word('biased,', 20, 22), word('estimate', 60, 30)] }).text, 'A biased$^{12}$, estimate',
+  'an adjacent article, multi-digit superscript and source punctuation survive as one prose span');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...superscriptWord, display: true }], size).text,
+    '$$b i a s e d ^ { 2 }$$', 'display mathematics must not become prose');
+  for (const score of [.2, .7]) {
+    for (const tex of ['x ^ { 2 }', 'x y ^ { 2 }', 'x y z ^ { 2 }', String.raw`\mathrm{rate}^{2}`, 'loss_{i}^{2}', 'a+bcd^{2}']) {
+      assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, score, latex: tex }], size).text,
+        `$${tex}$`, 'ordinary powers, products, operators, named quantities and subscripts retain mathematical structure');
+    }
+  }
   const source = String.raw`Conditional expectation is $\mathbb{E}[Y\mid X=x]$.
 
 $$\mathbb{E}[Y\mid X=x]=\int_{-\infty}^{\infty}y f_{Y\mid X}(y\mid x)\,\mathrm{d}y.$$

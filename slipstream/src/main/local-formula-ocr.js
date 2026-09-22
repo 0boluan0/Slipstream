@@ -7,6 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { nativeImage } = require('electron');
 const manifest = require('./local-formula-models.json');
+const { proseSuperscript } = require('./formula-document');
 
 function cancelled(signal, deadline) {
   if (signal?.aborted) {
@@ -225,10 +226,11 @@ function createLocalFormulaOcr(modelDir) {
         const list = /^(?:[A-Za-z],){2,}[A-Za-z][.;:!?]?$/.test(compact);
         const latin = /^[B-HJ-Zb-z][,.;:!?]?$/.test(compact);
         const indexed = /^(?:[A-Za-z]|\d+)(?:[_^]\{[A-Za-z0-9+-]+\}){1,2}[,.;:!?]?$/.test(compact);
+        const annotatedProse = !box.display && confidence >= .99 && proseSuperscript(latex);
         // The faintest layout candidates need near-certain short notation.
         // Do not extend the lower detector floor to words or font guesses.
         if (box.score < .12 && !(confidence >= .99 && (latin || indexed))) continue;
-        if (box.score < .3 && !(agreedStyledAtom || confidence >= .75 && (greek || styled || list)
+        if (box.score < .3 && !(agreedStyledAtom || annotatedProse || confidence >= .75 && (greek || styled || list)
           || confidence >= .95 && (latin || indexed))) continue;
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
       }

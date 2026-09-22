@@ -1,5 +1,13 @@
 'use strict';
 
+function proseSuperscript(latex) {
+  // A weak inline region can include a prose word and its footnote marker.
+  // Keep commands, operators, short products and subscripts as mathematics.
+  const compact = latex.replace(/\s+/g, '').replace(/\\(?:qquad|quad|[,;])/g, ' ');
+  const match = compact.match(/^((?:[A-Za-z]+ )*[A-Za-z][a-z]{3,})\^\{(\d{1,3})\}([,.;:!?]?)$/);
+  return match ? { text: match[1], superscript: match[2] } : null;
+}
+
 // Keep the original prose as the reading-order anchor. Masking can make Vision
 // merge adjacent lines or hallucinate short fragments, so it is only a fallback
 // for a prose word that shares a bounding box with a recognized formula.
@@ -26,8 +34,21 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     return area > Math.min(a.w * a.h, b.w * b.h) * .3
       && Math.abs(a.y + a.h / 2 - b.y - b.h / 2) < Math.max(a.h, b.h) * .6;
   };
+  const originalWords = words(original || masked);
+  const proseAnnotations = new Map();
+  formulas = formulas.filter((formula) => {
+    const annotated = !formula.display && formula.score < .3 ? proseSuperscript(formula.latex) : null;
+    if (!annotated) return true;
+    // The math model may recover a superscript, but cannot rewrite prose.
+    // Require the original text recognizer to agree on every word in its box.
+    const source = originalWords.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x)
+      .map((word) => word.text).join(' ').replace(/[,.;:!?]$/, '');
+    if (source !== annotated.text) return false;
+    proseAnnotations.set(formula, annotated);
+    return true;
+  });
   const edgeWords = words(edgeProse);
-  const sourceWords = words(original || masked).map((word) => {
+  const sourceWords = originalWords.map((word) => {
     if (word.x > size.width * .06 || !/^\p{L}+$/u.test(word.text)
       || formulas.some((f) => intersects(f, word))) return word;
     // Recover only missing leading letters backed by the same image region.
@@ -63,10 +84,12 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     // Superscripted prose ordinals belong to the sentence, so translation can
     // turn "1st moment" into Chinese instead of protecting it as mathematics.
     const ordinal = latex.replace(/\s+/g, '').match(/^(\d+)\^\{\\(?:mathrm|text)\{(st|nd|rd|th)\}\}$/);
+    const annotated = proseAnnotations.get(formula);
     const equationLabel = equationLabels.get(formula);
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
-      text: (ordinal ? ordinal[1] + ordinal[2] : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
+      text: (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
+        : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
   }
   for (const word of words(masked)) {
     if (formulas.some((f) => intersects(f, word)) || items.some((item) => intersects(item, word))) continue;
@@ -102,4 +125,4 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     uncertainFormulaCount: mathematical.filter((item) => item.confidence < .6).length };
 }
 
-module.exports = { mergeFormulaDocument };
+module.exports = { mergeFormulaDocument, proseSuperscript };
