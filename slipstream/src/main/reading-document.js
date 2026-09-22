@@ -68,4 +68,32 @@ function readingSegments(text) {
   return pieces.map((source, index) => ({ id: index, source, translation: '', status: 'pending' }));
 }
 
-module.exports = { readingTextFromOcr, readingSegments };
+function deduplicateReadingTerms(segments) {
+  const termKey = (quote, label) => JSON.stringify([quote.trim().toLowerCase(), label.trim()]);
+  const expansions = new Map();
+  // Use only an expansion actually quoted from this card. Keep different
+  // Chinese senses and ambiguous acronyms distinct; do not infer synonyms.
+  for (const segment of segments) for (const term of segment.terms || []) {
+    const expansion = term.quote.trim().match(/^(.+?)\s*\(([A-Z][A-Z0-9-]{1,15})\)$/u);
+    if (!expansion || !segment.source.includes(term.quote)) continue;
+    const full = expansion[1].trim();
+    if (!/[A-Za-z].*\s.*[A-Za-z]/u.test(full)) continue;
+    const target = termKey(full, term.label);
+    for (const spelling of [term.quote, full, expansion[2]]) {
+      const key = termKey(spelling, term.label);
+      if (!expansions.has(key)) expansions.set(key, new Set());
+      expansions.get(key).add(target);
+    }
+  }
+  const seen = new Set();
+  return segments.map((segment) => !segment.terms ? segment : { ...segment,
+    terms: segment.terms.filter((term) => {
+      const rawKey = termKey(term.quote, term.label), aliases = expansions.get(rawKey);
+      const key = aliases?.size === 1 ? [...aliases][0] : rawKey;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }) });
+}
+
+module.exports = { readingTextFromOcr, readingSegments, deduplicateReadingTerms };

@@ -119,7 +119,6 @@ async function dismissLookup() {
 }
 
 function renderSegments(segments) {
-  const shownTerms = new Set();
   for (const [id, node] of segmentNodes) {
     if (!segments.some((segment) => segment.id === id && segment.source === node.sourceValue)) {
       node.section.remove();
@@ -138,12 +137,7 @@ function renderSegments(segments) {
       : segment.status === 'error' ? segment.error
         : segment.status === 'translating' ? '正在翻译这一段…' : '等待翻译…';
     window.renderReadingMath(node.translation, value);
-    const visibleTerms = (segment.terms || []).filter((term) => {
-      const key = JSON.stringify([term.quote.trim().toLowerCase(), term.label.trim()]);
-      if (shownTerms.has(key)) return false;
-      shownTerms.add(key);
-      return true;
-    });
+    const visibleTerms = segment.terms || [];
     const termsKey = JSON.stringify(visibleTerms);
     if (node.termsKey !== termsKey) {
       node.termsKey = termsKey;

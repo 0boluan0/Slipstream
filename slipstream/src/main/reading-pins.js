@@ -10,7 +10,7 @@ const { formulaRecognitionAvailable } = require('./formula-recognition');
 const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
 const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation');
-const { readingTextFromOcr, readingSegments } = require('./reading-document');
+const { readingTextFromOcr, readingSegments, deduplicateReadingTerms } = require('./reading-document');
 const { referenceKey, referenceOccurrences, isNotation } = require('./reading-references');
 
 const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
@@ -92,7 +92,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const paper = paperFor(pin);
     const entries = paper?.entries || [];
     return { ...pin.view, revision: pin.revision,
-      segments: pin.view.segments.map((segment) => {
+      segments: deduplicateReadingTerms(pin.view.segments).map((segment) => {
         const seen = new Set();
         const referenceHits = entries.flatMap((entry) => {
           const key = referenceKey(entry.symbol);

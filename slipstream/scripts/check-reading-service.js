@@ -3,9 +3,38 @@
 const assert = require('node:assert/strict');
 const { createReadingProcessor, parseReadingExplanations, readingMessages } = require('../src/main/reading-service');
 const { cardBounds, readingDestination } = require('../src/main/reading-pins');
-const { readingSegments, readingTextFromOcr } = require('../src/main/reading-document');
+const { readingSegments, readingTextFromOcr, deduplicateReadingTerms } = require('../src/main/reading-document');
 
 async function main() {
+  const termSegment = (source, quote, label) => ({ source, translation: '译文保持原样', terms: [{ quote, label,
+    start: source.indexOf(quote), end: source.indexOf(quote) + quote.length }] });
+  const mmdTerms = [
+    termSegment('We define the maximum mean discrepancy (MMD) as follows.', 'maximum mean discrepancy (MMD)', '最大均值差异'),
+    termSegment('An empirical estimate of the MMD is obtained.', 'MMD', '最大均值差异'),
+    termSegment('Choose an MMD function class.', 'MMD function class', 'MMD 函数类'),
+  ];
+  const beforeDeduplication = JSON.stringify(mmdTerms);
+  const deduplicated = deduplicateReadingTerms(mmdTerms);
+  assert.deepEqual(deduplicated.map((segment) => segment.terms.map((term) => term.quote)),
+    [['maximum mean discrepancy (MMD)'], [], ['MMD function class']],
+    'an explicitly expanded acronym should not repeat the same concept button across paragraphs');
+  assert.equal(JSON.stringify(mmdTerms), beforeDeduplication, 'deduplication must not edit source, model output or lookup anchors');
+  assert.deepEqual(deduplicated.map(({ source, translation }) => ({ source, translation })), mmdTerms.map(({ source, translation }) => ({ source, translation })));
+  const kept = (segments) => deduplicateReadingTerms(segments).flatMap((segment) => segment.terms || []).map((term) => term.quote);
+  assert.deepEqual(kept([mmdTerms[1], mmdTerms[0]]), ['MMD'], 'keep the first anchored mention when an expansion arrives later');
+  assert.deepEqual(kept([mmdTerms[0], termSegment('The maximum mean discrepancy is zero.', 'maximum mean discrepancy', '最大均值差异')]), ['maximum mean discrepancy (MMD)']);
+  assert.deepEqual(kept([termSegment('A field in algebra.', 'field', '域'), termSegment('A field in physics.', 'field', '场')]), ['field', 'field']);
+  assert.deepEqual(kept([termSegment('We use an estimator.', 'estimator', '估计量'), termSegment('We compare an estimate.', 'estimate', '估计量')]), ['estimator', 'estimate'], 'equal translated names alone do not establish synonymy');
+  assert.deepEqual(kept([mmdTerms[0], termSegment('Another MMD is discussed.', 'MMD', '另一个含义')]), ['maximum mean discrepancy (MMD)', 'MMD']);
+  assert.equal(kept([
+    termSegment('Use artificial bee colony (ABC).', 'artificial bee colony (ABC)', '方法'),
+    termSegment('Use approximate Bayesian computation (ABC).', 'approximate Bayesian computation (ABC)', '方法'),
+    termSegment('Compare ABC.', 'ABC', '方法'),
+  ]).length, 3, 'conflicting expansions must not silently assign a meaning to the acronym');
+  assert.equal(kept([termSegment('No expansion here.', 'maximum mean discrepancy (MMD)', '最大均值差异'), mmdTerms[1]]).length, 2,
+    'an unanchored expansion must not change other buttons');
+  assert.deepEqual(kept([termSegment('Use the sample mean.', 'sample mean', '样本均值'), termSegment('The sample mean is shown.', 'sample mean', '样本均值')]), ['sample mean']);
+  assert.deepEqual(deduplicateReadingTerms([{ source: 'Ordinary prose.', status: 'pending' }]), [{ source: 'Ordinary prose.', status: 'pending' }]);
   const source = 'Correlation does not imply causation. The estimate is conditional on the observed data.';
   const settings = { activeBackend: 'custom', activeModel: 'configured-model', customEndpointUrl: 'http://127.0.0.1:1234/v1' };
   const calls = [];
