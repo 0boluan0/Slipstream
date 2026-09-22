@@ -3,7 +3,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
-const { referenceKey, referenceOccurrences } = require('./reading-references');
+const { referenceKey, referenceOccurrences, referenceSymbol } = require('./reading-references');
 
 const bounded = (value, limit) => typeof value === 'string' && value.length <= limit;
 const validId = (id) => typeof id === 'string' && /^[a-f0-9-]{36}$/u.test(id);
@@ -38,6 +38,7 @@ function createReadingReferenceStore(directory) {
           validateEntry(entry);
           if (!validId(entry.id) || entries.has(entry.id) || !Number.isSafeInteger(entry.revision)) throw new Error('reference-invalid-file');
           entries.add(entry.id);
+          if (entry.origin === 'excerpt') entry.symbol = referenceSymbol(entry.symbol);
         }
       }
       if (data.activePaperId && !ids.has(data.activePaperId)) throw new Error('reference-invalid-file');
@@ -87,12 +88,13 @@ function createReadingReferenceStore(directory) {
     rename: (id, name) => mutate((data) => { const paper = find(data, id); paper.title = title(name); touch(paper); }),
     add: (id, input) => mutate((data) => {
       validateEntry(input);
+      const symbol = input.origin === 'excerpt' ? referenceSymbol(input.symbol) : input.symbol.trim();
       const paper = find(data, id);
-      const existing = paper.entries.find((entry) => referenceKey(entry.symbol) === referenceKey(input.symbol)
+      const existing = paper.entries.find((entry) => referenceKey(entry.symbol) === referenceKey(symbol)
         && entry.evidence === input.evidence && entry.source === input.source && entry.scope === input.scope
         && (input.origin === 'excerpt' || entry.meaning === input.meaning));
       if (existing) return existing;
-      const entry = { ...input, symbol: input.symbol.trim(), meaning: input.meaning.trim(), id: randomUUID(), revision: 1 };
+      const entry = { ...input, symbol, meaning: input.meaning.trim(), id: randomUUID(), revision: 1 };
       paper.entries.push(entry);
       touch(paper);
       return entry;
@@ -102,7 +104,8 @@ function createReadingReferenceStore(directory) {
       const paper = find(data, paperId);
       const entry = paper.entries.find((item) => item.id === id);
       if (!entry || entry.revision !== revision) throw new Error('reference-conflict');
-      Object.assign(entry, input, { id, revision: revision + 1 });
+      Object.assign(entry, input, { id, revision: revision + 1,
+        symbol: input.origin === 'excerpt' ? referenceSymbol(input.symbol) : input.symbol.trim() });
       touch(paper);
       return entry;
     }),

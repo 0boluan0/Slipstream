@@ -50,6 +50,21 @@ async function main() {
   const domain = await domainProcessor({ text: domainSource, kind: 'references', settingsSnapshot: settings });
   assert.equal(domain.references[0].symbol, 'x_i', 'domain declarations must not become part of a variable name');
   assert.equal(referenceOccurrences('The vector $x_i$ is observed.', domain.references[0].symbol).length, 1);
+  // Captured in the installed preview while reading VI section 2.1. The model
+  // returned the whole declaration, including the OCR's harmless TeX spaces.
+  const assignmentSource = String.raw`Let $\mathbf { x } = \boldsymbol { x } _ { 1: n }$ be a set of observed variables.`;
+  const assignmentDefinition = { symbol: String.raw`\mathbf { x } = \boldsymbol { x } _ { 1: n }`,
+    meaning: '一组观测变量', evidence: assignmentSource, source: assignmentSource, origin: 'excerpt', scope: '' };
+  const assignmentProcessor = createReadingProcessor(async () => JSON.stringify({ references: [assignmentDefinition] }));
+  const assignment = await assignmentProcessor({ text: assignmentSource, kind: 'references', settingsSnapshot: settings });
+  assert.equal(referenceOccurrences(String.raw`We condition on $\mathbf{x}$.`, assignment.references[0].symbol).length, 1,
+    'a saved declaration must match its variable in a later excerpt');
+  assert.equal(referenceKey(assignment.references[0].symbol), String.raw`\mathbf{x}`);
+  assert.equal(referenceKey(String.raw`\mathbf { x } _ { i }`), referenceKey(String.raw`\mathbf{x}_i`));
+  assert(isNotation(String.raw`\mathbf { x } _ { i }`));
+  assert.notEqual(referenceKey(String.raw`\mathbf { x }`), referenceKey('x'));
+  assert.notEqual(referenceKey(String.raw`\mathbf { X }`), referenceKey(String.raw`\mathbf{x}`));
+  assert.equal(referenceOccurrences(String.raw`The data $\mathbf{x}$ and $\mathbf { x }$ agree.`, String.raw`\mathbf{x}`).length, 2);
   const empty = createReadingProcessor(async () => JSON.stringify({ translation: '下一节讨论实验。', terms: [], references: [] }));
   assert.deepEqual((await empty({ text: 'The next section discusses experiments.', withReferences: true, settingsSnapshot: settings })).references, []);
   await assert.rejects(processor({ text: source, kind: 'references', settingsSnapshot: { activeBackend: 'free_translate' } }), /reading-model-required/);
@@ -84,6 +99,18 @@ async function main() {
     await store.restorePaper(removed);
     assert.equal((await fresh.read()).activePaperId, a.id);
     const file = path.join(directory, 'references.json');
+    const oldData = JSON.parse(await fs.readFile(file, 'utf8'));
+    const legacy = { ...assignmentDefinition, id: '47d85bad-bf42-4ec5-b55d-0811a96b22a2', revision: 1 };
+    oldData.papers.find((paper) => paper.id === a.id).entries.push(legacy,
+      { ...legacy, id: '9ef9e0a2-53d8-46c6-b32e-099c3eb82167', origin: 'manual' });
+    const oldText = JSON.stringify(oldData, null, 2) + '\n';
+    await fs.writeFile(file, oldText);
+    const loaded = (await fresh.read()).papers.find((paper) => paper.id === a.id).entries;
+    assert.equal(referenceOccurrences(String.raw`Given $\mathbf{x}$.`, loaded.find((entry) => entry.id === legacy.id).symbol).length, 1,
+      'existing excerpt definitions remain usable after an upgrade');
+    assert.equal(loaded.find((entry) => entry.id === '9ef9e0a2-53d8-46c6-b32e-099c3eb82167').symbol,
+      assignmentDefinition.symbol, 'a manually chosen expression keeps its identity');
+    assert.equal(await fs.readFile(file, 'utf8'), oldText, 'opening old definitions must not write to the user file');
     await fs.writeFile(file, '{broken');
     await assert.rejects(store.create('不能覆盖损坏文件'));
     assert.equal(await fs.readFile(file, 'utf8'), '{broken');

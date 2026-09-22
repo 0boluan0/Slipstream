@@ -4,6 +4,15 @@ const { mathRanges } = require('../shared/reading-math.cjs');
 
 const { referenceKey, isNotation } = require('../shared/reading-notation.cjs');
 
+function referenceSymbol(value) {
+  const symbol = value.trim();
+  const range = mathRanges(symbol).find((item) => item.start === 0 && item.end === symbol.length);
+  const declaration = (range?.tex || symbol).match(/^(.+?)\s*(?:\\in\b|∈|=)\s*.+$/u);
+  // Use the explicitly named variable, retaining its declaration as evidence.
+  // Only excerpt-derived names use this rule; user-authored expressions do not.
+  return declaration && isNotation(declaration[1].trim()) ? declaration[1].trim() : symbol;
+}
+
 function referenceOccurrences(source, symbol) {
   const key = referenceKey(symbol);
   if (!key) return [];
@@ -39,12 +48,7 @@ function parseReferenceCandidates(items, source) {
       || typeof item.evidence !== 'string' || !item.evidence.trim() || item.evidence.length > 3000
       || !source.includes(item.evidence) || !referenceOccurrences(item.evidence, item.symbol).length
       || /[\b\f\r\t\v]/u.test(item.symbol + item.meaning + item.evidence)) return [];
-    let symbol = item.symbol.trim();
-    const range = mathRanges(symbol).find((item) => item.start === 0 && item.end === symbol.length);
-    const membership = (range?.tex || symbol).match(/^(.+?)\s*(?:\\in\b|∈)\s*.+$/u);
-    // A model may quote the whole domain declaration. Keep its explicitly named
-    // variable as the lookup key so x_i can be found again without the domain.
-    if (membership && isNotation(membership[1].trim())) symbol = membership[1].trim();
+    const symbol = referenceSymbol(item.symbol);
     const key = `${referenceKey(symbol)}\n${item.evidence}`;
     if (seen.has(key)) return [];
     seen.add(key);
@@ -52,4 +56,4 @@ function parseReferenceCandidates(items, source) {
   });
 }
 
-module.exports = { referenceKey, referenceOccurrences, isNotation, parseReferenceCandidates };
+module.exports = { referenceKey, referenceOccurrences, referenceSymbol, isNotation, parseReferenceCandidates };
