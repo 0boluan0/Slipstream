@@ -47,7 +47,7 @@ function readingDestination(settings) {
 function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMainWindow,
   captureRegion, performOCR, processReadingText, recognizeReadingFormulas, requestCapturePermission, canCapture = () => true,
   captureAppName = 'Slipstream', captureSupported = true,
-  copyText = () => {}, saveTermCard, referenceStore, onOpenLibrary = () => {}, onOpenSettings = () => {}, onError = () => {}, classifyError = () => '处理没有完成，请重试或检查设置。' }) {
+  copyText = () => {}, saveTermCard, findTermCard, referenceStore, onOpenLibrary = () => {}, onOpenSettings = () => {}, onError = () => {}, classifyError = () => '处理没有完成，请重试或检查设置。' }) {
   const pins = new Map();
   let selecting = null;
   let generation = 0;
@@ -493,17 +493,31 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const sequence = ++pin.lookupSequence;
     const key = `${payload.segmentId}:${payload.start}:${payload.end}`;
     const cached = pin.lookupCache.get(key);
-    update(pin, { lookup: cached || { quote }, lookupStatus: cached ? 'done' : 'loading', lookupNotice: '', saveStatus: '', savedCardId: null });
-    if (cached) return;
+    update(pin, { lookup: { quote }, lookupStatus: 'loading', lookupNotice: '', saveStatus: '', savedCardId: null });
     const controller = new AbortController();
     pin.lookupController = controller;
+    const active = () => alive(pin) && !controller.signal.aborted
+      && sequence === pin.lookupSequence && pin.generation === generation;
     try {
+      let localNotice = '';
+      if (findTermCard) {
+        let card;
+        try { card = await findTermCard({ term: quote, source: pin.view.sourceText, kind: 'concept' }); }
+        catch { localNotice = '本地卡片未能读取，下面显示模型生成的解释。'; }
+        if (!active()) return;
+        if (card) {
+          update(pin, { lookup: { quote, meaning: card.meaning, note: card.context, contextual: true, localCard: true },
+            lookupStatus: 'done', saveStatus: 'saved', savedCardId: card.id });
+          return;
+        }
+      }
+      if (cached) { update(pin, { lookup: cached, lookupStatus: 'done', lookupNotice: localNotice }); return; }
       const result = await processReadingText({ text: pin.view.sourceText, kind: 'lookup', selection: quote,
         settingsSnapshot: configuration.settings, signal: controller.signal });
-      if (!alive(pin) || controller.signal.aborted || sequence !== pin.lookupSequence || pin.generation !== generation) return;
+      if (!active()) return;
       pin.lookupCache.set(key, result.lookup);
       if (pin.lookupCache.size > 30) pin.lookupCache.delete(pin.lookupCache.keys().next().value);
-      update(pin, { lookup: result.lookup, lookupStatus: 'done' });
+      update(pin, { lookup: result.lookup, lookupStatus: 'done', lookupNotice: localNotice });
     } catch (error) {
       if (!alive(pin) || controller.signal.aborted || sequence !== pin.lookupSequence) return;
       update(pin, { lookupStatus: 'error', lookupNotice: error?.message === 'reading-invalid-output' || error instanceof SyntaxError

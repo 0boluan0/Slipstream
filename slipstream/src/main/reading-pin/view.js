@@ -253,7 +253,8 @@ function render(next) {
   if (lookup || state.lookupNotice) {
     if (!previousLookup || previousLookup.quote !== lookup?.quote) byId('lookup-panel').scrollTop = 0;
     const contextual = lookup?.contextual ?? state.explainSupported;
-    byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : contextual ? '术语与词句解释' : '词句翻译';
+    byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : lookup?.localCard ? '已存卡片 · 本地解释'
+      : contextual ? '术语与词句解释' : '词句翻译';
     window.renderReadingMath(byId('lookup-quote'), lookup?.reference ? window.readingReferences.symbolText(lookup.quote) : lookup?.quote || '');
     window.renderReadingMath(byId('lookup-meaning'), state.lookupStatus === 'loading' ? '正在结合这段原文解释…' : lookup?.meaning || '');
     byId('meaning-label').hidden = lookup?.reference || !contextual || state.lookupStatus !== 'done';

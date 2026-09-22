@@ -23,6 +23,16 @@ async function main() {
     const reloaded = (await store.list()).cards.find((card) => card.id === edited.id);
     assert.equal(reloaded.notes, '我自己的理解\n## 我的理解\n保留这个标题');
     assert.equal(reloaded.source, input.source);
+    const notationSource = 'Let X be a random variable and x its observed value; 𝑥 is separately named here.';
+    const upper = await store.save({ ...input, term: 'X', source: notationSource });
+    const lower = await store.save({ ...input, term: 'x', source: notationSource });
+    const styled = await store.save({ ...input, term: '𝑥', source: notationSource });
+    assert.equal(new Set([upper.card.id, lower.card.id, styled.card.id]).size, 3,
+      'case and mathematical Unicode styling must not merge distinct saved concepts in the same source');
+    assert.equal((await store.findMatching({ term: input.term, source: input.source, kind: 'concept' })).id, edited.id);
+    assert.equal((await store.findMatching({ term: 'x', source: notationSource, kind: 'concept' })).id, lower.card.id);
+    assert.equal(await store.findMatching({ term: input.term, source: 'Unrelated source.', kind: 'concept' }), undefined);
+    assert.equal(await store.findMatching({ term: input.term, source: input.source, kind: 'translation' }), undefined);
     await assert.rejects(store.edit(first.card.id, { ...edited, notes: 'stale' }, first.card.revision), /card-conflict/);
     await assert.rejects(store.filePath('../../outside'), /card-invalid-id/);
     await fs.writeFile(path.join(directory, 'unrelated.md'), 'This file belongs to the reader.');

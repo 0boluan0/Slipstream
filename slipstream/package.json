@@ -147,7 +147,7 @@
     "diagnose:screen-permission": "electron scripts/check-screen-permission-runtime.js",
     "release:checksums": "node scripts/write-release-checksums.js",
     "format": "prettier --write 'src/**/*.{js,jsx,css,html}'",
-    "check:reading-pins": "node scripts/check-reading-service.js && node scripts/check-term-cards.js && electron scripts/check-reading-term-aliases-native.js && electron scripts/check-reading-pins-native.js && electron scripts/check-term-library-native.js && npm run check:reading-math && npm run check:reading-preview-config && npm run check:reading-references",
+    "check:reading-pins": "node scripts/check-reading-service.js && node scripts/check-term-cards.js && electron scripts/check-reading-term-aliases-native.js && electron scripts/check-reading-saved-card-native.js && electron scripts/check-reading-pins-native.js && electron scripts/check-term-library-native.js && npm run check:reading-math && npm run check:reading-preview-config && npm run check:reading-references",
     "check:reading-math": "node scripts/check-reading-math.js && electron scripts/check-reading-math-native.js",
     "build:reading-preview": "npm run build:renderer && node scripts/build-reading-preview.js",
     "check:reading-preview-config": "node scripts/check-reading-preview-config.js",

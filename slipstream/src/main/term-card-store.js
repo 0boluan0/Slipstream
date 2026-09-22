@@ -7,7 +7,8 @@ const crypto = require('node:crypto');
 const ID = /^[a-f0-9-]{36}$/u;
 const FIELDS = ['id', 'term', 'label', 'created', 'updated', 'kind', 'links'];
 const SECTIONS = ['概念解释', '在原文中的用法', '原文', '我的理解'];
-const normalize = (text) => text.normalize('NFKC').trim().toLowerCase().replace(/\s+/gu, ' ');
+// Case and mathematical Unicode variants can name distinct objects.
+const normalize = (text) => text.normalize('NFC').trim().replace(/\s+/gu, ' ');
 const revision = (text) => crypto.createHash('sha256').update(text).digest('hex');
 const bounded = (value, limit) => typeof value === 'string' && value.length <= limit;
 
@@ -96,6 +97,12 @@ function createTermCardStore(directory) {
     if (!card) throw new Error('card-not-found');
     return card;
   }
+  async function findMatching(input) {
+    if (!bounded(input?.term, 1500) || !input.term.trim() || !bounded(input.source, 10000)
+      || !['concept', 'translation'].includes(input.kind)) throw new Error('card-invalid-input');
+    return (await list()).cards.find((card) => normalize(card.term) === normalize(input.term)
+      && card.source === input.source && card.kind === input.kind);
+  }
   function save(input) {
     return serialized(async () => {
       if (!bounded(input?.term, 1500) || !input.term.trim() || !bounded(input.label, 180)
@@ -133,7 +140,7 @@ function createTermCardStore(directory) {
     if ((await fs.lstat(file)).isSymbolicLink()) throw new Error('card-unsafe-file');
     return file;
   }
-  return { list, save, edit, filePath, directory };
+  return { list, save, edit, filePath, findMatching, directory };
 }
 
 module.exports = { createTermCardStore, encodeCard, decodeCard };
