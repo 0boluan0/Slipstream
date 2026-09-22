@@ -1,4 +1,5 @@
 'use strict';
+const { mathRanges } = require('../shared/reading-math.cjs');
 
 function proseSuperscript(latex) {
   // An inline region can include a prose word and its footnote marker.
@@ -141,10 +142,18 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
         latex = abbreviation[1].trim();
       }
     }
+    // A detector can enclose two expressions and the English word between
+    // them. Only move that word out of TeX when Vision independently reads it
+    // in the same source region; otherwise leave the recognizer's math intact.
+    const joined = formula.display && !equationLabel && sourceBlocks.some((block) =>
+      block.boundingBox && /\band\b/iu.test(block.text) && intersects(formula, pixelBox(block.boundingBox)))
+      ? latex.match(/^([\s\S]+?)\s*\\(?:quad|qquad)\s*\\(?:mathrm|text)\s*\{\s*a\s*n\s*d\s*\}\s*\\(?:quad|qquad)\s*([\s\S]+)$/iu)
+      : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
-        : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
+        : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
+          : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
   }
   for (const word of words(masked)) {
     if (formulas.some((f) => intersects(f, word)) || items.some((item) => intersects(item, word))) continue;
@@ -182,9 +191,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       if (at < 0) continue;
       // A source-confirmed footnote can be attached to prose (biased$^{2}$).
       // The marker belongs on the math delimiter, not on the English word.
-      const mathStart = normalized.indexOf('$');
-      if (fragment.item.math && fragment.item.confidence < .6 && mathStart >= 0) {
-        uncertainFormulaStarts.push(text.length + separator.length + at + mathStart);
+      if (fragment.item.math && fragment.item.confidence < .6) for (const range of mathRanges(normalized)) {
+        uncertainFormulaStarts.push(text.length + separator.length + at + range.start);
       }
       cursor = at + normalized.length;
     }
@@ -192,8 +200,9 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     previous = row;
   }
   const mathematical = items.filter((item) => item.math);
-  return { text, layoutReview, formulaCount: mathematical.length,
-    uncertainFormulaCount: mathematical.filter((item) => item.confidence < .6).length,
+  return { text, layoutReview, formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
+    uncertainFormulaCount: mathematical.filter((item) => item.confidence < .6)
+      .reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaStarts };
 }
 

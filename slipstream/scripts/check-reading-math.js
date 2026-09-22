@@ -29,6 +29,20 @@ async function main() {
     { blocks: [word('(2)', 80, 15)] }).text.includes('\\tag'), 'inline math must not absorb a nearby list label');
   assert(!mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true }], size,
     { blocks: [word('(2)', 0, 5)] }).text.includes('\\tag'), 'a number before the formula is not a right-aligned equation tag');
+  const pairedNormal = { x: 10, y: 10, w: 80, h: 20, display: true, confidence: .4,
+    latex: String.raw`N ( \mu = 0, \sigma = 1 ) \quad \mathrm { a n d } \quad N ( \mu = 1 9, \sigma = 4 )` };
+  const pairedSource = { blocks: [{ text: 'N(mu = 0, sigma = 1) and N(mu = 19, sigma = 4)', confidence: 1,
+    boundingBox: { x: .1, y: .7, w: .8, h: .2 } }] };
+  const pairedDocument = mergeFormulaDocument({ blocks: [] }, [pairedNormal], size, pairedSource);
+  assert.equal(pairedDocument.text,
+    String.raw`$N ( \mu = 0, \sigma = 1 )$ and $N ( \mu = 1 9, \sigma = 4 )$`,
+    'a source-confirmed conjunction between two expressions remains translatable prose');
+  assert.equal(pairedDocument.formulaCount, 2);
+  assert.deepEqual(pairedDocument.uncertainFormulaStarts,
+    mathRanges(pairedDocument.text).map((range) => range.start),
+    'both expressions in a low-confidence region remain independently reviewable');
+  assert.match(mergeFormulaDocument({ blocks: [] }, [pairedNormal], size).text, /\\mathrm.*a n d/,
+    'without source confirmation the recognizer must not restructure a mathematical region');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [formula], size,
     { blocks: [word('x.', 10, 24), word('•', 36, 5), word('label', 45, 30)] }).text, '$x$. • label',
   'a separate source bullet must survive punctuation deduplication');
