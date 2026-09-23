@@ -2567,11 +2567,13 @@ function registerIpcHandlers() {
     if (discardResult) {
       verificationApprovalRegistry.revokeSender(event.sender.id);
     }
+    const readingCaptureSettlement = readingPins?.cancelCapture(event.sender.id);
     const activeTasks = [
       providerConnectionInFlight ? providerConnectionTask : null,
       llmRequestInFlight ? llmRequestSettlement?.promise : null,
       verificationRequestInFlight ? verificationRequestSettlement?.promise : null,
       captureRequestInFlight ? captureRequestSettlement?.promise : null,
+      readingCaptureSettlement,
     ];
     providerConnectionAbortController?.abort();
     llmAbortController?.abort();
@@ -2873,7 +2875,7 @@ function registerIpcHandlers() {
       return { success: false, errorCode: 'screenshot-unsupported', error: 'Windows 预览暂不支持截图识字，请复制或粘贴文字开始阅读。' };
     }
     if (readingPins && store.getAllSettings().setupMode !== 'unconfigured') {
-      return readingPins.capture();
+      return readingPins.capture({ owner: event.sender.id });
     }
     if (providerConnectionInFlight || llmRequestInFlight || verificationRequestInFlight) {
       return userError(USER_ERRORS.SCREENSHOT_BUSY);
