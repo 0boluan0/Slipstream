@@ -170,7 +170,16 @@ function characterCandidates(ocr, size, formulas) {
       const y = Math.max(0, Math.floor((1 - source.y - source.h) * size.height));
       const right = Math.min(size.width, Math.ceil((source.x + source.w) * size.width));
       const bottom = Math.min(size.height, Math.ceil((1 - source.y) * size.height));
-      const box = { x, y, w: right - x, h: bottom - y };
+      const placeholder = /^[€&$]$/u.test(chars[i]);
+      let box = { x, y, w: right - x, h: bottom - y };
+      // On another macOS Vision build, one printed Ω became a narrow '$'
+      // box that excluded its right stroke. Restore only a modest glyph-width
+      // margin for OCR placeholders; wider crops can admit nearby punctuation.
+      if (placeholder && box.w < box.h * .6) {
+        const extra = Math.min(4, Math.ceil((box.h * .6 - box.w) / 2));
+        const left = Math.max(0, box.x - extra), widenedRight = Math.min(size.width, box.x + box.w + extra);
+        box = { ...box, x: left, w: widenedRight - left };
+      }
       // Vision's tall character box can overlap an already decoded formula
       // by just under the area threshold. Its center still identifies it as
       // the same printed glyph, so avoid emitting the formula twice.
@@ -182,7 +191,6 @@ function characterCandidates(ocr, size, formulas) {
       // A currency-shaped OCR placeholder in ordinary prose is more likely
       // to hide a missed math glyph than an English article. Check its pixels
       // first so slower machines do not exhaust the bounded recheck deadline.
-      const placeholder = /^[€&$]$/u.test(chars[i]);
       candidates.push({ ...box, priority: splitGlyph ? -2 : placeholder ? -1 : block.text.length <= 45 ? 0 : 1,
         rowLength: block.text.length });
     }

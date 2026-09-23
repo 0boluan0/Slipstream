@@ -232,6 +232,15 @@ app.whenReady().then(async () => {
     assert(split.formulas.some((formula) => formula.latex === '\\Omega'
       && Math.abs(formula.x - 272) < 4 && Math.abs(formula.y - 58) < 4),
     'two OCR characters occupying one printed math glyph must be checked against source pixels');
+    // A macOS CI Vision build called this same Omega '$' and supplied only
+    // the middle 12 of its roughly 18 printed pixels.
+    const narrowBox = { x: 273 / 650, y: 1 - 84 / 358, w: 12 / 650, h: 30 / 358 };
+    const narrow = await splitReader.recheckCharacters(image, { blocks: [{ text: '$', characters: [
+      { text: '$', boundingBox: narrowBox },
+    ] }] }, detected);
+    assert(narrow.formulas.some((formula) => formula.latex === '\\Omega'
+      && Math.abs(formula.x - 270) < 4 && Math.abs(formula.y - 54) < 4),
+    'a narrow OCR placeholder box must recover the complete printed math glyph');
   } finally { await splitReader.cleanup(); }
 
   for (const result of results) {
