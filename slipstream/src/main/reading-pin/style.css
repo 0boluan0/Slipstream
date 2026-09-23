@@ -72,9 +72,13 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 .lookup-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 #lookup-title { color: var(--muted); font-size: 11px; }
 #lookup-quote { margin: 0 0 8px; color: var(--accent); font: var(--reading-size)/1.6 Georgia, serif; overflow-wrap: anywhere; white-space: pre-wrap; }
+#lookup-basis { margin: 4px 0 6px; font-size: 11px; }
 .lookup-label { font-size: 10px; font-weight: 600; color: var(--muted); margin: 10px 0 4px; }
 #lookup-meaning { font-size: var(--reading-size); line-height: 1.8; overflow-wrap: anywhere; }
 #lookup-note { font-size: calc(var(--reading-size) - 1px); overflow-wrap: anywhere; }
+#lookup-evidence { margin-top: 8px; color: var(--muted); font-size: 11px; }
+#lookup-evidence summary { padding: 3px 0; color: var(--accent); }
+#lookup-evidence-quote { margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.5; }
 #lookup-notice { color: var(--muted); font-size: 12px; line-height: 1.7; }
 #lookup-retry { margin-top: 8px; }
 .text-button { padding: 5px 0; border: none; color: var(--accent); font-size: 11px; }

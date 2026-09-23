@@ -256,17 +256,33 @@ function render(next) {
   const lookup = state.lookup;
   byId('lookup-panel').hidden = !lookup && !state.lookupNotice;
   if (lookup || state.lookupNotice) {
-    if (!previousLookup || previousLookup.quote !== lookup?.quote) byId('lookup-panel').scrollTop = 0;
+    if (!previousLookup || previousLookup.quote !== lookup?.quote) {
+      byId('lookup-panel').scrollTop = 0;
+      byId('lookup-evidence').open = false;
+    }
     const contextual = lookup?.contextual ?? state.explainSupported;
     byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : lookup?.localCard ? '已存卡片 · 本地解释'
       : contextual ? '术语与词句解释' : '词句翻译';
     window.renderReadingMath(byId('lookup-quote'), lookup?.reference ? window.readingReferences.symbolText(lookup.quote) : lookup?.quote || '');
+    const showBasis = Boolean(contextual && !lookup?.reference && !lookup?.localCard && state.lookupStatus === 'done');
+    const basisLabels = {
+      defined: '原文给出定义（模型判断）',
+      contextual: '根据本段用法解释',
+      general: '通用释义 · 模型未找到原文定义',
+      unverified: '模型解释 · 原文依据未确认',
+    };
+    byId('lookup-basis').hidden = !showBasis;
+    byId('lookup-basis').textContent = showBasis ? basisLabels[lookup?.basis] || basisLabels.unverified : '';
     window.renderReadingMath(byId('lookup-meaning'), state.lookupStatus === 'loading' ? '正在结合这段原文解释…' : lookup?.meaning || '');
     byId('meaning-label').hidden = lookup?.reference || !contextual || state.lookupStatus !== 'done';
     byId('lookup-meaning').hidden = Boolean(lookup?.reference);
     byId('lookup-note').hidden = Boolean(lookup?.reference);
     window.renderReadingMath(byId('lookup-note'), lookup?.note || '');
     byId('note-label').hidden = lookup?.reference || !lookup?.note;
+    const showEvidence = showBasis && Boolean(lookup?.sourceQuote);
+    byId('lookup-evidence').hidden = !showEvidence;
+    byId('lookup-evidence').querySelector('summary').textContent = lookup?.basis === 'defined' ? '查看原文定义句' : '查看相关原文';
+    window.renderReadingMath(byId('lookup-evidence-quote'), showEvidence ? lookup.sourceQuote : '');
     byId('lookup-notice').hidden = !state.lookupNotice;
     byId('lookup-notice').textContent = state.lookupNotice || '';
     byId('lookup-retry').hidden = state.lookupStatus !== 'error' || !selected;
