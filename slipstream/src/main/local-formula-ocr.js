@@ -7,6 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { nativeImage } = require('electron');
 const manifest = require('./local-formula-models.json');
+const { proseSuperscript } = require('./formula-document');
 
 function cancelled(signal, deadline) {
   if (signal?.aborted) {
@@ -61,15 +62,15 @@ function detectBoxes(output, size) {
   // The published model labels display formulas 5 and inline formulas 15.
   for (let i = 0; i < data.length; i += 7) {
     const label = data[i], score = data[i + 1];
-    if ((label !== 5 && label !== 15) || score < .2) continue;
+    if ((label !== 5 && label !== 15) || score < .1) continue;
     const x = Math.max(0, Math.floor(data[i + 2] - margin) - 1);
     const y = Math.max(0, Math.floor(data[i + 3] - margin));
     const right = Math.min(size.width, Math.ceil(data[i + 4] - margin) + 1);
     const bottom = Math.min(size.height, Math.ceil(data[i + 5] - margin));
     const w = right - x, h = bottom - y;
-    // Isolated symbols receive weaker layout scores than equations. Only let
-    // compact inline candidates reach the recognizer at the lower threshold.
-    if (score < .3 && (label !== 15 || w > h * 2 || h > size.height * .12)) continue;
+    // Isolated symbols and short notation lists receive weaker layout scores
+    // than equations. Recognition below enforces their mathematical structure.
+    if (score < .3 && (label !== 15 || w > h * 6 || h > size.height * .12)) continue;
     if (w > 0 && h > 0) boxes.push({ x, y, w, h, score, display: label === 5 });
   }
   const selected = [];
@@ -93,6 +94,48 @@ function trimFormulaCrop(image) {
   if (left > right || top > bottom) return image;
   left = Math.max(0, left - 1); top = Math.max(0, top - 1);
   return image.crop({ x: left, y: top, width: Math.min(width - left, right - left + 2), height: Math.min(height - top, bottom - top + 2) });
+}
+
+function padFormulaCrop(image, ratio) {
+  const size = image.getSize(), margin = Math.max(1, Math.round(size.height * ratio));
+  const paddedSize = { width: size.width + margin * 2, height: size.height + margin * 2 };
+  const source = image.toBitmap(), pixels = Buffer.alloc(paddedSize.width * paddedSize.height * 4, 255);
+  for (let y = 0; y < size.height; y++) source.copy(pixels,
+    ((y + margin) * paddedSize.width + margin) * 4, y * size.width * 4, (y + 1) * size.width * 4);
+  return nativeImage.createFromBitmap(pixels, paddedSize);
+}
+
+function styledAtom(latex) {
+  // Both \\mathcal{H} and {\\mathcal H} denote the same single glyph.
+  const compact = latex.replace(/\\(mathcal|mathbb|mathfrak|mathscr)\s+([A-Za-z])\b/g, '\\$1{$2}')
+    .replace(/\s+/g, '').replace(/^\{(\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\})\}([,.;:!?]?)$/, '$1$2');
+  return /^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}[,.;:!?]?$/.test(compact) ? compact : null;
+}
+
+async function recognizeCrop(model, image, signal, deadline) {
+  cancelled(signal, deadline);
+  const encoded = await model.encoder.run({ pixel_values: rgbTensor(image, 384, true, model.ort) });
+  const ids = [1];
+  let confidence = 1;
+  for (let step = 0; step < 384; step++) {
+    cancelled(signal, deadline);
+    const output = await model.decoder.run({
+      input_ids: new model.ort.Tensor('int64', BigInt64Array.from(ids, BigInt), [1, ids.length]),
+      encoder_hidden_states: encoded.last_hidden_state,
+    });
+    const logits = output.logits.data, vocab = output.logits.dims[2], offset = logits.length - vocab;
+    let best = 0;
+    for (let i = 1; i < vocab; i++) if (logits[offset + i] > logits[offset + best]) best = i;
+    let sum = 0;
+    for (let i = 0; i < vocab; i++) sum += Math.exp(logits[offset + i] - logits[offset + best]);
+    confidence = Math.min(confidence, 1 / sum);
+    ids.push(best);
+    if (best === 2) break;
+  }
+  if (ids.at(-1) !== 2) throw new Error('formula-token-limit');
+  const latex = model.decode(ids);
+  if (!latex || latex.includes('�')) throw new Error('formula-invalid-latex');
+  return { latex, confidence };
 }
 
 // Decode the published ByteLevel tokenizer without importing a language-model
@@ -156,31 +199,39 @@ function createLocalFormulaOcr(modelDir) {
       for (const box of boxes) {
         cancelled(signal, deadline);
         const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
-        const pixels = rgbTensor(trimFormulaCrop(crop), 384, true, model.ort);
-        const encoded = await model.encoder.run({ pixel_values: pixels });
-        const ids = [1];
-        let confidence = 1;
-        for (let step = 0; step < 384; step++) {
-          cancelled(signal, deadline);
-          const output = await model.decoder.run({
-            input_ids: new model.ort.Tensor('int64', BigInt64Array.from(ids, BigInt), [1, ids.length]),
-            encoder_hidden_states: encoded.last_hidden_state,
-          });
-          const logits = output.logits.data, vocab = output.logits.dims[2], offset = logits.length - vocab;
-          let best = 0;
-          for (let i = 1; i < vocab; i++) if (logits[offset + i] > logits[offset + best]) best = i;
-          let sum = 0;
-          for (let i = 0; i < vocab; i++) sum += Math.exp(logits[offset + i] - logits[offset + best]);
-          confidence = Math.min(confidence, 1 / sum);
-          ids.push(best);
-          if (best === 2) break;
+        const trimmed = trimFormulaCrop(crop);
+        let { latex, confidence } = await recognizeCrop(model, trimmed, signal, deadline);
+        let agreedStyledAtom = false;
+        // Tight isolated glyphs can look like another font or letter when
+        // stretched to the model input. Recheck only uncertain styled atoms;
+        // two modest margins must agree in case, font and punctuation.
+        if (!box.display && box.w < box.h * 2 && box.h < size.height * .12 && confidence < .75
+          && /\\(?:boldsymbol|mathbf|mathcal|mathbb|mathfrak|mathscr)\b/.test(latex)) {
+          const first = await recognizeCrop(model, padFormulaCrop(trimmed, .1), signal, deadline);
+          const second = await recognizeCrop(model, padFormulaCrop(trimmed, .2), signal, deadline);
+          const atom = styledAtom(first.latex);
+          if (atom && atom === styledAtom(second.latex) && Math.min(first.confidence, second.confidence) >= .6
+            && Math.max(first.confidence, second.confidence) > confidence + .1) {
+            latex = atom;
+            confidence = Math.min(first.confidence, second.confidence);
+            agreedStyledAtom = true;
+          }
         }
-        if (ids.at(-1) !== 2) throw new Error('formula-token-limit');
-        const latex = model.decode(ids);
-        if (!latex || latex.includes('�')) throw new Error('formula-invalid-latex');
-        // A low layout score alone must not turn a prose word into mathematics.
-        // Require a confidently recognized Greek atom, based on its pixels.
-        if (box.score < .3 && (confidence < .75 || !/^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(?:[_^]\{[a-zA-Z0-9]+\})?[,.;:!?]?$/i.test(latex.replace(/\s+/g, '')))) continue;
+        // A weak detection is not enough to turn prose into mathematics. Admit
+        // only confident notation. Bare Latin atoms need stronger recognition;
+        // the English words a/A/I still belong to prose in this weak-layout path.
+        const compact = latex.replace(/\s+/g, '');
+        const greek = /^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(?:[_^]\{[a-zA-Z0-9]+\})?[,.;:!?]?$/i.test(compact);
+        const styled = /^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}[,.;:!?]?$/.test(compact);
+        const list = /^(?:[A-Za-z],){2,}[A-Za-z][.;:!?]?$/.test(compact);
+        const latin = /^[B-HJ-Zb-z][,.;:!?]?$/.test(compact);
+        const indexed = /^(?:[A-Za-z]|\d+)(?:[_^]\{[A-Za-z0-9+-]+\}){1,2}[,.;:!?]?$/.test(compact);
+        const annotatedProse = !box.display && confidence >= .99 && proseSuperscript(latex);
+        // The faintest layout candidates need near-certain short notation.
+        // Do not extend the lower detector floor to words or font guesses.
+        if (box.score < .12 && !(confidence >= .99 && (latin || indexed))) continue;
+        if (box.score < .3 && !(agreedStyledAtom || annotatedProse || confidence >= .75 && (greek || styled || list)
+          || confidence >= .95 && (latin || indexed))) continue;
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
       }
       // Mask only recognized regions; Vision will read the remaining prose.

@@ -277,7 +277,7 @@ async function main() {
     code: 'structured-output-invalid', backend: 'ollama', model: 'small-reasoning-model',
   });
   assert.equal(incompatibleRecovery.steps[0].action.value, 'provider-model-input');
-  assert.match(incompatibleRecovery.description, /结构与证据校验/);
+  assert.match(incompatibleRecovery.description, /中文译文或术语解释/);
 
   const generationRecovery = buildConnectionRecoveryPlan({
     code: 'generation-failed', backend: 'openai', model: 'test-model',
@@ -545,6 +545,11 @@ async function main() {
   assert.deepEqual(cancelled, { status: CONNECTION_STATUSES.FAILED, code: CONNECTION_CODES.CANCELLED });
 
   let compatibilityRequest;
+  const readingSample = { translation: '混杂变量同时影响处理与结果，关联并不意味着因果效应。',
+    meaning: '混杂变量会同时影响处理与结果。', note: '本段用它说明关联不足以确立因果效应。' };
+  const readingResponse = (options) => options.kind === 'lookup'
+    ? { lookup: { quote: options.selection, contextual: true, meaning: readingSample.meaning, note: readingSample.note } }
+    : { translation: readingSample.translation, terms: [] };
   const ready = await testProviderReadiness({
     activeBackend: 'ollama',
     activeModel: 'qwen2.5',
@@ -553,15 +558,15 @@ async function main() {
       status: CONNECTION_STATUSES.CONNECTED,
       code: CONNECTION_CODES.OK,
     }),
-    processText: async (options) => {
+    processReadingText: async (options) => {
       compatibilityRequest = options;
-      return compatibilityResponse(createCompatibilityCandidate());
+      return readingResponse(options);
     },
   });
-  assert.deepEqual(ready, { status: CONNECTION_STATUSES.CONNECTED, code: CONNECTION_CODES.OK });
-  assert.equal(compatibilityRequest.text, FULL_ANALYSIS_COMPATIBILITY_SOURCE);
-  assert.equal(compatibilityRequest.ignoreCustomPrompt, true);
-  assert.equal(compatibilityRequest.languageHint, 'en');
+  assert.deepEqual(ready, { status: CONNECTION_STATUSES.CONNECTED, code: CONNECTION_CODES.OK, sample: readingSample });
+  assert.equal(compatibilityRequest.text, require('../src/shared/reading-setup.mjs').READING_SETUP_SOURCE);
+  assert.equal(compatibilityRequest.kind, 'lookup');
+  assert.equal(compatibilityRequest.selection, 'confounder');
   assert.equal(FULL_ANALYSIS_COMPATIBILITY_SOURCE.includes('fictional'), true);
   assert.match(FULL_ANALYSIS_COMPATIBILITY_SOURCE, /Every name, organization, form, portal, and event[^.]+fictional/);
   assert.match(FULL_ANALYSIS_COMPATIBILITY_SOURCE,
@@ -1030,7 +1035,7 @@ async function main() {
       status: CONNECTION_STATUSES.FAILED,
       code: CONNECTION_CODES.UNAUTHORIZED,
     }),
-    processText: async () => {
+    processReadingText: async () => {
       generationCalls += 1;
       throw new Error('must not run');
     },
@@ -1048,10 +1053,10 @@ async function main() {
       status: CONNECTION_STATUSES.INCONCLUSIVE,
       code: CONNECTION_CODES.UNSUPPORTED,
     }),
-    processText: async () => compatibilityResponse(createCompatibilityCandidate(), 30),
+    processReadingText: async (options) => readingResponse(options),
   });
-  assert.deepEqual(customReady, { status: CONNECTION_STATUSES.CONNECTED, code: CONNECTION_CODES.OK },
-    'a real structured generation can prove custom-provider readiness even without a model-list endpoint');
+  assert.deepEqual(customReady, { status: CONNECTION_STATUSES.CONNECTED, code: CONNECTION_CODES.OK, sample: readingSample },
+    'reading generation can prove custom-provider readiness even without a model-list endpoint');
 
   const invalidStructuredOutput = await testFullAnalysisCompatibility({
     activeBackend: 'ollama', activeModel: 'reasoning-model',
@@ -1206,7 +1211,7 @@ async function main() {
       status: CONNECTION_STATUSES.INCONCLUSIVE,
       code: CONNECTION_CODES.UNSUPPORTED,
     }),
-    processText: async () => {
+    processReadingText: async () => {
       const error = new Error(redirectSensitiveValues.join(' '));
       error.code = CUSTOM_ENDPOINT_ERROR_CODES.REDIRECT_REJECTED;
       throw error;
@@ -1229,7 +1234,7 @@ async function main() {
       status: CONNECTION_STATUSES.CONNECTED,
       code: CONNECTION_CODES.OK,
     }),
-    processText: async () => { throw new Error('must not run'); },
+    processReadingText: async () => { throw new Error('must not run'); },
   });
   assert.deepEqual(cancelledReadiness, {
     status: CONNECTION_STATUSES.FAILED,
@@ -1265,7 +1270,8 @@ async function main() {
     compatibilityRedirectRejected,
     cancelledReadiness,
   ]) {
-    assert.deepEqual(Object.keys(result).sort(), ['code', 'status']);
+    assert.deepEqual(Object.keys(result).sort(), result === ready || result === customReady
+      ? ['code', 'sample', 'status'] : ['code', 'status']);
     assert.equal(JSON.stringify(result).includes('test-'), false, 'results must not expose keys or request metadata');
   }
 
@@ -1353,8 +1359,8 @@ async function main() {
     'readiness must use one stable settings snapshot for metadata and compatibility checks');
   assert.match(preloadSource, /'provider:connection-test'/);
   assert.match(preloadSource, /'provider:connection-cancel'/);
-  assert.match(rendererSource, /内置、虚构的英文测试文本/);
-  assert.match(rendererSource, /翻译、行动、术语、流程背景及其来源证据/);
+  assert.match(rendererSource, /内置的自拟英文段落/);
+  assert.match(rendererSource, /中文翻译和上下文术语解释/);
   assert.match(rendererSource, /不会发送截图、剪贴板、你的任务原文或高级分析说明/);
   assert.match(rendererSource, /在线服务可能产生少量调用费用/);
   assert.match(rendererSource, /取消测试/);
@@ -1394,7 +1400,7 @@ async function main() {
   assert.match(rendererSource, /handleCustomApiKeyChange[\s\S]*settings\.setupMode === SETUP_MODES\.FULL[\s\S]*SETUP_MODES\.UNCONFIGURED/,
     'saving a custom credential must leave full mode until the new configuration is retested');
   assert.match(rendererSource, /服务与模型验证通过/);
-  assert.match(rendererSource, /当前模型能力不兼容/);
+  assert.match(rendererSource, /试读结果暂时无法使用/);
   assert.match(rendererSource, /没有连接到本机 Ollama/);
   assert.match(rendererSource, /inputId="provider-connection-input"/);
   assert.match(rendererSource, /inputId="provider-model-input"/);

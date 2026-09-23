@@ -58,6 +58,9 @@ app.whenReady().then(async () => {
   let ocrOverride = null;
   let failMatching = '';
   let noTerms = false;
+  let ocrClipped = false;
+  let ocrBottomClipped = false;
+  let holdReview = false, resolveReview, reviewSignal;
   const provider = createReadingProcessor(async (...args) => {
     providerCalls += 1;
     if (held) {
@@ -67,13 +70,17 @@ app.whenReady().then(async () => {
     if (fail) throw new Error('fixture-provider-failure');
     if (failMatching && args[6].includes(failMatching)) throw new Error('fixture-paragraph-failure');
     const input = JSON.parse(args[4]);
+    if (input.candidates) {
+      if (holdReview) { reviewSignal = args[7]; return new Promise((resolve) => { resolveReview = resolve; }); }
+      return JSON.stringify({ keep: input.candidates.map((_quote, index) => index) });
+    }
     if (input.selection) return JSON.stringify({ quote: input.selection,
       meaning: input.selection === 'causation'
         ? '因果关系意味着改变一个因素，会引起另一个因素的变化。仅仅观察到两者一起变化，还不足以说明存在这种关系。'
         : '相关关系描述两个变量在统计上一起变化的程度；它本身不能说明一个变量导致了另一个变量。',
       note: '这段提到共同原因：两个变量可以受到同一个因素影响，因此一起变化，却没有直接的因果关系。' });
     if (args[3].includes('"translation"')) return JSON.stringify({ translation: chinese,
-      terms: noTerms ? [] : [{ quote: 'Correlation', label: '相关关系' }, { quote: 'causation', label: '因果关系' }] });
+      terms: noTerms ? [] : [{ quote: 'Correlation', label: '相关关系', role: 'core' }, { quote: 'causation', label: '因果关系', role: 'core' }] });
     return args[8] ? JSON.stringify({ terms: [{ quote: 'Correlation', explanation: '指变量一起变化的统计关系；这里没有据此断定因果。' }], sentences: [] }) : chinese;
   });
   manager = createReadingPins({ BrowserWindow, ipcMain, screen,
@@ -90,7 +97,12 @@ app.whenReady().then(async () => {
       return file;
     },
     performOCR: async (file, options) => {
-      if (ocrOverride) return { text: ocrOverride, confidence: .99, blocks: [{ text: ocrOverride, confidence: .99 }] };
+      if (ocrOverride) return { text: ocrOverride, confidence: .99, blocks: ocrClipped
+        ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
+        : ocrBottomClipped ? [{ text: ocrOverride, confidence: .99,
+          boundingBox: { x: .08, y: .0163, w: .8, h: .08 } }]
+        : [{ text: ocrOverride, confidence: .99 }] };
       if (!realOcrDone) {
         const result = await require('../src/main/ocr-service').performOCR(file, options);
         assert.match(result.text, /Correlation/);
@@ -109,7 +121,7 @@ app.whenReady().then(async () => {
   assert(!mainWindow.isVisible(), 'successful capture must leave the main workspace hidden');
   const first = cards()[0];
   await until(phaseIs(first, 'done'), 'first translated card');
-  assert.equal(providerCalls, 1);
+  assert.equal(providerCalls, 2, 'translation plus deletion-only term review');
   assert.equal((await stateOf(first)).translation, chinese);
   console.log('ok - native card with real Apple Vision OCR and a deterministic translation');
   assert(first.isAlwaysOnTop());
@@ -122,10 +134,13 @@ app.whenReady().then(async () => {
   await until(async () => Boolean((await stateOf(first)).explanations), 'source-grounded explanations');
   assert.equal((await stateOf(first)).explanations.terms.length, 1);
   console.log('ok - narrow IPC, blocked renderer network and source-matching explanations');
-  await first.webContents.executeJavaScript('document.querySelector(".term-chip").click()');
+  await first.webContents.executeJavaScript('document.querySelector(".term-chip").focus(); document.querySelector(".term-chip").click()');
   await until(async () => (await stateOf(first)).lookupStatus === 'done', 'one-click concept explanation');
   assert.equal((await stateOf(first)).lookup.quote, 'Correlation');
   assert.match((await stateOf(first)).lookup.meaning, /一起变化/);
+  await first.webContents.executeJavaScript('document.getElementById("lookup-close").click()');
+  await until(() => first.webContents.executeJavaScript('document.activeElement.classList.contains("term-chip")'), 'return focus to the concept button');
+  await first.webContents.executeJavaScript('document.querySelector(".term-chip").click()');
   const cachedCalls = providerCalls;
   await first.webContents.executeJavaScript('document.querySelector(".term-chip").click()');
   await pause(50);
@@ -278,6 +293,34 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeRetry + 1);
   manager.clear();
   noTerms = true;
+  ocrOverride = '框选一段，译文贴在屏幕旁 Option+Shift+S';
+  const beforeOwnUi = providerCalls;
+  await manager.capture();
+  const ownUi = cards()[0];
+  await until(phaseIs(ownUi, 'review'), 'self UI screenshot review');
+  assert.match((await stateOf(ownUi)).notice, /选区似乎包含 Slipstream 窗口/);
+  assert.equal(providerCalls, beforeOwnUi, 'capturing Slipstream chrome must not automatically transmit OCR text');
+  manager.clear();
+  ocrClipped = true;
+  ocrOverride = 'Given an ensemble of classifiers and a training set\nThe margin measures the extent of the correct vote';
+  const beforeClipped = providerCalls;
+  await manager.capture();
+  const clipped = cards()[0];
+  await until(phaseIs(clipped, 'review'), 'right-edge cropped prose review');
+  assert.match((await stateOf(clipped)).notice, /右侧可能截断/);
+  assert.equal(providerCalls, beforeClipped, 'cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrClipped = false;
+  ocrBottomClipped = true;
+  ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
+  const beforeBottom = providerCalls;
+  await manager.capture();
+  const bottom = cards()[0];
+  await until(phaseIs(bottom, 'review'), 'bottom-edge cropped prose review');
+  assert.match((await stateOf(bottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforeBottom, 'bottom-edge cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrBottomClipped = false;
   ocrOverride = 'The next section describes the results.';
   const beforePlain = providerCalls;
   await manager.capture();
@@ -294,6 +337,39 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforePlain + 2, 'only manual selection should request an explanation');
   manager.clear();
   console.log('ok - no automatic terms leaves a clean translation and preserves manual lookup');
+  noTerms = false;
+  holdReview = true;
+  manager.openText(english);
+  const reviewing = cards()[0];
+  await until(() => Boolean(resolveReview), 'held concept review');
+  const early = await stateOf(reviewing);
+  assert.equal(early.translation, chinese, 'a pending recommendation review must not delay the translation');
+  assert.equal(early.segments[0].termsStatus, 'reviewing');
+  assert.deepEqual(early.segments[0].terms, []);
+  copied = '';
+  assert(await reviewing.webContents.executeJavaScript('!document.getElementById("copy").disabled'));
+  await action(reviewing, 'copy');
+  assert.equal(copied, chinese, 'a complete translation can be copied while optional suggestions are pending');
+  assert(await reviewing.webContents.executeJavaScript('document.querySelector(".translation-paragraph").textContent.length > 0'));
+  await action(reviewing, 'lookup', { revision: early.revision, segmentId: 0, start: 0, end: 'Correlation'.length });
+  assert.equal((await stateOf(reviewing)).lookupStatus, 'done', 'manual lookup remains usable while suggestions are being reviewed');
+  resolveReview('not a valid review');
+  await until(phaseIs(reviewing, 'done'), 'review failure still completes translation');
+  assert.equal((await stateOf(reviewing)).translation, chinese);
+  assert(await reviewing.webContents.executeJavaScript('!document.querySelector(".terms-notice").hidden'));
+  manager.clear();
+  resolveReview = null;
+  manager.openText(english);
+  const abandonedReview = cards()[0];
+  await until(() => Boolean(resolveReview), 'second concept review');
+  const finishAbandoned = resolveReview;
+  void action(abandonedReview, 'close').catch(() => {});
+  await until(() => abandonedReview.isDestroyed(), 'close during concept review');
+  assert(reviewSignal.aborted);
+  finishAbandoned('{"keep":[0]}');
+  await pause(60);
+  assert.equal(cards().length, 0, 'a late review cannot reopen a closed pin');
+  console.log('ok - translation arrives before term review; review failure and cancellation preserve reading behavior');
   assert(!fs.readdirSync(work).some((file) => /^capture-.*\.png$/.test(file)), 'temporary captures must be removed');
   console.log('Reading cards native checks passed: real Apple Vision OCR, rendered local source, independent cards, resize/move/pin, low-confidence gate, provider retry, cancellation, late-result suppression, settings changes, sandbox and close cleanup. Translation responses were deterministic fixtures; native screen selection and live translation were not exercised by this test.');
   manager.dispose();

@@ -16,6 +16,12 @@ function referenceKey(value) {
     .replace(/^\\\(([\s\S]*)\\\)$/u, '$1').replace(/^\\\[([\s\S]*)\\\]$/u, '$1')
     .replace(/\p{Script=Greek}/gu, (letter) => greek[letter] ? `\\${greek[letter]}` : letter)
     .replace(/[₀₁₂₃₄₅₆₇₈₉ᵢⱼₙₖ]+/gu, (run) => `_{${[...run].map((letter) => subvalues[subscripts.indexOf(letter)]).join('')}}`)
+    .replace(/\\bf\s+([A-Za-z])\b/gu, '\\mathbf{$1}')
+    .replace(/\\(mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\s+([A-Za-z])\b/gu, '\\$1{$2}')
+    // Formula OCR inserts spaces around commands and braces. They do not
+    // change the symbol; keep command boundaries and inner names intact.
+    .replace(/\\(mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\s*\{\s*([^{}]*?)\s*\}/gu, '\\$1{$2}')
+    .replace(/([_^])\s*\{\s*([^{}]*?)\s*\}/gu, '$1{$2}')
     .replace(/([_^])\{([^{}])\}/gu, '$1$2')
     .replace(/\s*([_^])\s*/gu, '$1')
     .replace(/\s+/gu, ' ').trim();

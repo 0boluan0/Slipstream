@@ -165,7 +165,11 @@ window.readingReferences = (() => {
       if (lookup?.reference) {
         const definitions = lookup.definitions || [];
         if (!definitions.length) $('lookup-references').append(node('p', 'muted', '本文尚未留下这个符号的定义。可以截取定义所在段落，或手动记下。'));
-        if (definitions.length > 1) $('lookup-references').append(node('p', 'muted', '这个符号有多处定义，请结合适用位置和原文核对。'));
+        const savedCount = definitions.filter((entry) => !entry.pending).length;
+        const pendingCount = definitions.length - savedCount;
+        if (savedCount > 1) $('lookup-references').append(node('p', 'muted', '这个符号有多处已保存的定义，请结合适用位置和原文核对。'));
+        else if (savedCount && pendingCount) $('lookup-references').append(node('p', 'muted', '已保存的定义在前；本段另有待核对的候选。'));
+        else if (pendingCount > 1) $('lookup-references').append(node('p', 'muted', '本段找到多条候选定义，留下前请核对原文。'));
         $('lookup-references').append(...definitions.map((entry) => entryNode(entry, false, true)));
       }
     }

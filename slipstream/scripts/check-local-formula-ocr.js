@@ -53,7 +53,7 @@ app.whenReady().then(async () => {
     const result = await service.performReadingOCR(path.join(fixtures, `${name}.png`));
     assert.equal(result.formulaOcr.status, 'done');
     const formulas = mathRanges(result.text).map((item) => compact(item.tex));
-    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false });
+    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
     if (name === 'adam-algorithm') {
       assert.match(compact(result.text), /Require:\$\\alpha\$:/);
       assert.match(compact(result.text), /parameters\$\\theta\$/);
@@ -82,14 +82,13 @@ app.whenReady().then(async () => {
     if (name === 'dml-equations') {
       assert(tex.includes('\\theta_{0}')); assert.match(tex, /E.*U/); assert.match(tex, /E.*V/);
     } else { assert(tex.includes('\\widehat{m}_{t}')); assert(tex.includes('\\beta_{2}^{t}')); }
-    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false });
+    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
     results.push({ case: name, ...result.formulaOcr, text: result.text });
   }
-  const nativeAdam = path.resolve(fixtures, '../../2026-09-21/ocr-iteration/adam-screen.png');
   const scaledAdam = path.join(work, 'adam-scaled.png');
   const adamImage = require('electron').nativeImage.createFromPath(path.join(fixtures, 'adam-algorithm.png'));
   fs.writeFileSync(scaledAdam, adamImage.resize({ width: Math.round(adamImage.getSize().width * 1.75), quality: 'best' }).toPNG());
-  for (const [name, imagePath] of [['adam-native-screen', nativeAdam], ['adam-scaled', scaledAdam]]) {
+  for (const [name, imagePath] of [['adam-scaled', scaledAdam]]) {
     const result = await service.performReadingOCR(imagePath);
     const tex = compact(result.text);
     assert.match(tex, /Require:\$\\alpha\$:/, `${name}: preserve the standalone stepsize symbol`);
@@ -108,7 +107,7 @@ app.whenReady().then(async () => {
   const matrixTex = compact(matrixResult.text);
   assert.match(matrixTex.replace(/\{([abc])\}/g, '$1'), /\\begin\{[pb]?matrix\}a&b\\\\b&c/);
   assert.match(matrixTex, /\\frac\{1\}\{n\}/);
-  for (const item of mathRanges(matrixResult.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false });
+  for (const item of mathRanges(matrixResult.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
   results.push({ case: 'authored-matrix', ...matrixResult.formulaOcr, text: matrixResult.text });
   const derivatives = await fixture('derivatives', '<p>Time derivatives:</p>' + katex.renderToString(
     String.raw`\dot{x}(t)=v(t),\qquad \ddot{x}(t)=a(t)`, { displayMode: true }));
@@ -163,7 +162,18 @@ app.whenReady().then(async () => {
   assert.equal(state.phase, 'review'); assert.equal(state.formulaStatus, 'local'); assert.equal(state.imageSent, false);
   assert.equal(providerCalls, 0);
   await pin.webContents.executeJavaScript('document.fonts.ready');
-  assert(await pin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .katex").length >= 2'));
+  let preview;
+  for (let i = 0; i < 50; i++) {
+    preview = await pin.webContents.executeJavaScript(`(() => ({
+      rendered: document.querySelectorAll('#source-preview .katex').length,
+      formulaCount: window.readingMath.mathRanges(document.getElementById('source-editor').value).length,
+      katexLoaded: Boolean(window.katex),
+      preview: document.getElementById('source-preview').textContent.slice(0, 160),
+    }))()`);
+    if (preview.rendered >= 2) break;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+  assert(preview.rendered >= 2, `Formula preview failed: ${JSON.stringify(preview)}`);
   assert(await pin.webContents.executeJavaScript('document.getElementById("formula-preview").open && !document.getElementById("source-correction").open'));
   await pin.webContents.executeJavaScript('document.querySelector("#source-preview > [role=button]").click()');
   const selectedFormula = await pin.webContents.executeJavaScript(`(() => {

@@ -60,7 +60,7 @@ The installers include [local formula OCR](./docs/local-formula-ocr.md): special
 
 Apple Vision normally recognizes screenshots on your Mac. Suspected mathematical OCR enters an editable review. A supported DeepSeek configuration additionally offers explicit image-based formula transcription: the app names the destination, sends the current screenshot only on that action, and asks you to check the transcription before translation.
 
-The selected provider receives submitted text for translation and selected phrases with the current reading context for explanations. Local Ollama uses a loopback endpoint; a custom local service may independently forward requests. Temporary reading windows do not create automatic source history. Explicitly saved cards include their source passage, and macOS controls any Documents-folder synchronization.
+The selected provider receives submitted text for translation. Multiple term candidates receive one additional brief review by the same provider while the translation is already visible. Selected phrases and the current reading context are sent on demand for explanations. Local Ollama uses a loopback endpoint; a custom local service may independently forward requests. Temporary reading windows do not create automatic source history. Explicitly saved cards include their source passage, and macOS controls any Documents-folder synchronization.
 
 Clipboard monitoring is off by default and requires destination-specific confirmation. While enabled, the interface and macOS menu keep the destination and an off action visible. API keys use macOS encrypted storage. Slipstream has no accounts, ads, or product analytics. Read the [privacy and data-flow guide](./docs/PRIVACY.md).
 

@@ -1,11 +1,32 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 4
+let OCR_VERSION = 6
 
 import Vision
 import AppKit
 import Foundation
+import CoreGraphics
+
+struct FrontWindow: Codable {
+    let bundleId: String
+    let title: String
+}
+
+func frontWindow() -> FrontWindow? {
+    guard let app = NSWorkspace.shared.frontmostApplication,
+          let bundleId = app.bundleIdentifier,
+          let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] else { return nil }
+    for window in windows {
+        guard (window[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier,
+              (window[kCGWindowLayer as String] as? Int) == 0,
+              let title = window[kCGWindowName as String] as? String,
+              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+        return FrontWindow(bundleId: bundleId, title: title)
+    }
+    return nil
+}
 
 // MARK: - JSON output structures
 
@@ -52,6 +73,10 @@ struct Output: Codable {
 // MARK: - Entry point
 
 func main() {
+    if CommandLine.arguments.dropFirst().first == "--front-window" {
+        print(encodeJSON(frontWindow()))
+        return
+    }
     guard CommandLine.arguments.count > 1 else {
         let output = Output(error: "No image path provided")
         print(encodeJSON(output))
@@ -71,6 +96,30 @@ func main() {
         let output = Output(error: "Failed to convert NSImage to CGImage")
         print(encodeJSON(output))
         exit(1)
+    }
+
+    // Tight reading captures can make Vision drop letters at the page edge.
+    // Give the text detector breathing room, then map every box back to the
+    // original screenshot so inline formula replacement still uses its pixels.
+    var recognitionImage = cgImage
+    var margin = 0
+    if CommandLine.arguments.contains("--pad-edges") {
+        let padding = max(8, Int((Double(cgImage.width) * 0.025).rounded()))
+        if let context = CGContext(data: nil, width: cgImage.width + padding * 2,
+            height: cgImage.height + padding * 2, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: context.width, height: context.height))
+            context.draw(cgImage, in: CGRect(x: padding, y: padding, width: cgImage.width, height: cgImage.height))
+            if let padded = context.makeImage() { recognitionImage = padded; margin = padding }
+        }
+    }
+    func sourceBox(_ rect: CGRect) -> BoundingBox {
+        let x = Double(rect.minX) * Double(recognitionImage.width) - Double(margin)
+        let y = Double(rect.minY) * Double(recognitionImage.height) - Double(margin)
+        return BoundingBox(x: x / Double(cgImage.width), y: y / Double(cgImage.height),
+            w: Double(rect.width) * Double(recognitionImage.width) / Double(cgImage.width),
+            h: Double(rect.height) * Double(recognitionImage.height) / Double(cgImage.height))
     }
 
     let request = VNRecognizeTextRequest { request, error in
@@ -97,12 +146,7 @@ func main() {
             let confidence = Double(topCandidate.confidence)
             let box = observation.boundingBox
 
-            let boundingBox = BoundingBox(
-                x: Double(box.origin.x),
-                y: Double(box.origin.y),
-                w: Double(box.size.width),
-                h: Double(box.size.height)
-            )
+            let boundingBox = sourceBox(box)
 
             // Formula masking can leave two prose fragments in one Vision line.
             // Character positions let the caller insert inline LaTeX between them.
@@ -112,8 +156,7 @@ func main() {
                 for index in text.indices {
                     let end = text.index(after: index)
                     guard let rect = try? topCandidate.boundingBox(for: index..<end)?.boundingBox else { continue }
-                    characters?.append(CharacterBox(text: String(text[index]), boundingBox: BoundingBox(
-                        x: Double(rect.minX), y: Double(rect.minY), w: Double(rect.width), h: Double(rect.height))))
+                    characters?.append(CharacterBox(text: String(text[index]), boundingBox: sourceBox(rect)))
                 }
             }
 
@@ -155,7 +198,7 @@ func main() {
         request.recognitionLanguages = ["en-US", "zh-Hans", "zh-Hant", "ja-JP", "ko-KR"]
     }
 
-    let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    let handler = VNImageRequestHandler(cgImage: recognitionImage, options: [:])
 
     do {
         try handler.perform([request])

@@ -6,6 +6,7 @@ const {
   testProviderConnection,
 } = require('./provider-connection');
 const { CUSTOM_ENDPOINT_ERROR_CODES } = require('./custom-endpoint-fetch');
+const { READING_SETUP_SOURCE, READING_SETUP_SELECTION, readingSetupSample } = require('../shared/reading-setup.mjs');
 
 const COMPATIBILITY_PROCESS_SENTENCE = 'At the fictional Alderbridge Institute, the invented Northstar Intake is an institutional filing process: applicants must submit the signed Wren-7 Intake Form through the LanternGate portal, and the portal receipt is the process record confirming that the submission entered the intake.';
 const COMPATIBILITY_PROCESS_REASON_SENTENCE = 'The LanternGate portal receipt matters because it is the Northstar Intake process record confirming that the submission entered the intake.';
@@ -423,16 +424,64 @@ async function testFullAnalysisCompatibility(settings, dependencies = {}) {
 }
 
 async function testProviderReadiness(settings, dependencies = {}) {
-  const signal = dependencies.signal;
+  const parentSignal = dependencies.signal;
+  if (parentSignal?.aborted) return failed(CONNECTION_CODES.CANCELLED);
+  const controller = new AbortController();
+  const signal = controller.signal;
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, dependencies.timeoutMs ?? 60000);
+  const cancel = () => { clearTimeout(timer); controller.abort(); };
+  parentSignal?.addEventListener('abort', cancel, { once: true });
+  const stopped = () => failed(timedOut ? CONNECTION_CODES.TIMEOUT : CONNECTION_CODES.CANCELLED);
   const connectionTest = dependencies.testProviderConnection || testProviderConnection;
-  const metadataResult = await connectionTest(settings, {
-    ...(dependencies.connectionDependencies || {}),
-    signal,
-  });
-  if (signal?.aborted) return failed(CONNECTION_CODES.CANCELLED);
-  if (metadataResult?.status === CONNECTION_STATUSES.FAILED) return metadataResult;
-
-  return testFullAnalysisCompatibility(settings, dependencies);
+  const processReadingText = dependencies.processReadingText || LLMService.processReadingText;
+  try {
+    const metadataResult = await connectionTest(settings, {
+      ...(dependencies.connectionDependencies || {}),
+      signal,
+    });
+    if (signal.aborted) return stopped();
+    // Providers can accept aliases that their model catalogue omits. Let the
+    // actual reading request decide; credential and endpoint failures still stop.
+    if (metadataResult?.status === CONNECTION_STATUSES.FAILED
+      && metadataResult.code !== CONNECTION_CODES.MODEL_NOT_FOUND) return metadataResult;
+    const translated = await processReadingText({
+      text: READING_SETUP_SOURCE,
+      kind: 'translate',
+      withTerms: true,
+      settingsSnapshot: settings,
+      signal,
+    });
+    if (signal.aborted) return stopped();
+    const explained = await processReadingText({
+      text: READING_SETUP_SOURCE,
+      kind: 'lookup',
+      selection: READING_SETUP_SELECTION,
+      settingsSnapshot: settings,
+      signal,
+    });
+    if (signal.aborted) return stopped();
+    const sample = readingSetupSample({
+      translation: translated?.translation,
+      meaning: explained?.lookup?.meaning,
+      note: explained?.lookup?.note,
+    });
+    if (!sample || !Array.isArray(translated?.terms)
+      || explained?.lookup?.quote !== READING_SETUP_SELECTION
+      || explained?.lookup?.contextual !== true) {
+      return failed(CONNECTION_CODES.STRUCTURED_OUTPUT_INVALID);
+    }
+    return { ...connected(), sample };
+  } catch (error) {
+    if (signal.aborted) return stopped();
+    if (error instanceof SyntaxError || error?.message === 'reading-invalid-output') {
+      return failed(CONNECTION_CODES.STRUCTURED_OUTPUT_INVALID);
+    }
+    return failed(compatibilityErrorCode(error, signal, settings?.activeBackend));
+  } finally {
+    clearTimeout(timer);
+    parentSignal?.removeEventListener('abort', cancel);
+  }
 }
 
 module.exports = {
