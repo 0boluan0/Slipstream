@@ -13,6 +13,22 @@ const OCR_SCRIPT = app.isPackaged
 const formulaOcr = createLocalFormulaOcr(app.isPackaged
   ? path.join(process.resourcesPath, 'formula-models') : path.join(APP_ROOT, 'formula-models'));
 
+function frontmostDocumentWindow() {
+  if (process.platform !== 'darwin') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let environment;
+    try { environment = createOcrEnvironment(path.join(app.getPath('userData'), 'ocr-cache')); }
+    catch { resolve(null); return; }
+    execFile('/bin/bash', [OCR_SCRIPT, '--front-window'], {
+      timeout: 20000, maxBuffer: 4096, env: environment,
+    }, (error, stdout) => {
+      if (error) { resolve(null); return; }
+      try { resolve(JSON.parse(stdout.trim())); }
+      catch { resolve(null); }
+    });
+  });
+}
+
 /**
  * Clean raw OCR text by normalizing whitespace and removing garbage.
  * @param {string} rawText
@@ -34,7 +50,7 @@ function cleanOcrText(rawText) {
  * @param {string} imagePath - Absolute path to the image file.
  * @returns {Promise<{text: string, confidence: number, blocks: Array}>}
  */
-function performOCR(imagePath, { signal, characters = false } = {}) {
+function performOCR(imagePath, { signal, characters = false, padEdges = false } = {}) {
   return new Promise((resolve, reject) => {
     const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
     let settled = false;
@@ -63,7 +79,7 @@ function performOCR(imagePath, { signal, characters = false } = {}) {
       finish(reject, error);
       return;
     }
-    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath, ...(characters ? ['--characters'] : [])], {
+    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath, ...(characters ? ['--characters'] : []), ...(padEdges ? ['--pad-edges'] : [])], {
       timeout: 15000,
       maxBuffer: 8 * 1024 * 1024,
       env: environment,
@@ -126,12 +142,21 @@ async function performReadingOCR(imagePath, { signal } = {}) {
   try {
     const maskedPath = path.join(temporary, 'prose.png');
     await fs.writeFile(maskedPath, recognized.masked, { mode: 0o600 });
-    const prose = await performOCR(maskedPath, { signal, characters: true });
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, original);
+    const [prose, edges] = await Promise.all([
+      performOCR(maskedPath, { signal, characters: true }),
+      // A second layout may recover a clipped edge word, but must not replace
+      // whole sentences: padding can also make correct OCR worse elsewhere.
+      performOCR(imagePath, { signal, characters: true, padEdges: true }).catch((error) => {
+        if (signal?.aborted || error?.isCancellation) throw error;
+        return null;
+      }),
+    ]);
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, original, edges);
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
         uncertain: document.uncertainFormulaCount,
+        uncertainStarts: document.uncertainFormulaStarts,
         milliseconds: recognized.milliseconds } };
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 }
@@ -145,6 +170,7 @@ function cleanup() {
 }
 
 module.exports = {
+  frontmostDocumentWindow,
   performOCR,
   performReadingOCR,
   cleanup,

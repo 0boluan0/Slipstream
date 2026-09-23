@@ -2915,11 +2915,13 @@ app.on('ready', () => {
       clipboard.writeText(text);
     },
     saveTermCard: (input) => termCardStore.save(input),
+    findTermCard: (input) => termCardStore.findMatching(input),
     referenceStore: createReadingReferenceStore(path.join(app.getPath('documents'), 'Slipstream', '本文速查')),
     onOpenLibrary: (id) => termLibrary.open(id),
     getSettings: () => store.isStoreReady() ? store.getAllSettings() : null,
     getMainWindow: () => mainWindow,
     captureRegion: ScreenshotService.captureSelectedRegion,
+    getCaptureWindow: OCRService.frontmostDocumentWindow,
     performOCR: OCRService.performReadingOCR,
     processReadingText: LLMService.processReadingText,
     recognizeReadingFormulas: LLMService.recognizeReadingFormulas,
