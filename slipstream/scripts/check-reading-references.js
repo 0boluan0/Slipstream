@@ -9,8 +9,18 @@ const { referenceKey, referenceCandidateKey, referenceCandidateCovered, evidence
   preferExplicitReferenceCandidates, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { matchesReferenceSearch } = require('../src/shared/reading-notation.cjs');
+const { captureSource, paperForCapture, titleForCapture } = require('../src/main/reading-capture-source');
 
 async function main() {
+  const calibrationWindow = captureSource({ bundleId: 'com.apple.Preview', title: 'calibration.pdf' });
+  const simclrWindow = captureSource({ bundleId: 'com.apple.Preview', title: 'simclr.pdf' });
+  assert(calibrationWindow && simclrWindow && calibrationWindow.key !== simclrWindow.key);
+  assert.equal(captureSource({ bundleId: 'com.apple.Preview', title: 'Slipstream · 阅读卡片' }), null);
+  assert.equal(titleForCapture(simclrWindow), 'simclr');
+  assert.equal(paperForCapture({ activePaperId: 'old', papers: [{ id: 'old', sourceKey: calibrationWindow.key }] }, simclrWindow), null,
+    'a new document cannot inherit the previous paper by active selection');
+  assert.equal(paperForCapture({ activePaperId: 'old', papers: [{ id: 'old', sourceKey: calibrationWindow.key }] }, null), null,
+    'an unidentifiable screenshot must not reuse the prior paper');
   assert.equal(referenceKey('$x_{i}$'), referenceKey('x_i'));
   assert.equal(referenceKey('xᵢ'), referenceKey('x_i'));
   assert.equal(referenceKey('λ'), referenceKey('\\lambda'));
@@ -181,6 +191,15 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
     const a = await store.create('论文 A');
     const b = await store.create('论文 B');
     await store.select(a.id);
+    await store.select(a.id, calibrationWindow.key);
+    assert.equal(paperForCapture(await store.read(), calibrationWindow), a.id);
+    assert.equal(paperForCapture(await store.read(), simclrWindow), null);
+    await store.select(b.id, calibrationWindow.key);
+    assert.equal(paperForCapture(await store.read(), calibrationWindow), b.id, 'one window belongs to one paper');
+    assert.equal((await store.read()).papers.find((paper) => paper.id === a.id).sourceKey, undefined);
+    await store.select(a.id, calibrationWindow.key);
+    await assert.rejects(store.select(b.id, 'bad-key'), /reference-invalid-source/);
+    assert.equal((await store.read()).activePaperId, a.id, 'invalid source must not change selection');
     const saved = await store.add(a.id, definition);
     const duplicate = await store.add(a.id, { ...definition, meaning: '重新措辞' });
     assert.equal(duplicate.id, saved.id, 'the same source definition should not accumulate copies');

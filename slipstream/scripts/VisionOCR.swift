@@ -1,11 +1,32 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 5
+let OCR_VERSION = 6
 
 import Vision
 import AppKit
 import Foundation
+import CoreGraphics
+
+struct FrontWindow: Codable {
+    let bundleId: String
+    let title: String
+}
+
+func frontWindow() -> FrontWindow? {
+    guard let app = NSWorkspace.shared.frontmostApplication,
+          let bundleId = app.bundleIdentifier,
+          let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] else { return nil }
+    for window in windows {
+        guard (window[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier,
+              (window[kCGWindowLayer as String] as? Int) == 0,
+              let title = window[kCGWindowName as String] as? String,
+              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+        return FrontWindow(bundleId: bundleId, title: title)
+    }
+    return nil
+}
 
 // MARK: - JSON output structures
 
@@ -52,6 +73,10 @@ struct Output: Codable {
 // MARK: - Entry point
 
 func main() {
+    if CommandLine.arguments.dropFirst().first == "--front-window" {
+        print(encodeJSON(frontWindow()))
+        return
+    }
     guard CommandLine.arguments.count > 1 else {
         let output = Output(error: "No image path provided")
         print(encodeJSON(output))

@@ -12,6 +12,7 @@ const { processingLocationForSettings } = require('../shared/endpoint-location.c
 const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation');
 const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms } = require('./reading-document');
 const { referenceKey, referenceCandidateKey, referenceCandidateCovered, preferExplicitReferenceCandidates, referenceOccurrences, isNotation } = require('./reading-references');
+const { captureSource, paperForCapture, titleForCapture } = require('./reading-capture-source');
 
 const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
 const ENTRY_URL = pathToFileURL(ENTRY).href;
@@ -66,7 +67,7 @@ function readingDestination(settings) {
 }
 
 function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMainWindow,
-  captureRegion, performOCR, processReadingText, recognizeReadingFormulas, requestCapturePermission, canCapture = () => true,
+  captureRegion, getCaptureWindow = async () => null, performOCR, processReadingText, recognizeReadingFormulas, requestCapturePermission, canCapture = () => true,
   captureAppName = 'Slipstream', captureSupported = true,
   copyText = () => {}, saveTermCard, findTermCard, referenceStore, onOpenLibrary = () => {}, onOpenSettings = () => {}, onError = () => {}, classifyError = () => '处理没有完成，请重试或检查设置。' }) {
   const pins = new Map();
@@ -184,7 +185,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     for (const other of pins.values()) if (other.view.referenceOnly) publish(other);
   }
 
-  function createPin(image, referenceOnly = false, paperId = referenceData.activePaperId) {
+  function createPin(image, referenceOnly = false, paperId = referenceData.activePaperId, source = null) {
     const point = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(point);
     const window = new BrowserWindow({
@@ -201,6 +202,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       },
     });
     const pin = { id: window.webContents.id, window, ready: false, revision: 0, generation, controller: null,
+      captureSource: source, referenceNotice: source && !paperId ? '检测到新文档。这张截图先作为临时阅读；选中或新建阅读后，下次截图会自动找回。' : '',
       lookupController: null, lookupCache: new Map(), lookupSequence: 0, manuallyResized: false, fitted: false,
       view: { phase: referenceOnly ? 'references' : 'ocr', referenceOnly, paperId, image, sourceText: '', translation: '', explanations: null,
         segments: [], lookup: null, lookupStatus: '', lookupNotice: '', saveStatus: '', savedCardId: null, collapsed: false,
@@ -246,7 +248,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       meaning: only?.meaning || '', note: only?.scope || '', referenceSource: only?.source || '' };
   }
 
-  async function openReferences(paperId, draft) {
+  async function openReferences(paperId, draft, source = null) {
     if (!referenceStore || disposed || !canCapture()) return false;
     await referencesReady;
     if (disposed) return false;
@@ -254,9 +256,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     let pin = [...pins.values()].find((item) => item.view.referenceOnly && item.view.paperId === selectedPaper);
     if (!pin) {
       if (pins.size >= MAX_PINS) { onError('请先关闭一张不用的卡片，再打开本文速查。'); return false; }
-      pin = createPin(null, true, selectedPaper);
+      pin = createPin(null, true, selectedPaper, source);
       pin.paperChosen = true;
     }
+    if (source) pin.captureSource = source;
     if (draft) pin.referenceDraft = { ...draft, token: Date.now() };
     publish(pin);
     if (pin.ready) pin.window.show();
@@ -268,11 +271,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     await referencesReady;
     if (!alive(pin)) return false;
     try {
-      if (action === 'reference-open') return openReferences(pin.view.paperId);
+      if (action === 'reference-open') return openReferences(pin.view.paperId, null, pin.captureSource);
       if (action === 'reference-draft') {
         const lookup = pin.view.lookup;
         return openReferences(pin.view.paperId, { symbol: lookup?.quote || '', meaning: lookup?.meaning || '',
-          source: pin.view.sourceText, evidence: '', scope: '', origin: 'manual' });
+          source: pin.view.sourceText, evidence: '', scope: '', origin: 'manual' }, pin.captureSource);
       }
       if (action === 'reference-refresh') { await refreshReferences(); return true; }
       if (action === 'paper-undo') {
@@ -286,11 +289,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       }
       if (action === 'paper-create' || action === 'paper-select') {
         if (action === 'paper-create') {
-          const name = payload.title || `阅读 · ${new Date().toLocaleDateString('zh-CN')}`;
-          const paper = await referenceStore.create(name);
+          const name = payload.title || titleForCapture(pin.captureSource);
+          const paper = await referenceStore.create(name, pin.captureSource?.key);
           pin.view.paperId = paper.id;
         } else {
-          await referenceStore.select(payload.paperId || null);
+          await referenceStore.select(payload.paperId || null, pin.captureSource?.key);
           pin.view.paperId = payload.paperId || null;
         }
         pin.paperChosen = true;
@@ -302,7 +305,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         pin.lookupCache.clear();
         pin.view.lookup = null;
         pin.view.lookupStatus = '';
-        pin.referenceNotice = pin.view.paperId ? '之后的新截图沿用这篇阅读；已打开的其他卡片保留各自归属。' : '之后的新截图作为临时阅读。';
+        pin.referenceNotice = pin.view.paperId
+          ? pin.captureSource ? '同一文档之后的截图会自动找回这篇阅读；已打开的其他卡片保留各自归属。'
+            : '已选为当前阅读。无法识别文档来源时，新截图仍从临时阅读开始。'
+          : '这张卡片已切换为临时阅读。';
       } else {
         const paperId = pin.view.paperId;
         if (payload.paperId !== paperId || !paperId) throw new Error('reference-paper-changed');
@@ -654,6 +660,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     let hidden = [];
     let pin = null;
     try {
+      let frontWindow = null;
+      try { frontWindow = await getCaptureWindow(); } catch { /* A missing window never blocks capture. */ }
+      const source = captureSource(frontWindow);
+      await referencesReady;
+      const paperId = paperForCapture(referenceData, source);
       const permission = await requestCapturePermission();
       if (!permission.granted) {
         onError(`请在“系统设置 → 隐私与安全性 → 屏幕录制”中允许 ${captureAppName}，然后完全退出并重新打开应用。若开关已经打开，请先重启当前应用。`);
@@ -671,7 +682,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (controller.signal.aborted || disposed) return { success: false, cancelled: true };
       if ((await fs.stat(file)).size > 32 * 1024 * 1024) throw new Error('reading-image-too-large');
       const image = `data:image/png;base64,${(await fs.readFile(file)).toString('base64')}`;
-      pin = createPin(image);
+      pin = createPin(image, false, paperId, source);
+      pin.paperChosen = true;
+      if (!source) pin.referenceNotice = '未识别当前文档来源。这张截图先作为临时阅读，避免混入上一篇的局部定义。';
       pin.controller = controller;
       for (const window of hidden) {
         if (window !== main && !window.isDestroyed()) window.showInactive();

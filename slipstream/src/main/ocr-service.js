@@ -13,6 +13,22 @@ const OCR_SCRIPT = app.isPackaged
 const formulaOcr = createLocalFormulaOcr(app.isPackaged
   ? path.join(process.resourcesPath, 'formula-models') : path.join(APP_ROOT, 'formula-models'));
 
+function frontmostDocumentWindow() {
+  if (process.platform !== 'darwin') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let environment;
+    try { environment = createOcrEnvironment(path.join(app.getPath('userData'), 'ocr-cache')); }
+    catch { resolve(null); return; }
+    execFile('/bin/bash', [OCR_SCRIPT, '--front-window'], {
+      timeout: 20000, maxBuffer: 4096, env: environment,
+    }, (error, stdout) => {
+      if (error) { resolve(null); return; }
+      try { resolve(JSON.parse(stdout.trim())); }
+      catch { resolve(null); }
+    });
+  });
+}
+
 /**
  * Clean raw OCR text by normalizing whitespace and removing garbage.
  * @param {string} rawText
@@ -154,6 +170,7 @@ function cleanup() {
 }
 
 module.exports = {
+  frontmostDocumentWindow,
   performOCR,
   performReadingOCR,
   cleanup,

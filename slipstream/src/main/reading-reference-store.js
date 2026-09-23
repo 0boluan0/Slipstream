@@ -7,6 +7,7 @@ const { referenceCandidateKey, referenceOccurrences, referenceSymbol } = require
 
 const bounded = (value, limit) => typeof value === 'string' && value.length <= limit;
 const validId = (id) => typeof id === 'string' && /^[a-f0-9-]{36}$/u.test(id);
+const validSourceKey = (key) => typeof key === 'string' && /^[a-f0-9]{64}$/u.test(key);
 
 function validateEntry(input) {
   if (!bounded(input?.symbol, 120) || !input.symbol.trim() || !bounded(input.meaning, 1500) || !input.meaning.trim()
@@ -29,10 +30,13 @@ function createReadingReferenceStore(directory) {
       const data = JSON.parse(await fs.readFile(file, 'utf8'));
       if (data.version !== 1 || !Array.isArray(data.papers) || (data.activePaperId !== null && !validId(data.activePaperId))) throw new Error('reference-invalid-file');
       const ids = new Set();
+      const sources = new Set();
       for (const paper of data.papers) {
         if (!validId(paper.id) || ids.has(paper.id) || !bounded(paper.title, 120) || !paper.title.trim()
-          || !Array.isArray(paper.entries)) throw new Error('reference-invalid-file');
+          || !Array.isArray(paper.entries) || (paper.sourceKey !== undefined && !validSourceKey(paper.sourceKey))
+          || (paper.sourceKey && sources.has(paper.sourceKey))) throw new Error('reference-invalid-file');
         ids.add(paper.id);
+        if (paper.sourceKey) sources.add(paper.sourceKey);
         const entries = new Set();
         for (const entry of paper.entries) {
           validateEntry(entry);
@@ -75,16 +79,26 @@ function createReadingReferenceStore(directory) {
     if (!bounded(value, 120) || !value.trim()) throw new Error('reference-invalid-title');
     return value.trim();
   }
+  function bindSource(data, paper, sourceKey) {
+    if (sourceKey === undefined) return;
+    if (!validSourceKey(sourceKey)) throw new Error('reference-invalid-source');
+    for (const other of data.papers) if (other !== paper && other.sourceKey === sourceKey) delete other.sourceKey;
+    paper.sourceKey = sourceKey;
+  }
   const touch = (paper) => { paper.updated = new Date().toISOString(); };
   return {
     read, directory,
-    create: (name) => mutate((data) => {
+    create: (name, sourceKey) => mutate((data) => {
       const paper = { id: randomUUID(), title: title(name), entries: [], updated: new Date().toISOString() };
+      bindSource(data, paper, sourceKey);
       data.papers.unshift(paper);
       data.activePaperId = paper.id;
       return paper;
     }),
-    select: (id) => mutate((data) => { if (id !== null) find(data, id); data.activePaperId = id; }),
+    select: (id, sourceKey) => mutate((data) => {
+      if (id !== null) bindSource(data, find(data, id), sourceKey);
+      data.activePaperId = id;
+    }),
     rename: (id, name) => mutate((data) => { const paper = find(data, id); paper.title = title(name); touch(paper); }),
     add: (id, input) => mutate((data) => {
       validateEntry(input);

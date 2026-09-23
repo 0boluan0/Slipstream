@@ -2921,6 +2921,7 @@ app.on('ready', () => {
     getSettings: () => store.isStoreReady() ? store.getAllSettings() : null,
     getMainWindow: () => mainWindow,
     captureRegion: ScreenshotService.captureSelectedRegion,
+    getCaptureWindow: OCRService.frontmostDocumentWindow,
     performOCR: OCRService.performReadingOCR,
     processReadingText: LLMService.processReadingText,
     recognizeReadingFormulas: LLMService.recognizeReadingFormulas,

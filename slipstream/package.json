@@ -156,7 +156,7 @@
     "build:windows": "npm run build:renderer && node scripts/build-windows.js",
     "check:windows": "node scripts/check-windows.js",
     "check:windows-ui": "node scripts/check-reading-home.js",
-    "check:reading-references": "node scripts/check-reading-references.js && electron scripts/check-reading-references-native.js && npm run check:reading-usability",
+    "check:reading-references": "node scripts/check-reading-references.js && electron scripts/check-reading-references-native.js && electron scripts/check-reading-capture-source-native.js && npm run check:reading-usability",
     "check:reading-usability": "electron scripts/check-reading-usability-native.js",
     "check:reading-references-live": "node scripts/check-reading-references-live.js",
     "setup:formula-models": "node scripts/setup-formula-models.js",
