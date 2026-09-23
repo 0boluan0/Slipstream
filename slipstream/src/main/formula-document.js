@@ -234,7 +234,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
-      reviewAccent: formula.reviewAccent || uncorroboratedBar(formula, latex),
+      reviewRecognition: formula.reviewAccent || formula.reviewSymbol || uncorroboratedBar(formula, latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
           : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
@@ -275,7 +275,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       if (at < 0) continue;
       // A source-confirmed footnote can be attached to prose (biased$^{2}$).
       // The marker belongs on the math delimiter, not on the English word.
-      if (fragment.item.math && (fragment.item.confidence < FORMULA_REVIEW_CONFIDENCE || fragment.item.reviewAccent)) for (const range of mathRanges(normalized)) {
+      if (fragment.item.math && (fragment.item.confidence < FORMULA_REVIEW_CONFIDENCE || fragment.item.reviewRecognition)) for (const range of mathRanges(normalized)) {
         uncertainFormulaStarts.push(text.length + separator.length + at + range.start);
       }
       cursor = at + normalized.length;
@@ -286,7 +286,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   const mathematical = items.filter((item) => item.math);
   return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0, rowRecovered,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
-    uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE || item.reviewAccent)
+    uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE || item.reviewRecognition)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaStarts };
 }
