@@ -50,6 +50,7 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 #source-preview { white-space: pre-wrap; font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
 #source-preview > [role="button"] { cursor: pointer; border-radius: 3px; }
 #source-preview > [role="button"]:hover { background: var(--soft); outline: 1px solid var(--line); }
+#source-preview > .math-needs-review { background: #c789312c; outline: 2px dashed #b7792a; outline-offset: 2px; }
 #correction-reference { background: var(--paper); padding-bottom: 8px; }
 #correction-reference .source-caption { margin: 0 0 7px; }
 #correction-image-frame { max-height: 170px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: white; }
@@ -70,10 +71,14 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 #lookup-panel { border-top: 1px solid var(--line); background: var(--soft); padding: 10px 22px 17px; max-height: 48vh; overflow: auto; flex-shrink: 0; }
 .lookup-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 #lookup-title { color: var(--muted); font-size: 11px; }
-#lookup-quote { margin: 0 0 8px; color: var(--accent); font: 16px/1.6 Georgia, serif; overflow-wrap: anywhere; white-space: pre-wrap; }
+#lookup-quote { margin: 0 0 8px; color: var(--accent); font: var(--reading-size)/1.6 Georgia, serif; overflow-wrap: anywhere; white-space: pre-wrap; }
+#lookup-basis { margin: 4px 0 6px; font-size: 11px; }
 .lookup-label { font-size: 10px; font-weight: 600; color: var(--muted); margin: 10px 0 4px; }
-#lookup-meaning { font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
-#lookup-note { overflow-wrap: anywhere; }
+#lookup-meaning { font-size: var(--reading-size); line-height: 1.8; overflow-wrap: anywhere; }
+#lookup-note { font-size: calc(var(--reading-size) - 1px); overflow-wrap: anywhere; }
+#lookup-evidence { margin-top: 8px; color: var(--muted); font-size: 11px; }
+#lookup-evidence summary { padding: 3px 0; color: var(--accent); }
+#lookup-evidence-quote { margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.5; }
 #lookup-notice { color: var(--muted); font-size: 12px; line-height: 1.7; }
 #lookup-retry { margin-top: 8px; }
 .text-button { padding: 5px 0; border: none; color: var(--accent); font-size: 11px; }

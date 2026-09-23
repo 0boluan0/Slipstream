@@ -133,7 +133,11 @@ if (isNativeUiFixture) {
   document.documentElement.dataset.uiFixture = 'native-isolated';
 }
 const DEMO_CONNECTION_RESULTS = Object.freeze({
-  ok: { status: 'connected', code: 'ok' },
+  ok: { status: 'connected', code: 'ok', sample: {
+    translation: '混杂变量是同时影响处理与结果的变量。因此，即使处理没有因果效应，处理与结果之间的关联也可能持续存在。',
+    meaning: '混杂变量会同时影响你关心的两个变量，因而可能让它们看起来存在因果关系。',
+    note: '本段用它说明，观察到处理与结果有关联，并不足以证明处理导致了结果。',
+  } },
   unsupported: { status: 'inconclusive', code: 'unsupported' },
   unauthorized: { status: 'failed', code: 'unauthorized' },
   unreachable: { status: 'failed', code: 'unreachable' },

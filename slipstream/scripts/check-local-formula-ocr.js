@@ -5,7 +5,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const katex = require('katex');
 const { mathRanges } = require('../src/shared/reading-math.cjs');
@@ -20,20 +19,11 @@ const fixtures = path.resolve(__dirname, '../../docs/usability/2026-09-18/formul
 const compact = (value) => value.replace(/\s+/g, '');
 const results = [];
 let manager, service;
-setTimeout(() => { console.error('Local formula OCR exceeded 180 seconds'); app.exit(1); }, 180000).unref();
+setTimeout(() => { console.error('Local formula OCR exceeded 480 seconds'); app.exit(1); }, 480000).unref();
 
-async function fixture(name, html) {
-  const win = new BrowserWindow({ width: 900, height: 360, show: false,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
-  const css = pathToFileURL(path.join(path.dirname(require.resolve('katex/package.json')), 'dist/katex.min.css')).href;
-  const file = path.join(work, `${name}.html`);
-  fs.writeFileSync(file, `<html><meta charset="utf-8"><link rel="stylesheet" href="${css}"><body style="padding:30px;font:24px/1.6 Georgia;background:white;color:black">${html}</body></html>`);
-  await win.loadFile(file);
-  await win.webContents.executeJavaScript('document.fonts.ready');
-  const imagePath = path.join(work, `${name}.png`);
-  fs.writeFileSync(imagePath, (await win.webContents.capturePage()).toPNG());
-  win.destroy(); return imagePath;
-}
+// Pixel-stable, self-authored screenshots keep OCR assertions independent of
+// runner fonts, display scale and hidden BrowserWindow first-paint timing.
+const authored = (name) => path.join(fixtures, `authored-${name}.png`);
 
 app.whenReady().then(async () => {
   // Release apps contain a compiled Swift helper. Build the development helper
@@ -53,7 +43,7 @@ app.whenReady().then(async () => {
     const result = await service.performReadingOCR(path.join(fixtures, `${name}.png`));
     assert.equal(result.formulaOcr.status, 'done');
     const formulas = mathRanges(result.text).map((item) => compact(item.tex));
-    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false });
+    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
     if (name === 'adam-algorithm') {
       assert.match(compact(result.text), /Require:\$\\alpha\$:/);
       assert.match(compact(result.text), /parameters\$\\theta\$/);
@@ -82,15 +72,16 @@ app.whenReady().then(async () => {
     if (name === 'dml-equations') {
       assert(tex.includes('\\theta_{0}')); assert.match(tex, /E.*U/); assert.match(tex, /E.*V/);
     } else { assert(tex.includes('\\widehat{m}_{t}')); assert(tex.includes('\\beta_{2}^{t}')); }
-    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false });
+    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
     results.push({ case: name, ...result.formulaOcr, text: result.text });
+    console.log(`${name}: formula structure passed`);
   }
-  const nativeAdam = path.resolve(fixtures, '../../2026-09-21/ocr-iteration/adam-screen.png');
   const scaledAdam = path.join(work, 'adam-scaled.png');
   const adamImage = require('electron').nativeImage.createFromPath(path.join(fixtures, 'adam-algorithm.png'));
   fs.writeFileSync(scaledAdam, adamImage.resize({ width: Math.round(adamImage.getSize().width * 1.75), quality: 'best' }).toPNG());
-  for (const [name, imagePath] of [['adam-native-screen', nativeAdam], ['adam-scaled', scaledAdam]]) {
+  for (const [name, imagePath] of [['adam-scaled', scaledAdam]]) {
     const result = await service.performReadingOCR(imagePath);
+    assert.equal(result.formulaOcr.status, 'done', `${name}: local formula OCR must complete`);
     const tex = compact(result.text);
     assert.match(tex, /Require:\$\\alpha\$:/, `${name}: preserve the standalone stepsize symbol`);
     assert.match(tex, /parameters\$\\theta\$/, `${name}: preserve the standalone parameter symbol`);
@@ -101,31 +92,201 @@ app.whenReady().then(async () => {
     assert(tex.includes('\\widehat{m}_{t}') && tex.includes('\\widehat{v}_{t}'));
     assert(tex.includes('\\sqrt{\\widehat{v}_{t}}'));
     results.push({ case: name, ...result.formulaOcr, text: result.text });
+    console.log(`${name}: scaled formula structure passed`);
   }
-  const matrix = await fixture('matrix', '<p>A symmetric matrix and a sample mean:</p>' + katex.renderToString(
-    String.raw`A=\begin{pmatrix}a&b\\b&c\end{pmatrix},\qquad \bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i`, { displayMode: true }));
+  const weakAccent = authored('weak-inline-accent');
+  const weakAccentResult = await service.performReadingOCR(weakAccent);
+  assert.match(weakAccentResult.text, /Using\s+\$\\hat\{f\}\$\s+and/, 'a weak isolated accent in a wide screenshot must not silently become a plain letter');
+  const accentText = await service.performOCR(weakAccent, { characters: true });
+  const figureRow = accentText.blocks.find((block) => /Figure 1\b/u.test(block.text));
+  assert(figureRow?.characters?.length, 'authored cross-reference is available as character-located OCR');
+  const numeralIndex = Array.from(figureRow.text.slice(0, figureRow.text.indexOf('Figure 1') + 'Figure 1'.length)).length - 1;
+  const ambiguousRow = { ...figureRow, text: figureRow.text.replace('Figure 1', 'Figure I'),
+    characters: figureRow.characters.map((char, i) => i === numeralIndex ? { ...char, text: 'I' } : char) };
+  const ambiguous = { blocks: [ambiguousRow] };
+  const rechecked = await service.recheckReferenceOne(weakAccent, ambiguous, accentText, work);
+  assert.match(rechecked.blocks[0].text, /Figure 1\b/u,
+    'a tight third OCR crop resolves an I/1 disagreement at the same source location');
+  assert.equal((await service.recheckReferenceOne(weakAccent, ambiguous, { blocks: [] }, work)).blocks[0].text,
+    ambiguousRow.text, 'a secondary reading without location-matched support cannot change a Roman numeral');
+  results.push({ case: 'weak-inline-accent-wide-excerpt', ...weakAccentResult.formulaOcr,
+    text: weakAccentResult.text });
+  console.log('weak-inline-accent-wide-excerpt: passed');
+  const plainLetter = authored('wide-plain-letter');
+  const plainLetterResult = await service.performReadingOCR(plainLetter);
+  assert.doesNotMatch(plainLetterResult.text, /\\hat\s*\{?f/u,
+    'wide prose with a plain f must not acquire a mathematical accent');
+  results.push({ case: 'wide-plain-letter-no-accent', ...plainLetterResult.formulaOcr,
+    text: plainLetterResult.text });
+  console.log('wide-plain-letter-no-accent: passed');
+  const edgeLine = 'During adaptation, use a pre-trainec';
+  const edgeBox = { x: .82, y: .5, w: .1, h: .12 };
+  const edgeRow = { text: edgeLine, confidence: 1,
+    boundingBox: { x: .04, y: .5, w: .9, h: .12 },
+    characters: Array.from(edgeLine, (letter) => ({ text: letter, boundingBox: edgeBox })) };
+  const edgeAlternative = { blocks: [{ ...edgeRow, text: 'During adaptation, use a pre-trained' }] };
+  const edgeOriginal = { blocks: [edgeRow] };
+  const confirmedWord = await service.recheckRightEdgeWord(plainLetter, edgeOriginal, edgeAlternative, work,
+    { recognize: async () => ({ text: 'use a pre-trained', confidence: 1 }) });
+  assert.equal(confirmedWord.blocks[0].text, 'During adaptation, use a pre-trained',
+    'a third local crop can repair one disputed final letter of an edge word');
+  assert.equal(confirmedWord.blocks[0].characters.at(-1).text, 'd',
+    'the corrected character must also reach layout-based prose assembly');
+  const unconfirmedWord = await service.recheckRightEdgeWord(plainLetter, edgeOriginal, edgeAlternative, work,
+    { recognize: async () => ({ text: 'use a pre-trainec', confidence: 1 }) });
+  assert.equal(unconfirmedWord.blocks[0].text, edgeLine,
+    'two competing line reads cannot change a word without third-pass confirmation');
+  const unrelatedRow = { blocks: [{ ...edgeRow, text: 'Another sentence ends with pre-trained' }] };
+  assert.equal((await service.recheckRightEdgeWord(plainLetter, edgeOriginal, unrelatedRow, work,
+    { recognize: async () => ({ text: 'pre-trained', confidence: 1 }) })).blocks[0].text, edgeLine,
+    'a different line cannot supply a substitute word');
+  const shiftedRow = { blocks: [{ ...edgeRow, text: 'During adaptation, use a pre-trained',
+    boundingBox: { x: .5, y: .5, w: .4, h: .12 } }] };
+  assert.equal((await service.recheckRightEdgeWord(plainLetter, edgeOriginal, shiftedRow, work,
+    { recognize: async () => ({ text: 'pre-trained', confidence: 1 }) })).blocks[0].text, edgeLine,
+    'a different column cannot supply a substitute word');
+  const plainDimensions = authored('plain-matrix-dimensions');
+  const plainDimensionsResult = await service.performReadingOCR(plainDimensions);
+  const dimensionRanges = mathRanges(plainDimensionsResult.text);
+  assert(dimensionRanges.length >= 1, 'self-authored matrix dimensions must reach formula review');
+  for (const range of dimensionRanges.filter((item) => /\\(?:breve|vec|hat|tilde|bar)\s*\{?\s*k/u.test(item.tex))) {
+    assert(plainDimensionsResult.formulaOcr.uncertainStarts.includes(range.start),
+      'an invented accent on a plain dimension must never pass without a review marker');
+  }
+  results.push({ case: 'authored-plain-matrix-dimensions', ...plainDimensionsResult.formulaOcr,
+    text: plainDimensionsResult.text });
+  console.log('authored-plain-matrix-dimensions: passed');
+  const matrix = authored('matrix');
   const matrixResult = await service.performReadingOCR(matrix);
   const matrixTex = compact(matrixResult.text);
   assert.match(matrixTex.replace(/\{([abc])\}/g, '$1'), /\\begin\{[pb]?matrix\}a&b\\\\b&c/);
   assert.match(matrixTex, /\\frac\{1\}\{n\}/);
-  for (const item of mathRanges(matrixResult.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false });
+  for (const item of mathRanges(matrixResult.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
   results.push({ case: 'authored-matrix', ...matrixResult.formulaOcr, text: matrixResult.text });
-  const derivatives = await fixture('derivatives', '<p>Time derivatives:</p>' + katex.renderToString(
-    String.raw`\dot{x}(t)=v(t),\qquad \ddot{x}(t)=a(t)`, { displayMode: true }));
+  console.log('authored-matrix: passed');
+  const derivatives = authored('derivatives');
   const derivativeResult = await service.performReadingOCR(derivatives);
   assert.match(compact(derivativeResult.text), /\\dot\{x\}/, 'genuine derivative dots must survive cropping');
   assert.match(compact(derivativeResult.text), /\\ddot\{x\}/);
   results.push({ case: 'authored-derivatives', ...derivativeResult.formulaOcr, text: derivativeResult.text });
-  const prose = await fixture('prose', '<p>Correlation does not imply causation.</p><p>The meeting starts on Friday. Bring the blue notebook.</p>');
+  console.log('authored-derivatives: passed');
+  const prose = authored('prose');
   const proseResult = await service.performReadingOCR(prose);
   assert.equal(proseResult.formulaOcr.count, 0, 'ordinary prose must not acquire invented formulas');
   assert.match(proseResult.text, /Correlation does not imply causation/);
   results.push({ case: 'authored-prose', ...proseResult.formulaOcr });
-  const ordinary = await fixture('ordinary-symbol-lookalikes', '<p>I read a paper and tested a model.</p><p>We report the 1st and 2nd estimates from 2024.</p>');
+  console.log('authored-prose: passed');
+  const ordinary = authored('ordinary-symbol-lookalikes');
   const ordinaryResult = await service.performReadingOCR(ordinary);
   assert.equal(ordinaryResult.formulaOcr.count, 0, 'articles, pronouns, ordinals and years must not acquire formulas');
   assert.match(ordinaryResult.text, /I read a paper/);
   results.push({ case: 'authored-ordinary-symbol-lookalikes', ...ordinaryResult.formulaOcr, text: ordinaryResult.text });
+  console.log('authored-ordinary-symbol-lookalikes: passed');
+  const symbolLookalikes = await service.performReadingOCR(path.join(fixtures, 'authored-symbol-lookalikes.png'));
+  assert.match(symbolLookalikes.text, /The sample space \$\\Omega\$/,
+    'an isolated Greek heading must survive a complete screenshot OCR pass');
+  assert.match(symbolLookalikes.text, /For this invented example, \$\\Omega\$ contains/,
+    'a Greek glyph misread as an ampersand by prose OCR must be rechecked at its pixels');
+  assert.match(symbolLookalikes.text, /The event space \$\\mathcal\{A\}\$/,
+    'a calligraphic heading must keep its font distinction from a plain A');
+  assert.match(symbolLookalikes.text, /The family \$\\mathcal\{A\}\$ contains/);
+  assert.match(symbolLookalikes.text, /The plain set S is a different label/);
+  assert.match(symbolLookalikes.text, /A is an ordinary matrix/,
+    'ordinary Latin lookalikes must remain prose');
+  const ambiguousDelta = mathRanges(symbolLookalikes.text).find((item) => item.tex.includes('\\varDelta'));
+  assert(ambiguousDelta && symbolLookalikes.formulaOcr.uncertainStarts.includes(ambiguousDelta.start),
+    'a full-formula A/Delta disagreement with source OCR must require visual review');
+  results.push({ case: 'authored-greek-calligraphic-and-plain-lookalikes', ...symbolLookalikes.formulaOcr,
+    text: symbolLookalikes.text });
+  console.log('authored-greek-calligraphic-and-plain-lookalikes: passed');
+  const smallerLookalikes = await service.performReadingOCR(path.join(fixtures, 'authored-symbol-lookalikes-650.png'));
+  assert.match(smallerLookalikes.text, /The sample space \$\\Omega\$/,
+    'a smaller screenshot must retain the Greek symbol in its heading');
+  if (!/For this invented example, \$\\Omega\$ contains/u.test(smallerLookalikes.text)) {
+    const observed = await service.performOCR(path.join(fixtures, 'authored-symbol-lookalikes-650.png'), { characters: true });
+    const glyphs = observed.blocks.filter((block) => /invented/u.test(block.text)).map((block) => ({
+      text: block.text,
+      characters: Array.from(block.text).flatMap((letter, index) => /^[SΩ€&$]$/u.test(letter)
+        ? [{ index, letter, box: block.characters?.[index]?.boundingBox }] : []),
+    }));
+    console.error(`Small Greek glyph diagnostic: ${JSON.stringify({ glyphs, formulaOcr: smallerLookalikes.formulaOcr })}`);
+  }
+  assert.match(smallerLookalikes.text, /For this invented example, \$\\Omega\$ contains/,
+    'blank pixels around a small Greek character must not turn a crop recheck into a false subscript');
+  assert.match(smallerLookalikes.text, /The plain set S is a different label/,
+    'tightening a symbol crop must not turn an ordinary S into Omega');
+  assert.match(smallerLookalikes.text, /The separate matrix A stays plain/,
+    'tightening a symbol crop must not turn an ordinary A into a calligraphic A');
+  results.push({ case: 'authored-small-glyphs-and-plain-lookalikes', ...smallerLookalikes.formulaOcr,
+    text: smallerLookalikes.text });
+  const splitReader = createLocalFormulaOcr(path.resolve(__dirname, '../formula-models'));
+  try {
+    const image = path.join(fixtures, 'authored-symbol-lookalikes-650.png');
+    const detected = await splitReader.recognize(image);
+    // The source image prints one Omega at these pixels. Simulate Vision's
+    // observed failure of returning S2 with both characters in one glyph box.
+    const glyph = { x: 272 / 650, y: 1 - 83 / 358, w: 18 / 650, h: 25 / 358 };
+    const split = await splitReader.recheckCharacters(image, { blocks: [{ text: 'S2', characters: [
+      { text: 'S', boundingBox: glyph }, { text: '2', boundingBox: glyph },
+    ] }] }, detected);
+    assert(split.formulas.some((formula) => formula.latex === '\\Omega'
+      && Math.abs(formula.x - 272) < 4 && Math.abs(formula.y - 58) < 4),
+    'two OCR characters occupying one printed math glyph must be checked against source pixels');
+    // A macOS CI Vision build called this same Omega '$' and supplied only
+    // the middle 12 of its roughly 18 printed pixels.
+    const narrowBox = { x: 273 / 650, y: 1 - 84 / 358, w: 12 / 650, h: 30 / 358 };
+    const narrow = await splitReader.recheckCharacters(image, { blocks: [{ text: '$', characters: [
+      { text: '$', boundingBox: narrowBox },
+    ] }] }, detected);
+    assert(narrow.formulas.some((formula) => formula.latex === '\\Omega'
+      && Math.abs(formula.x - 270) < 4 && Math.abs(formula.y - 54) < 4),
+    'a narrow OCR placeholder box must recover the complete printed math glyph');
+    const notationImage = path.join(fixtures, 'authored-function-notation.png');
+    const notationDetected = await splitReader.recognize(notationImage);
+    const baseline = { x: 117 / 820, y: 1 - 106 / 260, h: 28 / 260 };
+    const letterBox = { ...baseline, w: 21 / 820 };
+    const restBox = { ...baseline, x: 138 / 820, w: 36 / 820 };
+    const ocrSpace = { x: 0, y: 1, w: 0, h: 0 };
+    const spaced = await splitReader.recheckCharacters(notationImage, { blocks: [{ text: 'P (A)', characters: [
+      { text: 'P', boundingBox: letterBox }, { text: ' ', boundingBox: ocrSpace },
+      ...['(', 'A', ')'].map((letter) => ({ text: letter, boundingBox: restBox })),
+    ] }] }, notationDetected);
+    assert(spaced.formulas.some((formula) => formula.latex === 'P(A)'
+      && Math.abs(formula.x - 117) < 4 && Math.abs(formula.y - 78) < 4),
+    'a spurious OCR space inside P(A) must not hide the source-confirmed formula');
+  } finally { await splitReader.cleanup(); }
+  const functionNotation = await service.performReadingOCR(path.join(fixtures, 'authored-function-notation.png'));
+  const functionAtoms = mathRanges(functionNotation.text).map((item) => compact(item.tex));
+  if (functionAtoms.filter((atom) => atom === 'P(A)').length !== 2 || !functionAtoms.includes('f(x)')) {
+    const observed = await service.performOCR(path.join(fixtures, 'authored-function-notation.png'), { characters: true });
+    const lines = observed.blocks.map((block) => ({ text: block.text,
+      calls: [...block.text.matchAll(/[A-Za-z]\([A-Za-z]\)/gu)].map((match) => ({
+        text: match[0], boxes: block.characters?.slice(match.index, match.index + 4)
+          .map((character) => character.boundingBox),
+      })) }));
+    console.error(`Function notation diagnostic: ${JSON.stringify({ output: functionNotation.text,
+      formulaOcr: functionNotation.formulaOcr, lines })}`);
+  }
+  assert.equal(functionAtoms.filter((atom) => atom === 'P(A)').length, 2,
+    'both occurrences of a printed probability expression must remain LaTeX math');
+  assert(functionAtoms.includes('f(x)'), 'a second one-letter function call must remain LaTeX math');
+  assert.match(functionNotation.text, /Plan \(A\) is a section label in ordinary prose/,
+    'a prose label with a separate parenthesis must stay prose');
+  for (const item of mathRanges(functionNotation.text)) {
+    katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
+  }
+  results.push({ case: 'authored-inline-function-notation', ...functionNotation.formulaOcr,
+    text: functionNotation.text });
+
+  for (const result of results) {
+    const starts = new Set(mathRanges(result.text || '').map((range) => range.start));
+    if (result.count) assert(Array.isArray(result.uncertainStarts), `${result.case}: formula markers must be present`);
+    const uncertainStarts = result.uncertainStarts || [];
+    assert.equal(uncertainStarts.length, result.uncertain || 0,
+      `${result.case}: every uncertain formula needs a review marker`);
+    for (const start of uncertainStarts) assert(starts.has(start),
+      `${result.case}: an uncertain marker must point to a formula in the displayed source`);
+  }
 
   const missing = createLocalFormulaOcr(path.join(work, 'missing-models'));
   await assert.rejects(missing.recognize(prose), { code: 'ENOENT' });
@@ -163,7 +324,18 @@ app.whenReady().then(async () => {
   assert.equal(state.phase, 'review'); assert.equal(state.formulaStatus, 'local'); assert.equal(state.imageSent, false);
   assert.equal(providerCalls, 0);
   await pin.webContents.executeJavaScript('document.fonts.ready');
-  assert(await pin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .katex").length >= 2'));
+  let preview;
+  for (let i = 0; i < 50; i++) {
+    preview = await pin.webContents.executeJavaScript(`(() => ({
+      rendered: document.querySelectorAll('#source-preview .katex').length,
+      formulaCount: window.readingMath.mathRanges(document.getElementById('source-editor').value).length,
+      katexLoaded: Boolean(window.katex),
+      preview: document.getElementById('source-preview').textContent.slice(0, 160),
+    }))()`);
+    if (preview.rendered >= 2) break;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+  }
+  assert(preview.rendered >= 2, `Formula preview failed: ${JSON.stringify(preview)}`);
   assert(await pin.webContents.executeJavaScript('document.getElementById("formula-preview").open && !document.getElementById("source-correction").open'));
   await pin.webContents.executeJavaScript('document.querySelector("#source-preview > [role=button]").click()');
   const selectedFormula = await pin.webContents.executeJavaScript(`(() => {

@@ -49,8 +49,12 @@ async function main() {
   assert.match(cancelHandler, /llmRequestSettlement\?\.promise/);
   assert.match(cancelHandler, /verificationRequestSettlement\?\.promise/);
   assert.match(cancelHandler, /captureRequestSettlement\?\.promise/);
+  assert.match(cancelHandler, /readingPins\?\.cancelCapture\(event\.sender\.id\)/,
+    'cancel must abort the main-owned native reading selection');
   assert.match(cancelHandler, /return waitForTaskSettlements\(activeTasks\)/,
     'the renderer acknowledgement must represent settled work, not only an abort signal');
+  assert.match(mainSource, /void readingPins\.capture\(\{ owner: mainWindow\?\.webContents\?\.id \}\)/,
+    'the global shortcut must give its capture the same owner as the main-window cancel action');
 
   assert.match(panelSource, /acknowledged !== true\) handleUnconfirmedCancellation\(\)/,
     'official lookup cancellation must recover when the main process reports still running');

@@ -21,6 +21,7 @@ import {
   removeFailedSaveOperationKeys,
 } from '../utils/failedSettingsRetry.mjs';
 import constants from '../../shared/constants';
+import { readingSetupSample } from '../../shared/reading-setup.mjs';
 import { PROCESSING_LOCATION_KINDS } from '../../shared/endpoint-location.mjs';
 
 const { IPC_CHANNELS, DEFAULTS } = constants;
@@ -450,6 +451,8 @@ export function useSettings() {
       return {
         status: response.status,
         code: response.code,
+        sample: response.status === 'connected' && response.code === 'ok'
+          ? readingSetupSample(response.sample) : null,
         processingLocation: CONNECTION_TEST_PROCESSING_LOCATIONS.has(response.processingLocation)
           ? response.processingLocation
           : null,

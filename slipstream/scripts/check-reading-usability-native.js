@@ -36,9 +36,10 @@ app.whenReady().then(async () => {
   const paper = await store.create('Adam · regression');
   const provider = createReadingProcessor(async (...args) => {
     const input = JSON.parse(args[4]);
-    if (input.selection) return JSON.stringify({ quote: input.selection, meaning: '相对于目标参数，需要估计的其他参数。', note: '' });
-    return JSON.stringify({ translation: '样本量为 $N$，误差量级为 $1/\\sqrt{N}$。'.repeat(20),
-      terms: input.excerpt.includes('root-N consistency') ? [{quote:'root-N consistency', label:'$\\sqrt{N}$ 一致性'}] : [],
+    if (input.excerpt === 'A field in algebra.' || input.excerpt === 'A field in physics.') return JSON.stringify({ translation: '当前段落的概念。', terms: [{ quote: 'field', label: input.excerpt.includes('algebra') ? '域' : '场', role: 'core' }], references: [] });
+    if (input.selection) return JSON.stringify({ quote: input.selection, meaning: input.selection === 'nuisance parameter' ? '相对于目标参数，需要估计的其他参数。' : '这是与原文相关的概念解释，用于检验长解释的滚动与空间。'.repeat(14), note: input.selection === 'nuisance parameter' ? '' : '这里说明这个概念如何出现在当前段落。' });
+    return JSON.stringify({ translation: input.excerpt.startsWith('A collider') ? '碰撞变量同时受到两个变量的影响。对它进行条件化可能引入选择偏倚。' : '样本量为 $N$，误差量级为 $1/\\sqrt{N}$。'.repeat(20),
+      terms: input.excerpt.includes('root-N consistency') ? [{quote:'root-N consistency', label:'$\\sqrt{N}$ 一致性', role: 'core'}] : [],
       references: input.excerpt.includes('epsilon') ? [{ symbol: 'epsilon', meaning: '稳定常数。', evidence: 'Let epsilon denote a stability constant.' }] : [] });
   });
   manager = createReadingPins({ BrowserWindow, ipcMain, screen, referenceStore: store,
@@ -49,6 +50,21 @@ app.whenReady().then(async () => {
   const reading = BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Slipstream · 阅读卡片');
   await until(async () => (await snapshot(reading)).phase === 'done', 'candidate card');
   await check('term buttons render mathematical labels', async () => assert(await js(reading, 'Boolean(document.querySelector(".term-chip .katex"))')));
+  manager.openText('We discuss root-N consistency.\n\nWe discuss root-N consistency in a second paragraph.');
+  const repeated = BrowserWindow.getAllWindows().find((window) => window !== reading);
+  await until(async () => (await snapshot(repeated)).phase === 'done', 'repeated concept');
+  await check('the same concept appears only once across paragraphs of one card', async () => {
+    assert.equal(await js(repeated, 'document.querySelectorAll(".term-chip").length'), 1);
+    assert.equal((await snapshot(repeated)).segments.length, 2, 'deduplication must preserve both original paragraphs');
+  });
+  repeated.close();
+  manager.openText('A field in algebra.\n\nA field in physics.');
+  const meanings = BrowserWindow.getAllWindows().find((window) => window !== reading);
+  await until(async () => (await snapshot(meanings)).phase === 'done', 'different senses of one word');
+  await check('different Chinese concept names keep separate buttons for the same English word', async () => {
+    assert.equal(await js(meanings, 'document.querySelectorAll(".term-chip").length'), 2);
+  });
+  meanings.close();
   reading.show();
   reading.focus();
   await manager.openReferences(paper.id);
@@ -107,6 +123,50 @@ app.whenReady().then(async () => {
       window.renderReadingMath(host, '$' + 'x+'.repeat(100) + 'y$'); const formula = host.querySelector('.math-inline');
       formula.scrollLeft = 80; return formula.scrollWidth > formula.clientWidth && formula.scrollLeft > 0; })()`));
   });
+  manager.openText('A collider is influenced by two variables. Conditioning can introduce selection bias.');
+  const compact = BrowserWindow.getAllWindows().find((window) => window !== reading && window !== longPin && window !== reference);
+  await until(async () => (await snapshot(compact)).phase === 'done' && compact.getBounds().height < 500, 'compact translation');
+  const compactHeight = compact.getBounds().height;
+  const compactArea = screen.getDisplayMatching(compact.getBounds()).workArea;
+  const compactY = compactArea.y + compactArea.height - compactHeight;
+  compact.setPosition(compact.getBounds().x, compactY);
+  const select = async (quote) => {
+    const current = await snapshot(compact);
+    const start = current.sourceText.indexOf(quote);
+    await js(compact, `window.readingPin.act('lookup', ${JSON.stringify({ revision: current.revision, segmentId: 0, start, end: start + quote.length })})`);
+    await until(async () => (await snapshot(compact)).lookupStatus === 'done', 'lookup completed');
+  };
+  await select('collider');
+  await check('opening an explanation expands an automatically fitted small card', () => {
+    const area = screen.getDisplayMatching(compact.getBounds()).workArea;
+    assert(compact.getBounds().height >= Math.min(640, area.height));
+  });
+  await check('reading font controls also enlarge explanations and contextual notes', async () => {
+    const size = () => js(compact, `[getComputedStyle(document.getElementById('lookup-meaning')).fontSize, getComputedStyle(document.getElementById('lookup-note')).fontSize].map(parseFloat)`);
+    const before = await size();
+    await js(compact, 'document.getElementById("larger").click()');
+    const after = await size();
+    assert(after.every((value, i) => value > before[i]));
+  });
+  await js(compact, 'document.getElementById("lookup-panel").scrollTop = 150');
+  assert(await js(compact, 'document.getElementById("lookup-panel").scrollTop > 0'));
+  await select('selection bias');
+  await check('a different concept starts at the beginning of its explanation', async () => {
+    assert.equal(await js(compact, 'document.getElementById("lookup-panel").scrollTop'), 0);
+  });
+  await js(compact, 'document.getElementById("lookup-close").click()');
+  await check('closing the explanation restores the compact reading height', () => assert.equal(compact.getBounds().height, compactHeight));
+  assert.equal(compact.getBounds().y, compactY, 'closing should restore the original position after an automatic screen-edge adjustment');
+  await select('collider');
+  compact.setPosition(compact.getBounds().x, compactArea.y);
+  await js(compact, 'document.getElementById("lookup-close").click()');
+  assert.equal(compact.getBounds().y, compactArea.y, 'closing must preserve a position the reader moved to');
+  compact.emit('will-resize', {}, compact.getBounds());
+  compact.setSize(460, 410);
+  await select('collider');
+  await check('an explicitly resized card keeps the reader chosen size', () => assert.equal(compact.getBounds().height, 410));
+  await js(compact, 'document.getElementById("lookup-close").click()');
+  assert.equal(compact.getBounds().height, 410);
   manager.dispose();
   fs.rmSync(work, { recursive: true, force: true });
   if (failures.length) throw new Error(`${failures.length} usability regressions: ${failures.join('; ')}`);

@@ -1,0 +1,4 @@
+{
+  "selection": "root-N consistent estimation",
+  "raw": "{\"quote\":\"root-N consistent estimation\",\"meaning\":\"指估计量 $\\hat{\\theta}$ 与真值 $\\theta_0$ 之差按 $\\sqrt{N}$ 的速率收敛，即 $\\sqrt{N}(\\hat{\\theta}-\\theta_0)$ 依分布有界（通常渐近正态），其中 $N$ 为样本量。\",\"note\":\"本文的目标是在存在高维或“高度复杂”干扰参数 $\\eta_0$ 的情形下，对低维感兴趣参数 $\\theta_0$ 获得这种 $\\sqrt{N}$ 收敛速率并作出有效推断。\"}"
+}
