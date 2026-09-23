@@ -59,7 +59,42 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     const row = pixelBox(block.boundingBox);
     return row.y + row.h / 2 < firstSource.y + firstSource.h / 2 - Math.min(row.h, firstSource.h) * .7;
   }).sort((a, b) => pixelBox(a.boundingBox).y - pixelBox(b.boundingBox).y).slice(0, 4) : [];
+  // In a dense PDF, Vision can report a perfectly confident sentence at the
+  // coordinates of another row. Require two independent OCR layouts to agree
+  // on the prose at those coordinates before replacing that source row.
+  const proseTokens = (value) => new Set((value.toLowerCase().match(/\p{L}{3,}/gu) || []));
+  const tokenCoverage = (a, b) => {
+    const terms = proseTokens(a), reference = proseTokens(b);
+    return terms.size ? [...terms].filter((term) => reference.has(term)).length / terms.size : 0;
+  };
+  function confirmedSourceRow(block) {
+    if (!block.boundingBox || block.confidence < .9 || block.text.length < 30) return null;
+    const box = pixelBox(block.boundingBox);
+    const sameRow = (candidate) => {
+      if (!candidate.boundingBox || candidate.confidence < .9) return false;
+      const row = pixelBox(candidate.boundingBox);
+      return Math.abs(row.y + row.h / 2 - box.y - box.h / 2) < Math.min(row.h, box.h) * .55
+        && row.x + row.w > box.x && row.x < box.x + box.w;
+    };
+    const maskedRows = (masked?.blocks || []).filter((candidate) => sameRow(candidate)
+      && proseTokens(candidate.text).size);
+    const maskedText = maskedRows.sort((a, b) => pixelBox(a.boundingBox).x - pixelBox(b.boundingBox).x)
+      .map((candidate) => candidate.text).join(' ');
+    if (proseTokens(maskedText).size < 4 || tokenCoverage(maskedText, block.text) >= .45) return null;
+    const confirmed = (edgeProse?.blocks || []).some((candidate) => sameRow(candidate)
+      && tokenCoverage(maskedText, candidate.text) >= .7);
+    return confirmed ? maskedRows : null;
+  }
+  let rowRecovered = 0;
+  const repairedRows = new Set();
   const anchored = [...recoveredLeading, ...sourceBlocks].flatMap((block) => {
+    const confirmed = confirmedSourceRow(block);
+    if (confirmed) {
+      rowRecovered++;
+      const unseen = confirmed.filter((candidate) => !repairedRows.has(candidate));
+      unseen.forEach((candidate) => repairedRows.add(candidate));
+      return unseen;
+    }
     if (!(block.confidence <= .5) || !block.boundingBox) return [block];
     const box = pixelBox(block.boundingBox);
     if (formulas.some((f) => f.display && intersects(f, box))) return [block];
@@ -224,7 +259,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     previous = row;
   }
   const mathematical = items.filter((item) => item.math);
-  return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
+  return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0, rowRecovered,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),

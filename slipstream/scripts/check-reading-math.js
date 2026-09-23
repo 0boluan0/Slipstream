@@ -100,6 +100,17 @@ async function main() {
   assert.equal(missingTop.text, 'First source line recovered at top.\nSecond source line recovered at top.\nThird source line remains authoritative.',
     'a padded pass may restore missing top rows without replacing existing source rows');
   assert(missingTop.edgeRecovered, 'a recovered edge requires explicit reader review');
+  const highConfidenceRow = (text, y) => ({ ...placedWord(text, 5, y, 90, 15),
+    boundingBox: { x: .05, y: (100 - y - 15) / 100, w: .9, h: .15 } });
+  const trueRows = [highConfidenceRow('Academic reading begins with an intact introduction.', 10),
+    highConfidenceRow('Normalization statistics use units from one case.', 35),
+    highConfidenceRow('Later discussion defines recurrent network parameters.', 60)];
+  const misplacedRows = { blocks: [highConfidenceRow('Academic reading begins with an intact', 35),
+    highConfidenceRow('Normalization statistics use units from one case.', 60)] };
+  const recoveredRows = mergeFormulaDocument({ blocks: trueRows }, [], size, misplacedRows, { blocks: trueRows });
+  assert.equal(recoveredRows.text, trueRows.map((block) => block.text).join('\n'),
+  'two agreeing OCR layouts repair confident prose assigned to the wrong printed rows');
+  assert.equal(recoveredRows.rowRecovered, 2, 'the review card must report repaired row conflicts');
   for (const [tex, expected] of [
     [String.raw`1 ^ { \mathrm { s t } }`, '1st'],
     [String.raw`2 ^ { \text { n d } }`, '2nd'],
