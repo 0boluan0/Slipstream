@@ -182,6 +182,33 @@ app.whenReady().then(async () => {
   assert.match(ordinaryResult.text, /I read a paper/);
   results.push({ case: 'authored-ordinary-symbol-lookalikes', ...ordinaryResult.formulaOcr, text: ordinaryResult.text });
   console.log('authored-ordinary-symbol-lookalikes: passed');
+  const symbolLookalikes = await service.performReadingOCR(path.join(fixtures, 'authored-symbol-lookalikes.png'));
+  assert.match(symbolLookalikes.text, /The sample space \$\\Omega\$/,
+    'an isolated Greek heading must survive a complete screenshot OCR pass');
+  assert.match(symbolLookalikes.text, /For this invented example, \$\\Omega\$ contains/,
+    'a Greek glyph misread as an ampersand by prose OCR must be rechecked at its pixels');
+  assert.match(symbolLookalikes.text, /The event space \$\\mathcal\{A\}\$/,
+    'a calligraphic heading must keep its font distinction from a plain A');
+  assert.match(symbolLookalikes.text, /The family \$\\mathcal\{A\}\$ contains/);
+  assert.match(symbolLookalikes.text, /The plain set S is a different label/);
+  assert.match(symbolLookalikes.text, /A is an ordinary matrix/,
+    'ordinary Latin lookalikes must remain prose');
+  const ambiguousDelta = mathRanges(symbolLookalikes.text).find((item) => item.tex.includes('\\varDelta'));
+  assert(ambiguousDelta && symbolLookalikes.formulaOcr.uncertainStarts.includes(ambiguousDelta.start),
+    'a full-formula A/Delta disagreement with source OCR must require visual review');
+  results.push({ case: 'authored-greek-calligraphic-and-plain-lookalikes', ...symbolLookalikes.formulaOcr,
+    text: symbolLookalikes.text });
+  console.log('authored-greek-calligraphic-and-plain-lookalikes: passed');
+
+  for (const result of results) {
+    const starts = new Set(mathRanges(result.text || '').map((range) => range.start));
+    if (result.count) assert(Array.isArray(result.uncertainStarts), `${result.case}: formula markers must be present`);
+    const uncertainStarts = result.uncertainStarts || [];
+    assert.equal(uncertainStarts.length, result.uncertain || 0,
+      `${result.case}: every uncertain formula needs a review marker`);
+    for (const start of uncertainStarts) assert(starts.has(start),
+      `${result.case}: an uncertain marker must point to a formula in the displayed source`);
+  }
 
   const missing = createLocalFormulaOcr(path.join(work, 'missing-models'));
   await assert.rejects(missing.recognize(prose), { code: 'ENOENT' });

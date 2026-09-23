@@ -216,6 +216,55 @@ async function recheckRightEdgeWord(imagePath, original, padded, temporary, { si
   return { ...original, blocks };
 }
 
+async function recheckEmptyEdgeQuote(imagePath, original, temporary, { signal, recognize = performOCR } = {}) {
+  const source = original?.blocks || [];
+  if (!source.some((block) => /(?:""|“”|‘’)(?=\s*$)/u.test(block.text))) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const blocks = source.slice();
+  let checked = 0;
+  for (let row = 0; row < blocks.length && checked < 2; row++) {
+    const block = blocks[row], match = /(?:""|“”|‘’)(?=\s*$)/u.exec(block.text);
+    if (!match || !block.boundingBox || block.boundingBox.x + block.boundingBox.w < .85
+      || !block.characters?.length || block.characters.length !== Array.from(block.text).length) continue;
+    const index = Array.from(block.text.slice(0, match.index)).length;
+    const quotes = block.characters.slice(index, index + 2);
+    if (quotes.length !== 2 || quotes.some((char) => !char.boundingBox?.w || !char.boundingBox?.h)) continue;
+    const readings = [];
+    for (const before of [18, 8]) {
+      const chars = block.characters.slice(Math.max(0, index - before), index + 2)
+        .filter((char) => char.boundingBox.w > 0 && char.boundingBox.h > 0);
+      if (chars.length < 2) break;
+      const x = Math.max(0, Math.floor(Math.min(...chars.map((char) => char.boundingBox.x)) * size.width) - 20);
+      const right = Math.min(size.width, Math.ceil(Math.max(...chars.map((char) => char.boundingBox.x + char.boundingBox.w)) * size.width) + 20);
+      const y = Math.max(0, Math.floor((1 - Math.max(...chars.map((char) => char.boundingBox.y + char.boundingBox.h))) * size.height) - 8);
+      const bottom = Math.min(size.height, Math.ceil((1 - Math.min(...chars.map((char) => char.boundingBox.y))) * size.height) + 16);
+      if (right - x < 70 || bottom - y < 20) break;
+      const crop = path.join(temporary, `edge-quote-${checked}-${before}.png`);
+      await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+      const result = await recognize(crop, { signal }).catch((error) => {
+        if (signal?.aborted || error?.isCancellation) throw error;
+        return null;
+      });
+      const letter = result?.text?.trim().match(/["“‘]([A-Za-z0-9])["”’]$/u)?.[1];
+      if (!letter || result.confidence < .9) break;
+      readings.push(letter);
+    }
+    checked++;
+    if (readings.length !== 2 || readings[0] !== readings[1]) continue;
+    const first = quotes[0].boundingBox, second = quotes[1].boundingBox;
+    const x = Math.min(first.x, second.x), y = Math.min(first.y, second.y);
+    const shared = { x, y, w: Math.max(first.x + first.w, second.x + second.w) - x,
+      h: Math.max(first.y + first.h, second.y + second.h) - y };
+    const characters = block.characters.slice();
+    characters.splice(index, 2, { ...quotes[0], boundingBox: shared },
+      { text: readings[0], boundingBox: shared }, { ...quotes[1], boundingBox: shared });
+    blocks[row] = { ...block, text: block.text.slice(0, match.index + 1) + readings[0]
+      + block.text.slice(match.index + 1), characters };
+  }
+  return { ...original, blocks };
+}
+
 async function performReadingOCR(imagePath, { signal } = {}) {
   const [textResult, formulaResult] = await Promise.allSettled([
     performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
@@ -227,7 +276,15 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     if (signal?.aborted || error?.isCancellation) throw error;
     return { ...original, formulaOcr: { status: error.code === 'ENOENT' ? 'unavailable' : 'failed', count: 0 } };
   }
-  const recognized = formulaResult.value;
+  let recognized = formulaResult.value;
+  if (recognized.formulas.length) {
+    try { recognized = await formulaOcr.recheckCharacters(imagePath, original, recognized, { signal }); }
+    catch (error) {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      // Character-level corroboration is optional; retain the completed
+      // region-level result if this bounded second pass cannot finish.
+    }
+  }
   if (!recognized.formulas.length) {
     return { ...original, formulaOcr: { status: 'done', count: 0, milliseconds: recognized.milliseconds } };
   }
@@ -248,7 +305,8 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     ]);
     const references = await recheckReferenceOne(imagePath, original, edges, temporary, { signal });
     const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, corroborated, edges);
+    const quoted = await recheckEmptyEdgeQuote(imagePath, corroborated, temporary, { signal });
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, quoted, edges);
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
@@ -272,5 +330,6 @@ module.exports = {
   performReadingOCR,
   recheckReferenceOne,
   recheckRightEdgeWord,
+  recheckEmptyEdgeQuote,
   cleanup,
 };

@@ -131,6 +131,62 @@ function weakAccentGeometry(box, size) {
   return !box.display && box.w < box.h * 2 && box.h < size.height * .12;
 }
 
+function visualAtom(latex) {
+  let compact = latex.replace(/\\(mathcal|mathbb|mathfrak|mathscr)\s+([A-Za-z])\b/gu, '\\$1{$2}')
+    .replace(/\s+/gu, '').replace(/[,.;:!?]$/u, '');
+  const wrapped = compact.match(/^\\(?:boldsymbol|mathbf|mathrm)\{(.*)\}$/u);
+  if (wrapped) compact = wrapped[1];
+  if (/^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}$/u.test(compact)) return compact;
+  if (/^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)$/u.test(compact)) return compact;
+  if (/^\\(?:in|notin|subset|subseteq|supset|supseteq)$/u.test(compact)) return compact;
+  return null;
+}
+
+function characterCandidates(ocr, size, formulas) {
+  const candidates = [];
+  for (const block of ocr?.blocks || []) {
+    const chars = Array.from(block.text || '');
+    if (chars.length !== block.characters?.length) continue;
+    for (let i = 0; i < chars.length; i++) {
+      if (!/^[A-Za-z€&]$/u.test(chars[i]) || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
+        || /[\p{L}\p{N}]/u.test(chars[i + 1] || '')) continue;
+      const source = block.characters[i].boundingBox;
+      if (!source || source.w <= 0 || source.h <= 0) continue;
+      const x = Math.max(0, Math.floor(source.x * size.width));
+      const y = Math.max(0, Math.floor((1 - source.y - source.h) * size.height));
+      const right = Math.min(size.width, Math.ceil((source.x + source.w) * size.width));
+      const bottom = Math.min(size.height, Math.ceil((1 - source.y) * size.height));
+      const box = { x, y, w: right - x, h: bottom - y };
+      if (box.w < 8 || box.h < 10 || box.w > box.h * 2 || box.h > size.height * .15
+        || formulas.some((formula) => overlap(formula, box) > .65)) continue;
+      candidates.push({ ...box, priority: block.text.length <= 45 ? 0 : 1,
+        rowLength: block.text.length });
+    }
+  }
+  return candidates.sort((a, b) => a.priority - b.priority || a.rowLength - b.rowLength
+    || a.y - b.y || a.x - b.x).slice(0, 16);
+}
+
+function sourceDisagreesOnDelta(formula, ocr, size) {
+  if (!/^\\(?:var)?Delta\b/u.test(formula.latex)) return false;
+  return (ocr?.blocks || []).some((block) => block.characters?.some((character) => {
+    if (character.text !== 'A' || !character.boundingBox) return false;
+    const { x, y, w, h } = character.boundingBox;
+    const centerX = (x + w / 2) * size.width;
+    const centerY = (1 - y - h / 2) * size.height;
+    return centerX >= formula.x && centerX <= formula.x + formula.w * .4
+      && centerY >= formula.y && centerY <= formula.y + formula.h;
+  }));
+}
+
+function maskFormulaRegions(image, formulas, size) {
+  const bitmap = image.toBitmap();
+  for (const box of formulas) for (let y = box.y; y < box.y + box.h; y++) {
+    bitmap.fill(255, (y * size.width + box.x) * 4, (y * size.width + box.x + box.w) * 4);
+  }
+  return formulas.length ? nativeImage.createFromBitmap(bitmap, size).toPNG() : null;
+}
+
 async function recognizeCrop(model, image, signal, deadline) {
   cancelled(signal, deadline);
   const encoded = await model.encoder.run({ pixel_values: rgbTensor(image, 384, true, model.ort) });
@@ -314,18 +370,55 @@ function createLocalFormulaOcr(modelDir) {
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score), reviewAccent });
       }
       // Mask only recognized regions; Vision will read the remaining prose.
-      const bitmap = image.toBitmap();
-      for (const box of formulas) for (let y = box.y; y < box.y + box.h; y++) {
-        bitmap.fill(255, (y * size.width + box.x) * 4, (y * size.width + box.x + box.w) * 4);
-      }
-      const masked = formulas.length ? nativeImage.createFromBitmap(bitmap, size).toPNG() : null;
+      const masked = maskFormulaRegions(image, formulas, size);
       return { formulas, masked, size, milliseconds: Date.now() - started };
     });
     queue = run.catch(() => {});
     try { return await run; }
     finally { idle = setTimeout(() => { queue = queue.then(cleanup).catch(() => {}); }, 120000); idle.unref(); }
   }
-  return { recognize, cleanup: () => { queue = queue.then(cleanup); return queue; } };
+  async function recheckCharacters(imagePath, original, detected, { signal } = {}) {
+    const run = queue.then(async () => {
+      clearTimeout(idle);
+      const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+      if (image.isEmpty() || !detected.formulas.length) return detected;
+      const baseline = detected.formulas.map((formula) => ({ ...formula,
+        reviewSymbol: formula.reviewSymbol || sourceDisagreesOnDelta(formula, original, size) }));
+      const candidates = characterCandidates(original, size, baseline);
+      if (!candidates.length) return { ...detected, formulas: baseline };
+      const model = await load(), deadline = Date.now() + 20000;
+      const supplements = [];
+      for (const box of candidates) {
+        cancelled(signal, deadline);
+        // Vision's character box is already wider than the printed ink here.
+        // Expanding it admits neighboring prose and can turn a calligraphic A
+        // into a different symbol in all three recognizer passes.
+        const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
+        let readings;
+        try {
+          readings = await Promise.all([0, .1, .2].map((ratio) => recognizeCrop(model,
+            ratio ? padFormulaCrop(crop, ratio) : crop, signal, deadline)));
+        } catch (error) {
+          if (signal?.aborted || error?.isCancellation) throw error;
+          if (Date.now() >= deadline) break;
+          continue;
+        }
+        const atoms = readings.map(({ latex }) => visualAtom(latex));
+        if (!atoms[0] || !atoms.every((atom) => atom === atoms[0])
+          || Math.min(...readings.map(({ confidence }) => confidence)) < .45
+          || Math.max(...readings.map(({ confidence }) => confidence)) < .65) continue;
+        supplements.push({ ...box, latex: atoms[0], confidence: Math.min(...readings.map(({ confidence }) => confidence)),
+          score: .7, display: false });
+      }
+      if (!supplements.length) return { ...detected, formulas: baseline };
+      const formulas = [...baseline, ...supplements].sort((a, b) => a.y - b.y || a.x - b.x);
+      return { ...detected, formulas, masked: maskFormulaRegions(image, formulas, size) };
+    });
+    queue = run.catch(() => {});
+    try { return await run; }
+    finally { idle = setTimeout(() => { queue = queue.then(cleanup).catch(() => {}); }, 120000); idle.unref(); }
+  }
+  return { recognize, recheckCharacters, cleanup: () => { queue = queue.then(cleanup); return queue; } };
 }
 
 module.exports = { createLocalFormulaOcr, detectBoxes, tokenDecoder };
