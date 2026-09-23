@@ -187,7 +187,8 @@ function createLocalFormulaOcr(modelDir) {
       // A fresh install must hash and open all three models before its first
       // inference. Give that one cold start more time; subsequent captures
       // keep the shorter interactive deadline.
-      const started = Date.now(), deadline = started + (sessions ? 25000 : 60000);
+      const started = Date.now();
+      let deadline = started + (sessions ? 25000 : 60000);
       cancelled(signal, deadline);
       const model = await load();
       cancelled(signal, deadline);
@@ -198,6 +199,9 @@ function createLocalFormulaOcr(modelDir) {
       cancelled(signal, deadline);
       const boxes = detectBoxes(detected.fetch_name_0, size);
       if (boxes.length > 60) throw new Error('formula-region-limit');
+      // A dense page needs more decoder passes than a short excerpt. Keep the
+      // common path quick, while bounding formula-heavy captures to one minute.
+      deadline = Math.max(deadline, started + Math.min(60000, 20000 + boxes.length * 2500));
       const formulas = [];
       for (const box of boxes) {
         cancelled(signal, deadline);

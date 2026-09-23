@@ -90,6 +90,7 @@ app.whenReady().then(async () => {
   fs.writeFileSync(scaledAdam, adamImage.resize({ width: Math.round(adamImage.getSize().width * 1.75), quality: 'best' }).toPNG());
   for (const [name, imagePath] of [['adam-scaled', scaledAdam]]) {
     const result = await service.performReadingOCR(imagePath);
+    assert.equal(result.formulaOcr.status, 'done', `${name}: local formula OCR must complete`);
     const tex = compact(result.text);
     assert.match(tex, /Require:\$\\alpha\$:/, `${name}: preserve the standalone stepsize symbol`);
     assert.match(tex, /parameters\$\\theta\$/, `${name}: preserve the standalone parameter symbol`);
