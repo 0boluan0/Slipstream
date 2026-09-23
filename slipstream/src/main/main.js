@@ -583,7 +583,7 @@ function dispatchCaptureIngress(event) {
     && store.getAllSettings().setupMode !== 'unconfigured'
     && !quitRequestRegistry.hasPending(mainWindow?.webContents?.id)
     && !userDataResetRegistry.isLocked(mainWindow?.webContents?.id)) {
-    void readingPins.capture();
+    void readingPins.capture({ owner: mainWindow?.webContents?.id });
     return true;
   }
   if (explicitShortcut && (!mainWindow || mainWindow.isDestroyed())) {
