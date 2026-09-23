@@ -184,7 +184,10 @@ function createLocalFormulaOcr(modelDir) {
     // One capture at a time bounds native model memory and CPU competition.
     const run = queue.then(async () => {
       clearTimeout(idle);
-      const started = Date.now(), deadline = started + 25000;
+      // A fresh install must hash and open all three models before its first
+      // inference. Give that one cold start more time; subsequent captures
+      // keep the shorter interactive deadline.
+      const started = Date.now(), deadline = started + (sessions ? 25000 : 60000);
       cancelled(signal, deadline);
       const model = await load();
       cancelled(signal, deadline);
