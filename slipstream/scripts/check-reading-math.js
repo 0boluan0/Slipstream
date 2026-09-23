@@ -15,9 +15,19 @@ async function main() {
   const masked = { blocks: [word(':', 29, 5), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument(masked, [formula], size, original).text, '$x$: label',
     'the same punctuation recovered from an original word and masked OCR must appear once');
+  const placedWord = (text, x, y, w, h) => ({ text, confidence: 1,
+    characters: [{ text, boundingBox: { x: x / 100, y: (100 - y - h) / 100, w: w / 100, h: h / 100 } }] });
+  const adjacentRows = { blocks: [placedWord('In', 10, 10, 20, 30), placedWord('prose', 45, 10, 40, 30),
+    placedWord('x', 10, 32, 20, 25), placedWord('follows', 45, 32, 45, 25)] };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [{ x: 10, y: 28, w: 20, h: 28,
+    latex: 'x', display: false }], size, adjacentRows).text, 'In prose\n$x$ follows',
+  'a formula box grazing the previous text line cannot erase a source word');
   const uncertain = mergeFormulaDocument(masked, [{ ...formula, confidence: .4 }], size, original);
   assert.deepEqual(uncertain.uncertainFormulaStarts, [mathRanges(uncertain.text)[0].start],
     'a low-confidence formula identifies its actual location in the source shown for review');
+  const borderline = mergeFormulaDocument(masked, [{ ...formula, confidence: .66 }], size, original);
+  assert.deepEqual(borderline.uncertainFormulaStarts, [mathRanges(borderline.text)[0].start],
+    'small formula details need review even when the model assigns moderate confidence');
   assert.deepEqual(mergeFormulaDocument(masked, [{ ...formula, confidence: .9 }], size, original).uncertainFormulaStarts, []);
   const periodSource = { blocks: [word('x.', 10, 24), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument({ blocks: [word('•', 29, 5)] }, [formula], size, periodSource).text, '$x$. label',

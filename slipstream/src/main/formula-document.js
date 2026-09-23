@@ -1,5 +1,6 @@
 'use strict';
 const { mathRanges } = require('../shared/reading-math.cjs');
+const FORMULA_REVIEW_CONFIDENCE = .7;
 
 function proseSuperscript(latex) {
   // An inline region can include a prose word and its footnote marker.
@@ -33,9 +34,12 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     return result;
   }
   const intersects = (a, b) => {
-    const area = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x))
-      * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    const vertical = Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+    const area = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * vertical;
+    // Vision's word boxes may reach into the next printed line. A formula
+    // detector touching that fringe must not erase a source word above it.
     return area > Math.min(a.w * a.h, b.w * b.h) * .3
+      && vertical > Math.min(a.h, b.h) * .5
       && Math.abs(a.y + a.h / 2 - b.y - b.h / 2) < Math.max(a.h, b.h) * .6;
   };
   // Vision sometimes combines two visible prose rows into one low-confidence
@@ -211,7 +215,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       if (at < 0) continue;
       // A source-confirmed footnote can be attached to prose (biased$^{2}$).
       // The marker belongs on the math delimiter, not on the English word.
-      if (fragment.item.math && fragment.item.confidence < .6) for (const range of mathRanges(normalized)) {
+      if (fragment.item.math && fragment.item.confidence < FORMULA_REVIEW_CONFIDENCE) for (const range of mathRanges(normalized)) {
         uncertainFormulaStarts.push(text.length + separator.length + at + range.start);
       }
       cursor = at + normalized.length;
@@ -222,7 +226,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   const mathematical = items.filter((item) => item.math);
   return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
-    uncertainFormulaCount: mathematical.filter((item) => item.confidence < .6)
+    uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaStarts };
 }
