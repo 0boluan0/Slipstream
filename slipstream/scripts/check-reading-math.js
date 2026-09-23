@@ -29,6 +29,19 @@ async function main() {
   assert.deepEqual(borderline.uncertainFormulaStarts, [mathRanges(borderline.text)[0].start],
     'small formula details need review even when the model assigns moderate confidence');
   assert.deepEqual(mergeFormulaDocument(masked, [{ ...formula, confidence: .9 }], size, original).uncertainFormulaStarts, []);
+  const latinAsGreek = mergeFormulaDocument({ blocks: [] }, [{ ...formula, latex: '\\nu', confidence: .95 }],
+    size, { blocks: [word('V', 10, 18)] });
+  assert.equal(latinAsGreek.uncertainFormulaCount, 1,
+    'a confident Greek nu must be reviewed when independent OCR sees Latin V in that exact box');
+  const vectorAsGreek = mergeFormulaDocument({ blocks: [] },
+    [{ ...formula, latex: '\\vec{\\upsilon}+\\vec{\\upsilon}\\in V', confidence: .95 }],
+    size, { blocks: [word('v+w∈V', 10, 18)] });
+  assert.equal(vectorAsGreek.uncertainFormulaCount, 1,
+    'confident Greek vector glyphs must be reviewed when independent OCR sees Latin v/w');
+  assert.equal(mergeFormulaDocument({ blocks: [] },
+    [{ ...formula, latex: '\\vec{\\nu}\\in V', confidence: .95 }],
+    size, { blocks: [word('ν∈V', 10, 18)] }).uncertainFormulaCount, 0,
+  'an agreeing Greek reading must not get a Latin-conflict marker');
   const barred = { ...formula, confidence: .9,
     latex: String.raw`\bar { \boldsymbol { z } _ { i } } = g ( h_i )` };
   const paddedPlain = { blocks: [{ ...word('zi = g(hi)', 10, 40), confidence: 1,

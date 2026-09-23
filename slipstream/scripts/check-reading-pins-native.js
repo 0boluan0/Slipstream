@@ -395,12 +395,13 @@ app.whenReady().then(async () => {
   manager.clear();
   ocrLeftClipped = false;
   ocrTopClipped = true;
-  ocrOverride = 'isily compared across different nodes with the softmax function.';
+  ocrOverride = 'isily compared across different nodes with the softmax function. The set {1,x) is shown.';
   const beforeTop = providerCalls;
   await manager.capture();
   const top = cards()[0];
   await until(phaseIs(top, 'review'), 'top-edge cropped prose review');
   assert.match((await stateOf(top)).notice, /顶部可能截断/);
+  assert.match((await stateOf(top)).notice, /花括号也可能漏识别/);
   assert.equal(providerCalls, beforeTop, 'top-cropped prose must stay local until reviewed');
   manager.clear();
   ocrTopClipped = false;

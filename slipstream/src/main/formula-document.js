@@ -113,6 +113,20 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     return rows;
   });
   const originalWords = words({ blocks: anchored });
+  // Formula confidence measures the decoder's own certainty, not agreement
+  // with the image's independent text reading. In textbook vector notation
+  // Latin v/w can look like Greek nu/upsilon; do not silently trust that swap
+  // when Vision read the Latin letter in the same formula rectangle.
+  const independentWords = words(original);
+  function latinGreekConflict(formula, latex) {
+    if (!/\\(?:nu|upsilon)\b/u.test(latex)) return false;
+    const observed = independentWords.filter((word) => intersects(formula, word))
+      .sort((a, b) => a.x - b.x).map((word) => word.text).join('').replace(/\s+/gu, '');
+    const compact = latex.replace(/\s+/gu, '');
+    if (/^\\nu[,.;:!?]?$/u.test(compact)) return /^[Vv]$/u.test(observed);
+    return /\\vec(?:\{|\\(?:boldsymbol|mathbf|mathrm)\{)*\\(?:nu|upsilon)\b/u.test(compact)
+      && /[vwW]/u.test(observed);
+  }
   const proseAnnotations = new Map();
   formulas = formulas.filter((formula) => {
     const compact = formula.latex.replace(/\s+/gu, '');
@@ -240,7 +254,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
       reviewRecognition: formula.reviewAccent || formula.reviewSymbol || uncorroboratedBar(formula, latex)
-        || footnoteInsideFormula(latex),
+        || footnoteInsideFormula(latex) || latinGreekConflict(formula, latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
           : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });

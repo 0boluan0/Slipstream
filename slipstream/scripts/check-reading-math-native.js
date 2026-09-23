@@ -149,6 +149,10 @@ app.whenReady().then(async () => {
   await until(async () => (await state()).saveStatus === 'saved', 'math persisted');
   const saved = (await store.list()).cards[0];
   assert.match(fs.readFileSync(await store.filePath(saved.id), 'utf8'), /\\begin\{pmatrix\}/);
+  await js('window.renderReadingMath(document.getElementById("lookup-note"), "删去 $2x$ 不改变张成空间。")');
+  assert.equal(await js('document.querySelectorAll("#lookup-note .katex").length'), 1,
+    'a one-digit coefficient and Latin variable must render as mathematics in the actual reading card');
+  assert.equal(await js('document.querySelectorAll("#lookup-note .math-fallback").length'), 0);
   // Malformed LaTeX remains readable; arbitrary markup stays inert.
   const unsafe = String.raw`<img src="https://example.com" onerror="alert(1)"> $\notARealCommand{x}$ $\href{https://example.com}{link}$`;
   await js(`window.renderReadingMath(document.getElementById('lookup-note'), ${JSON.stringify(unsafe)})`);

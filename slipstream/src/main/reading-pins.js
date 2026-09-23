@@ -773,6 +773,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const clippedProse = looksLikeClippedProse(ocr, document.text);
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
+        const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
         const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
         pin.controller = null;
         let destination = '';
@@ -794,10 +795,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           phase: ownUiCapture || clippedProse || brokenBrackets || brokenMathBraces || missingQuotedCharacter || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
-            : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}`
-            : clippedProse === 'left' ? '选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。'
-            : clippedProse === 'top' ? '选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。'
-            : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}`
+            : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${brokenGroupHint}`
+            : clippedProse === 'left' ? `选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。${brokenGroupHint}`
+            : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${brokenGroupHint}`
+            : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${brokenGroupHint}`
             : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
             : brokenMathBraces ? '花括号可能漏识别，集合或公式的含义可能失真。请对照截图校正。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
