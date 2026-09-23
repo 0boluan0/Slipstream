@@ -151,6 +151,26 @@ function matchingCallAtom(latex, source) {
   return compact === source ? compact : null;
 }
 
+function inlineCallCandidate(chars, characters, index, size) {
+  // Vision sometimes inserts an OCR-only space into P(A), yielding P (A).
+  // Build a crop from the four printed glyphs, excluding that textual space.
+  const match = chars.slice(index, index + 6).join('').match(/^([A-Za-z])(\s{0,2})\(([A-Za-z])\)/u);
+  if (!match || /[\p{L}\p{N}]/u.test(chars[index - 1] || '')
+    || /[\p{L}\p{N}]/u.test(chars[index + match[0].length] || '')) return null;
+  const gap = match[2].length;
+  const boxes = [0, 1 + gap, 2 + gap, 3 + gap]
+    .map((offset) => characters[index + offset]?.boundingBox);
+  if (boxes.some((box) => !box || box.w <= 0 || box.h <= 0)) return null;
+  const letter = boxes[0], parenthesis = boxes[1];
+  if ((parenthesis.x - letter.x - letter.w) * size.width
+    > Math.max(letter.h, parenthesis.h) * size.height * .6) return null;
+  const x = Math.min(...boxes.map((box) => box.x)), y = Math.min(...boxes.map((box) => box.y));
+  const right = Math.max(...boxes.map((box) => box.x + box.w));
+  const top = Math.max(...boxes.map((box) => box.y + box.h));
+  return { token: `${match[1]}(${match[3]})`, length: match[0].length,
+    boundingBox: { x, y, w: right - x, h: top - y } };
+}
+
 function characterCandidates(ocr, size, formulas) {
   const candidates = [];
   for (const block of ocr?.blocks || []) {
@@ -160,17 +180,11 @@ function characterCandidates(ocr, size, formulas) {
     for (let i = 0; i < chars.length; i++) {
       if (i <= skipThrough) continue;
       const first = block.characters[i].boundingBox, second = block.characters[i + 1]?.boundingBox;
-      const callToken = chars.slice(i, i + 4).join('');
       // Vision often gives every character of a short inline notation such as
       // P(A) or f(x) the same box. Recheck that entire printed token instead
       // of treating its P/f and A/x as unrelated single-letter candidates.
-      const call = /^[A-Za-z]\([A-Za-z]\)$/u.test(callToken) && first
-        && [1, 2, 3].every((offset) => {
-          const other = block.characters[i + offset]?.boundingBox;
-          return other && ['x', 'y', 'w', 'h'].every((key) => first[key] === other[key]);
-        }) && !/[\p{L}\p{N}]/u.test(chars[i - 1] || '')
-        && !/[\p{L}\p{N}]/u.test(chars[i + 4] || '');
-      if (call) skipThrough = i + 3;
+      const call = inlineCallCandidate(chars, block.characters, i, size);
+      if (call) skipThrough = i + call.length - 1;
       // Vision can split one printed mathematical glyph into two text
       // characters (observed Ω -> S2) while giving both the same pixel box.
       // An ordinary S2 has two separate boxes and stays untouched.
@@ -182,7 +196,7 @@ function characterCandidates(ocr, size, formulas) {
       if (!call && !splitGlyph && (!/^[A-Za-z€&$]$/u.test(chars[i])
         || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
         || /[\p{L}\p{N}]/u.test(chars[i + 1] || ''))) continue;
-      const source = first;
+      const source = call ? call.boundingBox : first;
       if (!source || source.w <= 0 || source.h <= 0) continue;
       const x = Math.max(0, Math.floor(source.x * size.width));
       const y = Math.max(0, Math.floor((1 - source.y - source.h) * size.height));
@@ -209,7 +223,7 @@ function characterCandidates(ocr, size, formulas) {
       // A currency-shaped OCR placeholder in ordinary prose is more likely
       // to hide a missed math glyph than an English article. Check its pixels
       // first so slower machines do not exhaust the bounded recheck deadline.
-      candidates.push({ ...box, sourceToken: call ? callToken : null,
+      candidates.push({ ...box, sourceToken: call?.token || null,
         priority: splitGlyph ? -2 : placeholder ? -1 : call || block.text.length <= 45 ? 0 : 1,
         rowLength: block.text.length });
     }

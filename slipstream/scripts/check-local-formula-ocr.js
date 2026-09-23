@@ -241,6 +241,19 @@ app.whenReady().then(async () => {
     assert(narrow.formulas.some((formula) => formula.latex === '\\Omega'
       && Math.abs(formula.x - 270) < 4 && Math.abs(formula.y - 54) < 4),
     'a narrow OCR placeholder box must recover the complete printed math glyph');
+    const notationImage = path.join(fixtures, 'authored-function-notation.png');
+    const notationDetected = await splitReader.recognize(notationImage);
+    const baseline = { x: 117 / 820, y: 1 - 106 / 260, h: 28 / 260 };
+    const letterBox = { ...baseline, w: 21 / 820 };
+    const restBox = { ...baseline, x: 138 / 820, w: 36 / 820 };
+    const ocrSpace = { x: 0, y: 1, w: 0, h: 0 };
+    const spaced = await splitReader.recheckCharacters(notationImage, { blocks: [{ text: 'P (A)', characters: [
+      { text: 'P', boundingBox: letterBox }, { text: ' ', boundingBox: ocrSpace },
+      ...['(', 'A', ')'].map((letter) => ({ text: letter, boundingBox: restBox })),
+    ] }] }, notationDetected);
+    assert(spaced.formulas.some((formula) => formula.latex === 'P(A)'
+      && Math.abs(formula.x - 117) < 4 && Math.abs(formula.y - 78) < 4),
+    'a spurious OCR space inside P(A) must not hide the source-confirmed formula');
   } finally { await splitReader.cleanup(); }
   const functionNotation = await service.performReadingOCR(path.join(fixtures, 'authored-function-notation.png'));
   const functionAtoms = mathRanges(functionNotation.text).map((item) => compact(item.tex));
