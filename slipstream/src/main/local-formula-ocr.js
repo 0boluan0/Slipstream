@@ -146,13 +146,31 @@ function visualAtom(latex) {
   return null;
 }
 
+function matchingCallAtom(latex, source) {
+  const compact = latex.replace(/\s+/gu, '').replace(/\\(?:left|right)/gu, '');
+  return compact === source ? compact : null;
+}
+
 function characterCandidates(ocr, size, formulas) {
   const candidates = [];
   for (const block of ocr?.blocks || []) {
     const chars = Array.from(block.text || '');
     if (chars.length !== block.characters?.length) continue;
+    let skipThrough = -1;
     for (let i = 0; i < chars.length; i++) {
+      if (i <= skipThrough) continue;
       const first = block.characters[i].boundingBox, second = block.characters[i + 1]?.boundingBox;
+      const callToken = chars.slice(i, i + 4).join('');
+      // Vision often gives every character of a short inline notation such as
+      // P(A) or f(x) the same box. Recheck that entire printed token instead
+      // of treating its P/f and A/x as unrelated single-letter candidates.
+      const call = /^[A-Za-z]\([A-Za-z]\)$/u.test(callToken) && first
+        && [1, 2, 3].every((offset) => {
+          const other = block.characters[i + offset]?.boundingBox;
+          return other && ['x', 'y', 'w', 'h'].every((key) => first[key] === other[key]);
+        }) && !/[\p{L}\p{N}]/u.test(chars[i - 1] || '')
+        && !/[\p{L}\p{N}]/u.test(chars[i + 4] || '');
+      if (call) skipThrough = i + 3;
       // Vision can split one printed mathematical glyph into two text
       // characters (observed Ω -> S2) while giving both the same pixel box.
       // An ordinary S2 has two separate boxes and stays untouched.
@@ -161,7 +179,7 @@ function characterCandidates(ocr, size, formulas) {
         && !/[\p{L}\p{N}]/u.test(chars[i - 1] || '')
         && !/[\p{L}\p{N}]/u.test(chars[i + 2] || '');
       // Vision can render an isolated Ω as S, &, or $ across macOS versions.
-      if (!splitGlyph && (!/^[A-Za-z€&$]$/u.test(chars[i])
+      if (!call && !splitGlyph && (!/^[A-Za-z€&$]$/u.test(chars[i])
         || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
         || /[\p{L}\p{N}]/u.test(chars[i + 1] || ''))) continue;
       const source = first;
@@ -184,14 +202,15 @@ function characterCandidates(ocr, size, formulas) {
       // by just under the area threshold. Its center still identifies it as
       // the same printed glyph, so avoid emitting the formula twice.
       const centerX = box.x + box.w / 2, centerY = box.y + box.h / 2;
-      if (box.w < 8 || box.h < 10 || box.w > box.h * 2 || box.h > size.height * .15
+      if (box.w < 8 || box.h < 10 || box.w > box.h * (call ? 3.5 : 2) || box.h > size.height * .15
         || formulas.some((formula) => overlap(formula, box) > .65
           || (centerX >= formula.x && centerX <= formula.x + formula.w
             && centerY >= formula.y && centerY <= formula.y + formula.h))) continue;
       // A currency-shaped OCR placeholder in ordinary prose is more likely
       // to hide a missed math glyph than an English article. Check its pixels
       // first so slower machines do not exhaust the bounded recheck deadline.
-      candidates.push({ ...box, priority: splitGlyph ? -2 : placeholder ? -1 : block.text.length <= 45 ? 0 : 1,
+      candidates.push({ ...box, sourceToken: call ? callToken : null,
+        priority: splitGlyph ? -2 : placeholder ? -1 : call || block.text.length <= 45 ? 0 : 1,
         rowLength: block.text.length });
     }
   }
@@ -438,10 +457,12 @@ function createLocalFormulaOcr(modelDir) {
           if (Date.now() >= deadline) break;
           continue;
         }
-        const atoms = readings.map(({ latex }) => visualAtom(latex));
+        const atoms = readings.map(({ latex }) => box.sourceToken
+          ? matchingCallAtom(latex, box.sourceToken) : visualAtom(latex));
+        const minimum = box.sourceToken ? .65 : .45, maximum = box.sourceToken ? .95 : .65;
         if (!atoms[0] || !atoms.every((atom) => atom === atoms[0])
-          || Math.min(...readings.map(({ confidence }) => confidence)) < .45
-          || Math.max(...readings.map(({ confidence }) => confidence)) < .65) continue;
+          || Math.min(...readings.map(({ confidence }) => confidence)) < minimum
+          || Math.max(...readings.map(({ confidence }) => confidence)) < maximum) continue;
         supplements.push({ ...box, latex: atoms[0], confidence: Math.min(...readings.map(({ confidence }) => confidence)),
           score: .7, display: false });
       }

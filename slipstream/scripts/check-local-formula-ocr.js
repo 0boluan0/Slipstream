@@ -242,6 +242,18 @@ app.whenReady().then(async () => {
       && Math.abs(formula.x - 270) < 4 && Math.abs(formula.y - 54) < 4),
     'a narrow OCR placeholder box must recover the complete printed math glyph');
   } finally { await splitReader.cleanup(); }
+  const functionNotation = await service.performReadingOCR(path.join(fixtures, 'authored-function-notation.png'));
+  const functionAtoms = mathRanges(functionNotation.text).map((item) => compact(item.tex));
+  assert.equal(functionAtoms.filter((atom) => atom === 'P(A)').length, 2,
+    'both occurrences of a printed probability expression must remain LaTeX math');
+  assert(functionAtoms.includes('f(x)'), 'a second one-letter function call must remain LaTeX math');
+  assert.match(functionNotation.text, /Plan \(A\) is a section label in ordinary prose/,
+    'a prose label with a separate parenthesis must stay prose');
+  for (const item of mathRanges(functionNotation.text)) {
+    katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
+  }
+  results.push({ case: 'authored-inline-function-notation', ...functionNotation.formulaOcr,
+    text: functionNotation.text });
 
   for (const result of results) {
     const starts = new Set(mathRanges(result.text || '').map((range) => range.start));
