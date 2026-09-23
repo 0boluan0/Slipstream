@@ -179,7 +179,11 @@ function characterCandidates(ocr, size, formulas) {
         || formulas.some((formula) => overlap(formula, box) > .65
           || (centerX >= formula.x && centerX <= formula.x + formula.w
             && centerY >= formula.y && centerY <= formula.y + formula.h))) continue;
-      candidates.push({ ...box, priority: splitGlyph ? -1 : block.text.length <= 45 ? 0 : 1,
+      // A currency-shaped OCR placeholder in ordinary prose is more likely
+      // to hide a missed math glyph than an English article. Check its pixels
+      // first so slower machines do not exhaust the bounded recheck deadline.
+      const placeholder = /^[€&$]$/u.test(chars[i]);
+      candidates.push({ ...box, priority: splitGlyph ? -2 : placeholder ? -1 : block.text.length <= 45 ? 0 : 1,
         rowLength: block.text.length });
     }
   }
