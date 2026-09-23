@@ -174,6 +174,13 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       const last = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x).at(-1);
       if (last && /[,.;:!?]$/.test(last.text)) punctuation = last.text.at(-1);
     }
+    // MFR often puts sentence punctuation inside the last row of an aligned
+    // display. Keep it once after the TeX environment, as with inline math.
+    const alignedEnd = latex.match(/([,.;:!?])(\s*\}\s*\\\\\s*\\end\{aligned\}(?:\s*\\tag\{[^{}]+\})?\s*)$/u);
+    if (alignedEnd) {
+      latex = latex.slice(0, alignedEnd.index) + alignedEnd[2];
+      if (!punctuation) punctuation = alignedEnd[1];
+    }
     if (!punctuation && !formula.display) {
       // A repaired masked row may have lost the punctuation beside its math.
       // The existing padded pass can supply it only when the whole formula

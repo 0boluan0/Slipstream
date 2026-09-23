@@ -80,6 +80,14 @@ async function main() {
   assert.equal(mergeFormulaDocument({ blocks: [] }, [relation], size,
     { blocks: [word('p=q;', 10, 32), ...trailingText.blocks] }, { blocks: relationWords }).text, '$p = q$; next',
   'existing original punctuation has precedence over a different secondary reading');
+  const alignedComma = { ...formula, display: true,
+    latex: String.raw`\begin{aligned} { \mathrm{ECE}=\sum_{m=1}^{M}\frac{|B_m|}{n}|\operatorname{acc}(B_m)-\operatorname{conf}(B_m)|, } \\ \end{aligned}` };
+  const alignedDocument = mergeFormulaDocument({ blocks: [] }, [alignedComma], size,
+    { blocks: [word('ECE,', 10, 27)] });
+  assert.equal(alignedDocument.text.match(/,/gu)?.length, 1,
+    'a display equation comma read by both recognizers appears only once');
+  assert.match(alignedDocument.text, /\\end\{aligned\}\$\$,/u,
+    'sentence punctuation follows rather than enters the aligned equation');
   const edgeSize = { width: 1000, height: 100 };
   const edgeWord = (text, x, w) => ({ ...word(text, x / 10, w / 10),
     characters: [...text].map((char) => ({ text: char, boundingBox: { x: x / 1000, y: .7, w: w / 1000, h: .2 } })) });
