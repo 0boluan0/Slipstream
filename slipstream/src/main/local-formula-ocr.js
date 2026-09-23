@@ -148,7 +148,8 @@ function characterCandidates(ocr, size, formulas) {
     const chars = Array.from(block.text || '');
     if (chars.length !== block.characters?.length) continue;
     for (let i = 0; i < chars.length; i++) {
-      if (!/^[A-Za-z€&]$/u.test(chars[i]) || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
+      // Vision can render an isolated Ω as S, &, or $ across macOS versions.
+      if (!/^[A-Za-z€&$]$/u.test(chars[i]) || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
         || /[\p{L}\p{N}]/u.test(chars[i + 1] || '')) continue;
       const source = block.characters[i].boundingBox;
       if (!source || source.w <= 0 || source.h <= 0) continue;
