@@ -112,6 +112,19 @@ function styledAtom(latex) {
   return /^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}[,.;:!?]?$/.test(compact) ? compact : null;
 }
 
+function accentedAtom(latex) {
+  // A weak layout candidate may still contain a clearly printed accent over
+  // one letter. Require the math recognizer to agree on that exact atom under
+  // three crop margins before letting it replace Vision's plain letter.
+  const compact = latex.replace(/\s+/g, '');
+  const match = compact.match(/^\\(hat|bar|tilde|vec|dot|ddot)(?:\{([A-Za-z])\}|([A-Za-z]))([,.;:!?]?)$/);
+  return match ? `\\${match[1]}{${match[2] || match[3]}}${match[4]}` : null;
+}
+
+function weakAccentGeometry(box, size) {
+  return !box.display && box.w < box.h * 2 && box.h < size.height * .12;
+}
+
 async function recognizeCrop(model, image, signal, deadline) {
   cancelled(signal, deadline);
   const encoded = await model.encoder.run({ pixel_values: rgbTensor(image, 384, true, model.ort) });
@@ -198,6 +211,27 @@ function createLocalFormulaOcr(modelDir) {
       const detected = await model.detector.run(detectorInput(image, model.ort));
       cancelled(signal, deadline);
       const boxes = detectBoxes(detected.fetch_name_0, size);
+      // Wide excerpts shrink an isolated accent to a few detector pixels.
+      // Inspect overlapping halves at higher effective resolution, but admit
+      // only small candidates whose accent survives three math-model crops.
+      if (size.width >= 1200 && size.width > size.height * 2) {
+        const width = Math.round(size.width * .6), tiled = [];
+        for (const x of [0, size.width - width]) {
+          cancelled(signal, deadline);
+          const tile = image.crop({ x, y: 0, width, height: size.height });
+          const inferred = await model.detector.run(detectorInput(tile, model.ort));
+          for (const candidate of detectBoxes(inferred.fetch_name_0, tile.getSize())) {
+            const box = { ...candidate, x: candidate.x + x, tiled: true };
+            if (box.score < .12 || !weakAccentGeometry(box, size)
+              || boxes.some((existing) => overlap(existing, box) > .65)) continue;
+            const duplicate = tiled.findIndex((existing) => overlap(existing, box) > .65);
+            if (duplicate < 0) tiled.push(box);
+            else if (box.score > tiled[duplicate].score) tiled[duplicate] = box;
+          }
+        }
+        boxes.push(...tiled.sort((a, b) => b.score - a.score).slice(0, 12));
+        boxes.sort((a, b) => a.y - b.y || a.x - b.x);
+      }
       if (boxes.length > 60) throw new Error('formula-region-limit');
       // A dense page needs more decoder passes than a short excerpt. Keep the
       // common path quick, while bounding formula-heavy captures to one minute.
@@ -224,6 +258,20 @@ function createLocalFormulaOcr(modelDir) {
             agreedStyledAtom = true;
           }
         }
+        let agreedAccentAtom = false;
+        if (weakAccentGeometry(box, size) && box.score >= (box.tiled ? .12 : .2)
+          && (box.tiled || box.score < .3) && confidence >= .95) {
+          const atom = accentedAtom(latex);
+          if (atom) {
+            const first = await recognizeCrop(model, padFormulaCrop(trimmed, .1), signal, deadline);
+            const second = await recognizeCrop(model, padFormulaCrop(trimmed, .2), signal, deadline);
+            if (atom === accentedAtom(first.latex) && atom === accentedAtom(second.latex)
+              && Math.min(first.confidence, second.confidence) >= .95) {
+              latex = atom;
+              agreedAccentAtom = true;
+            }
+          }
+        }
         // A weak detection is not enough to turn prose into mathematics. Admit
         // only confident notation. Bare Latin atoms need stronger recognition;
         // the English words a/A/I still belong to prose in this weak-layout path.
@@ -236,8 +284,9 @@ function createLocalFormulaOcr(modelDir) {
         const annotatedProse = !box.display && confidence >= .99 && proseSuperscript(latex);
         // The faintest layout candidates need near-certain short notation.
         // Do not extend the lower detector floor to words or font guesses.
+        if (box.tiled && !agreedAccentAtom) continue;
         if (box.score < .12 && !(confidence >= .99 && (latin || indexed))) continue;
-        if (box.score < .3 && !(agreedStyledAtom || annotatedProse || confidence >= .75 && (greek || styled || list)
+        if (box.score < .3 && !(agreedStyledAtom || agreedAccentAtom || annotatedProse || confidence >= .75 && (greek || styled || list)
           || confidence >= .95 && (latin || indexed))) continue;
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
       }

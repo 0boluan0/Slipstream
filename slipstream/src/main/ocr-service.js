@@ -1,5 +1,5 @@
 const { execFile } = require('child_process');
-const { app } = require('electron');
+const { app, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('node:fs/promises');
 const { createOcrEnvironment } = require('./ocr-environment');
@@ -121,6 +121,48 @@ function performOCR(imagePath, { signal, characters = false, padEdges = false } 
   });
 }
 
+async function recheckReferenceOne(imagePath, original, padded, temporary, { signal } = {}) {
+  const source = original?.blocks || [], alternative = padded?.blocks || [];
+  if (!source.some((block) => /\b(?:Figure|Table|Equation|Algorithm) I\b/u.test(block.text))) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const blocks = source.slice();
+  let checked = 0;
+  for (let row = 0; row < blocks.length && checked < 4; row++) {
+    const block = blocks[row];
+    const match = /\b(?:Figure|Table|Equation|Algorithm) I\b/u.exec(block.text);
+    if (!match || !block.boundingBox || !block.characters?.length
+      || block.characters.length !== Array.from(block.text).length) continue;
+    const corrected = block.text.slice(0, match.index) + match[0].replace(/I$/u, '1')
+      + block.text.slice(match.index + match[0].length);
+    const alternativeRow = alternative.find((candidate) => candidate.confidence >= .9
+      && candidate.text === corrected && candidate.boundingBox
+      && Math.abs(candidate.boundingBox.y + candidate.boundingBox.h / 2
+        - block.boundingBox.y - block.boundingBox.h / 2) < Math.min(candidate.boundingBox.h, block.boundingBox.h) * .6);
+    if (!alternativeRow) continue;
+    const first = Array.from(block.text.slice(0, Math.max(0, match.index - 4))).length;
+    const last = Array.from(block.text.slice(0, match.index + match[0].length)).length;
+    const chars = block.characters.slice(first, last).filter((char) => char.boundingBox.w > 0 && char.boundingBox.h > 0);
+    if (chars.length < 3) continue;
+    const x = Math.max(0, Math.floor(Math.min(...chars.map((char) => char.boundingBox.x)) * size.width) - 8);
+    const right = Math.min(size.width, Math.ceil(Math.max(...chars.map((char) => char.boundingBox.x + char.boundingBox.w)) * size.width) + 8);
+    const y = Math.max(0, Math.floor((1 - Math.max(...chars.map((char) => char.boundingBox.y + char.boundingBox.h))) * size.height) - 8);
+    const bottom = Math.min(size.height, Math.ceil((1 - Math.min(...chars.map((char) => char.boundingBox.y))) * size.height) + 8);
+    if (right - x < 40 || bottom - y < 12) continue;
+    const crop = path.join(temporary, `reference-${checked++}.png`);
+    await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+    const confirmed = await performOCR(crop, { signal }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    if (!confirmed || confirmed.confidence < .9 || !confirmed.text.includes(match[0].replace(/I$/u, '1'))) continue;
+    const index = last - 1;
+    blocks[row] = { ...block, text: corrected, characters: block.characters.map((char, i) =>
+      i === index ? { ...char, text: '1' } : char) };
+  }
+  return { ...original, blocks };
+}
+
 async function performReadingOCR(imagePath, { signal } = {}) {
   const [textResult, formulaResult] = await Promise.allSettled([
     performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
@@ -151,7 +193,8 @@ async function performReadingOCR(imagePath, { signal } = {}) {
         return null;
       }),
     ]);
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, original, edges);
+    const corroborated = await recheckReferenceOne(imagePath, original, edges, temporary, { signal });
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, corroborated, edges);
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
@@ -173,5 +216,6 @@ module.exports = {
   frontmostDocumentWindow,
   performOCR,
   performReadingOCR,
+  recheckReferenceOne,
   cleanup,
 };
