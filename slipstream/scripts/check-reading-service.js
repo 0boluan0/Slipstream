@@ -191,12 +191,18 @@ async function main() {
   const ordinaryLookup = (await lookup({ text: source, kind: 'lookup', selection: 'Correlation', settingsSnapshot: settings })).lookup;
   assert.equal(ordinaryLookup.contextual, true);
   assert.equal(ordinaryLookup.basis, 'unverified', 'legacy or incomplete output must not claim an original definition');
-  const explicitSource = 'A collider is a variable influenced by both exposure and outcome.';
+  const explicitSource = 'A collider is defined as a variable influenced by both exposure and outcome.';
   const explicit = createReadingProcessor(async () => JSON.stringify({ quote: 'collider',
-    meaning: '同时受两个变量影响的变量。', note: '', basis: 'defined', sourceQuote: 'collider is a variable influenced by both exposure and outcome' }));
+    meaning: '同时受两个变量影响的变量。', note: '', basis: 'defined', sourceQuote: 'collider is defined as a variable influenced by both exposure and outcome' }));
   assert.deepEqual((await explicit({ text: explicitSource, kind: 'lookup', selection: 'collider', settingsSnapshot: settings })).lookup,
     { quote: 'collider', meaning: '同时受两个变量影响的变量。', note: '', basis: 'defined',
-      sourceQuote: 'collider is a variable influenced by both exposure and outcome', contextual: true });
+      sourceQuote: 'collider is defined as a variable influenced by both exposure and outcome', contextual: true });
+  const copularSource = 'The intrinsic rank is a small number in this setting.';
+  const copular = createReadingProcessor(async () => JSON.stringify({ quote: 'intrinsic rank',
+    meaning: '更新矩阵所需的低维结构。', note: '', basis: 'defined', sourceQuote: copularSource }));
+  const copularLookup = (await copular({ text: copularSource, kind: 'lookup', selection: 'intrinsic rank', settingsSnapshot: settings })).lookup;
+  assert.equal(copularLookup.basis, 'contextual', 'a copular assumption is not sufficient evidence of an author definition');
+  assert.equal(copularLookup.sourceQuote, copularSource, 'the actual sentence still remains available for review');
   const informalSource = 'We hypothesize that adaptation has a low intrinsic rank.';
   const overclaimed = createReadingProcessor(async () => JSON.stringify({ quote: 'intrinsic rank',
     meaning: '矩阵非零奇异值的个数。', note: '', basis: 'defined', sourceQuote: informalSource }));
