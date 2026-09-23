@@ -248,7 +248,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       meaning: only?.meaning || '', note: only?.scope || '', referenceSource: only?.source || '' };
   }
 
-  async function openReferences(paperId, draft, source = null) {
+  async function openReferences(paperId, draft, source = null, origin = null) {
     if (!referenceStore || disposed || !canCapture()) return false;
     await referencesReady;
     if (disposed) return false;
@@ -259,7 +259,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       pin = createPin(null, true, selectedPaper, source);
       pin.paperChosen = true;
     }
-    if (source) pin.captureSource = source;
+    pin.referenceOrigin = origin && alive(origin)
+      ? { id: origin.id, paperId: origin.view.paperId, sourceKey: origin.captureSource?.key || null } : null;
+    pin.captureSource = source;
     if (draft) pin.referenceDraft = { ...draft, token: Date.now() };
     publish(pin);
     if (pin.ready) pin.window.show();
@@ -271,11 +273,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     await referencesReady;
     if (!alive(pin)) return false;
     try {
-      if (action === 'reference-open') return openReferences(pin.view.paperId, null, pin.captureSource);
+      if (action === 'reference-open') return openReferences(pin.view.paperId, null, pin.captureSource, pin);
       if (action === 'reference-draft') {
         const lookup = pin.view.lookup;
         return openReferences(pin.view.paperId, { symbol: lookup?.quote || '', meaning: lookup?.meaning || '',
-          source: pin.view.sourceText, evidence: '', scope: '', origin: 'manual' }, pin.captureSource);
+          source: pin.view.sourceText, evidence: '', scope: '', origin: 'manual' }, pin.captureSource, pin);
       }
       if (action === 'reference-refresh') { await refreshReferences(); return true; }
       if (action === 'paper-undo') {
@@ -309,6 +311,26 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           ? pin.captureSource ? '同一文档之后的截图会自动找回这篇阅读；已打开的其他卡片保留各自归属。'
             : '已选为当前阅读。无法识别文档来源时，新截图仍从临时阅读开始。'
           : '这张卡片已切换为临时阅读。';
+        const linked = pin.view.referenceOnly && pin.referenceOrigin && pins.get(pin.referenceOrigin.id);
+        if (linked && alive(linked) && linked.view.paperId === pin.referenceOrigin.paperId
+          && (linked.captureSource?.key || null) === pin.referenceOrigin.sourceKey) {
+          linked.view.paperId = pin.view.paperId;
+          linked.paperChosen = true;
+          linked.referenceController?.abort();
+          linked.referenceCandidates = [];
+          for (const segment of linked.view.segments) delete segment.referenceCandidates;
+          linked.lookupController?.abort();
+          linked.lookupSequence += 1;
+          linked.lookupCache.clear();
+          linked.view.lookup = null;
+          linked.view.lookupStatus = '';
+          linked.referenceNotice = linked.view.paperId
+            ? linked.captureSource ? '这张卡片已归入本文速查；同一文档之后的截图会自动找回。'
+              : '这张卡片已归入本文速查；无法识别文档来源时，新截图仍从临时阅读开始。'
+            : '这张卡片已切换为临时阅读。';
+          pin.referenceOrigin.paperId = linked.view.paperId;
+          pin.referenceNotice = linked.referenceNotice;
+        }
       } else {
         const paperId = pin.view.paperId;
         if (payload.paperId !== paperId || !paperId) throw new Error('reference-paper-changed');
