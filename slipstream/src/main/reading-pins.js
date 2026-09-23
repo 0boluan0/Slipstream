@@ -13,6 +13,7 @@ const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation
 const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms } = require('./reading-document');
 const { referenceKey, referenceCandidateKey, referenceCandidateCovered, preferExplicitReferenceCandidates, referenceOccurrences, isNotation } = require('./reading-references');
 const { captureSource, paperForCapture, titleForCapture } = require('./reading-capture-source');
+const { createTaskSettlement } = require('./task-cancellation');
 
 const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
 const ENTRY_URL = pathToFileURL(ENTRY).href;
@@ -76,6 +77,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   copyText = () => {}, saveTermCard, findTermCard, referenceStore, onOpenLibrary = () => {}, onOpenSettings = () => {}, onError = () => {}, classifyError = () => '处理没有完成，请重试或检查设置。' }) {
   const pins = new Map();
   let selecting = null;
+  const captureTasks = new Map();
   let generation = 0;
   let disposed = false;
   let referenceData = { papers: [], activePaperId: null };
@@ -591,7 +593,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     } catch (error) {
       if (!alive(pin) || controller.signal.aborted || sequence !== pin.lookupSequence) return;
       update(pin, { lookupStatus: 'error', lookupNotice: error?.message === 'reading-invalid-output' || error instanceof SyntaxError
-        ? '这次解释未能匹配所选原文，请重试。' : classifyError(error, configuration.settings.activeBackend) });
+        ? '这次解释未能匹配所选原文，请重试。'
+        : error?.message === 'reading-unsupported-claim'
+          ? '这次解释把原文没有确认的权限状态说成了事实，已停止展示。请重试或核对原文。'
+          : classifyError(error, configuration.settings.activeBackend) });
     } finally {
       if (pin.lookupController === controller) pin.lookupController = null;
     }
@@ -664,7 +669,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
   }
 
-  async function capture() {
+  async function capture({ owner } = {}) {
     if (disposed || !canCapture()) return { success: false, cancelled: true };
     if (!captureSupported) {
       const error = 'Windows 预览暂不支持截图识字。请复制英文后使用剪贴板阅读，或粘贴文字开始阅读。';
@@ -681,6 +686,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       return { success: false, cancelled: true };
     }
     const controller = new AbortController();
+    const settlement = createTaskSettlement();
+    const task = { controller, settlement };
+    if (Number.isSafeInteger(owner)) captureTasks.set(owner, task);
     selecting = controller;
     let file = null;
     let hidden = [];
@@ -720,7 +728,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (selecting === controller) selecting = null;
       showPendingCards();
       const ocr = await performOCR(file, { signal: controller.signal });
-      if (!alive(pin) || controller.signal.aborted) return { success: true, pinned: true };
+      if (controller.signal.aborted) {
+        if (alive(pin)) close(pin);
+        return { success: false, cancelled: true };
+      }
+      if (!alive(pin)) return { success: true, pinned: true };
       if (typeof ocr.text !== 'string' || !ocr.text.trim()) {
         update(pin, { phase: 'error', notice: '没有识别到清晰文字，请重新框选一段英文。' });
       } else if (ocr.text.length > DEFAULTS.MAX_TEXT_LENGTH) {
@@ -762,7 +774,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       }
       return { success: true, pinned: true };
     } catch (error) {
-      if (controller.signal.aborted || error?.isCancellation) return { success: false, cancelled: true };
+      if (controller.signal.aborted || error?.isCancellation) {
+        if (pin && alive(pin)) close(pin);
+        return { success: false, cancelled: true };
+      }
       if (pin && alive(pin)) {
         update(pin, { phase: 'error', notice: '文字识别没有完成，请重新框选清晰的一段英文。' });
         return { success: true, pinned: true };
@@ -776,7 +791,16 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (selecting === controller) selecting = null;
       showPendingCards();
       if (pin?.controller === controller) pin.controller = null;
+      if (captureTasks.get(owner) === task) captureTasks.delete(owner);
+      settlement.resolve();
     }
+  }
+
+  function cancelCapture(owner) {
+    const task = captureTasks.get(owner);
+    if (!task) return null;
+    task.controller.abort();
+    return task.settlement.promise;
   }
 
   ipcMain.handle('reading-pin:action', (event, action, payload) => {
@@ -914,9 +938,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   function clear() {
     generation += 1;
     selecting?.abort();
+    for (const task of captureTasks.values()) task.controller.abort();
     for (const pin of [...pins.values()]) close(pin);
   }
-  return { capture, openText, openReferences, invalidateProcessing, clear,
+  return { capture, cancelCapture, openText, openReferences, invalidateProcessing, clear,
     dispose() { disposed = true; clear(); ipcMain.removeHandler('reading-pin:action'); },
   };
 }

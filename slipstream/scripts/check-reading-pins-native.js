@@ -47,6 +47,12 @@ app.whenReady().then(async () => {
   let low = false;
   let fail = false;
   let cancel = false;
+  let holdSelection = false;
+  let selectionStarted = false;
+  let selectionAbortObserved = false;
+  let holdOcr = false;
+  let ocrStarted = false;
+  let ocrAbortObserved = false;
   let held = false;
   let resolveHeld;
   let heldSignal;
@@ -90,15 +96,31 @@ app.whenReady().then(async () => {
     saveTermCard: (input) => termStore.save(input),
     getSettings: () => settings, getMainWindow: () => mainWindow,
     requestCapturePermission: async () => ({ granted: true }),
-    captureRegion: async () => {
+    captureRegion: async (_file, { signal } = {}) => {
       assert(cards().every((window) => !window.isVisible()), 'existing cards must be hidden while selecting');
       assert(!mainWindow.isVisible(), 'main workspace must be hidden while selecting');
+      if (holdSelection) {
+        selectionStarted = true;
+        return new Promise((_resolve, reject) => {
+          const fail = () => { selectionAbortObserved = true; const error = new Error('cancel'); error.isCancellation = true; reject(error); };
+          if (signal?.aborted) fail();
+          else signal?.addEventListener('abort', fail, { once: true });
+        });
+      }
       if (cancel) { const error = new Error('cancel'); error.isCancellation = true; throw error; }
       const file = path.join(work, `capture-${++selectionCount}.png`);
       fs.copyFileSync(fixture, file);
       return file;
     },
     performOCR: async (file, options) => {
+      if (holdOcr) {
+        ocrStarted = true;
+        return new Promise((_resolve, reject) => {
+          const fail = () => { ocrAbortObserved = true; const error = new Error('cancel'); error.isCancellation = true; reject(error); };
+          if (options.signal?.aborted) fail();
+          else options.signal?.addEventListener('abort', fail, { once: true });
+        });
+      }
       if (ocrOverride) return { text: ocrOverride, confidence: .99, blocks: ocrClipped
         ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
           boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
@@ -252,6 +274,33 @@ app.whenReady().then(async () => {
   assert(second.isVisible(), 'cancel must restore existing cards');
   assert(mainWindow.isVisible(), 'cancel must restore the previously visible main workspace');
   cancel = false;
+  holdSelection = true;
+  selectionStarted = false;
+  selectionAbortObserved = false;
+  const pendingSelection = manager.capture({ owner: 7001 });
+  await until(() => selectionStarted, 'waiting native selector fixture');
+  const cancelledSelection = manager.cancelCapture(7001);
+  assert(cancelledSelection && typeof cancelledSelection.then === 'function', 'main-owned capture must expose settlement');
+  assert.equal(await cancelledSelection.then(() => true), true);
+  assert.deepEqual(await pendingSelection, { success: false, cancelled: true });
+  assert(selectionAbortObserved, 'cancel must reach the active selector');
+  assert.equal(manager.cancelCapture(7001), null, 'settled capture must release its owner');
+  assert(second.isVisible(), 'cancel must restore existing cards after an in-flight selector');
+  assert(mainWindow.isVisible(), 'cancel must restore the main workspace after an in-flight selector');
+  holdSelection = false;
+  holdOcr = true;
+  ocrStarted = false;
+  ocrAbortObserved = false;
+  const pendingOcr = manager.capture({ owner: 7002 });
+  await until(() => ocrStarted, 'waiting local OCR fixture');
+  const cancelledOcr = manager.cancelCapture(7002);
+  assert(cancelledOcr && typeof cancelledOcr.then === 'function', 'OCR capture must expose settlement');
+  await cancelledOcr;
+  assert.deepEqual(await pendingOcr, { success: false, cancelled: true });
+  assert(ocrAbortObserved, 'cancel must reach local OCR');
+  assert.equal(cards().length, 1, 'cancelled OCR must remove its incomplete card');
+  assert.equal(manager.cancelCapture(7002), null);
+  holdOcr = false;
   low = false;
   held = true;
   await manager.capture();
