@@ -226,6 +226,7 @@ app.whenReady().then(async () => {
   await until(() => lastQuitRisk === false, 'settled reading home');
   assert.equal(pins.openText('Correlation does not imply causation.').success, true);
   assert.equal(main.isVisible(), false, 'reading hides the home window');
+  await until(() => js('document.visibilityState === "hidden"'), 'hidden reading home visibility');
   assert.equal(await js('document.visibilityState'), 'hidden');
   const quitRequest = { requestId: 'hidden-reading-home-quit' };
   const quitStarted = Date.now();
