@@ -219,6 +219,7 @@ app.whenReady().then(async () => {
   main.webContents.setZoomFactor(1); main.setSize(820, 720);
   const callsBeforeActivation = providerCalls;
   await js('document.querySelector(".full-analysis-enable-button").click()');
+  await until(() => settings.setupMode === 'full', 'saved professional reading mode');
   await until(() => js('Boolean(document.querySelector(".capture-card"))'), 'activated reading home');
   assert.equal(settings.setupMode, 'full');
   assert.equal(providerCalls, callsBeforeActivation, 'activation must not submit a user excerpt or start another trial');
