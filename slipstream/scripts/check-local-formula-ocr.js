@@ -244,6 +244,16 @@ app.whenReady().then(async () => {
   } finally { await splitReader.cleanup(); }
   const functionNotation = await service.performReadingOCR(path.join(fixtures, 'authored-function-notation.png'));
   const functionAtoms = mathRanges(functionNotation.text).map((item) => compact(item.tex));
+  if (functionAtoms.filter((atom) => atom === 'P(A)').length !== 2 || !functionAtoms.includes('f(x)')) {
+    const observed = await service.performOCR(path.join(fixtures, 'authored-function-notation.png'), { characters: true });
+    const lines = observed.blocks.map((block) => ({ text: block.text,
+      calls: [...block.text.matchAll(/[A-Za-z]\([A-Za-z]\)/gu)].map((match) => ({
+        text: match[0], boxes: block.characters?.slice(match.index, match.index + 4)
+          .map((character) => character.boundingBox),
+      })) }));
+    console.error(`Function notation diagnostic: ${JSON.stringify({ output: functionNotation.text,
+      formulaOcr: functionNotation.formulaOcr, lines })}`);
+  }
   assert.equal(functionAtoms.filter((atom) => atom === 'P(A)').length, 2,
     'both occurrences of a printed probability expression must remain LaTeX math');
   assert(functionAtoms.includes('f(x)'), 'a second one-letter function call must remain LaTeX math');
