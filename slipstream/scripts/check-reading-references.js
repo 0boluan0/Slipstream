@@ -143,8 +143,13 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
   const editedCandidate = { ...textbook[0], origin: 'manual', meaning: '读者校正后的解释' };
   assert(referenceCandidateCovered(textbook[0], editedCandidate),
     'a saved manual correction must hide the same source-backed suggestion');
-  assert(!referenceCandidateCovered(textbook[0], { ...editedCandidate, evidence: specialEvidence }),
-    'a different source passage may define the same symbol differently');
+  assert(!referenceCandidateCovered({ ...textbook[0], evidence: 'In this section, let $N$ denote the sample count.' }, editedCandidate),
+    'an explicitly different source definition may reuse the same symbol');
+  const phiSaved = { symbol: String.raw`\phi`, origin: 'excerpt', evidence: 'Let $\\phi$ denote an element transformation.' };
+  assert(referenceCandidateCovered({ ...phiSaved, evidence: 'Each element is transformed to a representation $\\phi(x_m)$.' }, phiSaved),
+    'reusing a saved symbol in an architecture bullet must not suggest a second definition');
+  assert(!referenceCandidateCovered({ ...phiSaved, evidence: 'In this section, let $\\phi$ denote the inverse map.' }, phiSaved),
+    'an explicit local redefinition remains available for review');
   const fixedSetting = 'Let $\\lambda = 0.1$ denote the regularization strength throughout the study.';
   assert.equal(parseReferenceCandidates([{ symbol: String.raw`\lambda`, meaning: '全篇固定的正则化系数，取值为 0.1',
     evidence: fixedSetting }], fixedSetting).length, 1,

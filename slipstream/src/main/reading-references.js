@@ -12,6 +12,12 @@ function referenceCandidateKey(entry) {
 
 function referenceCandidateCovered(candidate, saved) {
   if (referenceCandidateKey(candidate) === referenceCandidateKey(saved)) return true;
+  if (candidate.origin === 'excerpt' && referenceKey(candidate.symbol) === referenceKey(saved.symbol)
+    && !/\b(?:let|denot(?:e|es|ed)|defin(?:e|es|ed)|redefin(?:e|es|ed)|where|refer(?:s|red)?\s+to|stands?\s+for|we\s+(?:write|call))\b|:=|\\coloneqq/iu.test(candidate.evidence)) {
+    // Merely using a saved symbol in another paragraph is not a new
+    // definition. Keep proposals that explicitly rebind it for this section.
+    return true;
+  }
   if (candidate.origin !== 'excerpt'
     || candidate.evidence.replace(/\s+/gu, ' ') !== saved.evidence.replace(/\s+/gu, ' ')) return false;
   // Editing a proposed definition changes its origin to manual. The same
