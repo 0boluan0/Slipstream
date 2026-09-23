@@ -134,6 +134,10 @@ function weakAccentGeometry(box, size) {
 function visualAtom(latex) {
   let compact = latex.replace(/\\(mathcal|mathbb|mathfrak|mathscr)\s+([A-Za-z])\b/gu, '\\$1{$2}')
     .replace(/\s+/gu, '').replace(/[,.;:!?]$/u, '');
+  // The decoder may wrap a single styled glyph in an extra brace pair.
+  // It remains the same visible atom after surrounding whitespace is trimmed.
+  const styled = styledAtom(compact);
+  if (styled) return styled;
   const wrapped = compact.match(/^\\(?:boldsymbol|mathbf|mathrm)\{(.*)\}$/u);
   if (wrapped) compact = wrapped[1];
   if (/^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}$/u.test(compact)) return compact;
@@ -148,24 +152,39 @@ function characterCandidates(ocr, size, formulas) {
     const chars = Array.from(block.text || '');
     if (chars.length !== block.characters?.length) continue;
     for (let i = 0; i < chars.length; i++) {
+      const first = block.characters[i].boundingBox, second = block.characters[i + 1]?.boundingBox;
+      // Vision can split one printed mathematical glyph into two text
+      // characters (observed Ω -> S2) while giving both the same pixel box.
+      // An ordinary S2 has two separate boxes and stays untouched.
+      const splitGlyph = /^[A-Za-z]$/u.test(chars[i]) && /^[0-9]$/u.test(chars[i + 1] || '')
+        && first && second && ['x', 'y', 'w', 'h'].every((key) => first[key] === second[key])
+        && !/[\p{L}\p{N}]/u.test(chars[i - 1] || '')
+        && !/[\p{L}\p{N}]/u.test(chars[i + 2] || '');
       // Vision can render an isolated Ω as S, &, or $ across macOS versions.
-      if (!/^[A-Za-z€&$]$/u.test(chars[i]) || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
-        || /[\p{L}\p{N}]/u.test(chars[i + 1] || '')) continue;
-      const source = block.characters[i].boundingBox;
+      if (!splitGlyph && (!/^[A-Za-z€&$]$/u.test(chars[i])
+        || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
+        || /[\p{L}\p{N}]/u.test(chars[i + 1] || ''))) continue;
+      const source = first;
       if (!source || source.w <= 0 || source.h <= 0) continue;
       const x = Math.max(0, Math.floor(source.x * size.width));
       const y = Math.max(0, Math.floor((1 - source.y - source.h) * size.height));
       const right = Math.min(size.width, Math.ceil((source.x + source.w) * size.width));
       const bottom = Math.min(size.height, Math.ceil((1 - source.y) * size.height));
       const box = { x, y, w: right - x, h: bottom - y };
+      // Vision's tall character box can overlap an already decoded formula
+      // by just under the area threshold. Its center still identifies it as
+      // the same printed glyph, so avoid emitting the formula twice.
+      const centerX = box.x + box.w / 2, centerY = box.y + box.h / 2;
       if (box.w < 8 || box.h < 10 || box.w > box.h * 2 || box.h > size.height * .15
-        || formulas.some((formula) => overlap(formula, box) > .65)) continue;
-      candidates.push({ ...box, priority: block.text.length <= 45 ? 0 : 1,
+        || formulas.some((formula) => overlap(formula, box) > .65
+          || (centerX >= formula.x && centerX <= formula.x + formula.w
+            && centerY >= formula.y && centerY <= formula.y + formula.h))) continue;
+      candidates.push({ ...box, priority: splitGlyph ? -1 : block.text.length <= 45 ? 0 : 1,
         rowLength: block.text.length });
     }
   }
   return candidates.sort((a, b) => a.priority - b.priority || a.rowLength - b.rowLength
-    || a.y - b.y || a.x - b.x).slice(0, 16);
+    || a.y - b.y || a.x - b.x).slice(0, size.width <= 900 ? 24 : 16);
 }
 
 function sourceDisagreesOnDelta(formula, ocr, size) {
@@ -394,7 +413,10 @@ function createLocalFormulaOcr(modelDir) {
         // Vision's character box is already wider than the printed ink here.
         // Expanding it admits neighboring prose and can turn a calligraphic A
         // into a different symbol in all three recognizer passes.
-        const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
+        // Vision's character rectangle can include several blank pixels. At
+        // small screenshot sizes the decoder can mistake that blank border for
+        // an empty subscript, making otherwise agreeing symbol reads disagree.
+        const crop = trimFormulaCrop(image.crop({ x: box.x, y: box.y, width: box.w, height: box.h }));
         let readings;
         try {
           readings = await Promise.all([0, .1, .2].map((ratio) => recognizeCrop(model,

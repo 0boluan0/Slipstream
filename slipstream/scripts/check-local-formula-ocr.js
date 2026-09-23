@@ -199,6 +199,31 @@ app.whenReady().then(async () => {
   results.push({ case: 'authored-greek-calligraphic-and-plain-lookalikes', ...symbolLookalikes.formulaOcr,
     text: symbolLookalikes.text });
   console.log('authored-greek-calligraphic-and-plain-lookalikes: passed');
+  const smallerLookalikes = await service.performReadingOCR(path.join(fixtures, 'authored-symbol-lookalikes-650.png'));
+  assert.match(smallerLookalikes.text, /The sample space \$\\Omega\$/,
+    'a smaller screenshot must retain the Greek symbol in its heading');
+  assert.match(smallerLookalikes.text, /For this invented example, \$\\Omega\$ contains/,
+    'blank pixels around a small Greek character must not turn a crop recheck into a false subscript');
+  assert.match(smallerLookalikes.text, /The plain set S is a different label/,
+    'tightening a symbol crop must not turn an ordinary S into Omega');
+  assert.match(smallerLookalikes.text, /The separate matrix A stays plain/,
+    'tightening a symbol crop must not turn an ordinary A into a calligraphic A');
+  results.push({ case: 'authored-small-glyphs-and-plain-lookalikes', ...smallerLookalikes.formulaOcr,
+    text: smallerLookalikes.text });
+  const splitReader = createLocalFormulaOcr(path.resolve(__dirname, '../formula-models'));
+  try {
+    const image = path.join(fixtures, 'authored-symbol-lookalikes-650.png');
+    const detected = await splitReader.recognize(image);
+    // The source image prints one Omega at these pixels. Simulate Vision's
+    // observed failure of returning S2 with both characters in one glyph box.
+    const glyph = { x: 272 / 650, y: 1 - 83 / 358, w: 18 / 650, h: 25 / 358 };
+    const split = await splitReader.recheckCharacters(image, { blocks: [{ text: 'S2', characters: [
+      { text: 'S', boundingBox: glyph }, { text: '2', boundingBox: glyph },
+    ] }] }, detected);
+    assert(split.formulas.some((formula) => formula.latex === '\\Omega'
+      && Math.abs(formula.x - 272) < 4 && Math.abs(formula.y - 58) < 4),
+    'two OCR characters occupying one printed math glyph must be checked against source pixels');
+  } finally { await splitReader.cleanup(); }
 
   for (const result of results) {
     const starts = new Set(mathRanges(result.text || '').map((range) => range.start));
