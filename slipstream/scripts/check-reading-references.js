@@ -172,6 +172,17 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
   assert(referenceCandidateCovered(binUsage, binDefinition), 'a saved bin definition covers a later incidental use');
   assert.deepEqual(preferExplicitReferenceCandidates([binUsage, binDefinition]), [binDefinition],
     'show the source definition once rather than a duplicate use of the same symbol');
+  const textbookExcerpt = 'The sample space is usually denoted by $\\Omega$. The event space contains subsets of $\\Omega$.';
+  const textbookDefinition = { symbol: '\\Omega', origin: 'excerpt', evidence: 'The sample space is usually denoted by $\\Omega$.',
+    source: 'The sample space is usually denoted by $\\Omega$.' };
+  const textbookReuse = { ...textbookDefinition, evidence: 'The event space contains subsets of $\\Omega$.', source: textbookExcerpt };
+  assert.deepEqual(preferExplicitReferenceCandidates([textbookDefinition, textbookReuse]), [textbookDefinition],
+    'translation and later extraction from overlapping passages must not offer the same symbol twice');
+  const redefinitionSource = 'Let $x$ denote the observed value. In this section, let $x$ denote its estimate.';
+  const observedX = { symbol: 'x', origin: 'excerpt', evidence: 'Let $x$ denote the observed value.', source: redefinitionSource };
+  const estimatedX = { ...observedX, evidence: 'In this section, let $x$ denote its estimate.' };
+  assert.deepEqual(preferExplicitReferenceCandidates([observedX, estimatedX]), [observedX, estimatedX],
+    'two explicit local definitions of one symbol must remain separately reviewable');
   assert(!referenceCandidateCovered({ ...binDefinition, evidence: 'In this section, let $B_m$ be the set of incorrectly classified samples.' }, binDefinition),
     'a genuine local redefinition of the bin remains available');
   const fixedSetting = 'Let $\\lambda = 0.1$ denote the regularization strength throughout the study.';

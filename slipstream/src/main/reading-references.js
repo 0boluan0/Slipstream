@@ -27,7 +27,21 @@ function evidenceDefinesSymbol(entry) {
 
 function preferExplicitReferenceCandidates(candidates) {
   const explicit = new Set(candidates.filter(evidenceDefinesSymbol).map((entry) => referenceKey(entry.symbol)));
-  return candidates.filter((entry) => !explicit.has(referenceKey(entry.symbol)) || evidenceDefinesSymbol(entry));
+  const selected = [];
+  for (const entry of candidates) {
+    if (explicit.has(referenceKey(entry.symbol)) && !evidenceDefinesSymbol(entry)) continue;
+    const source = entry.source?.replace(/\s+/gu, ' ').trim();
+    const duplicate = selected.some((earlier) => {
+      if (referenceKey(earlier.symbol) !== referenceKey(entry.symbol)) return false;
+      const priorSource = earlier.source?.replace(/\s+/gu, ' ').trim();
+      const samePassage = earlier.evidence === entry.evidence
+        || (source && priorSource && (source.includes(priorSource) || priorSource.includes(source)));
+      return samePassage && !(evidenceDefinesSymbol(earlier) && evidenceDefinesSymbol(entry)
+        && earlier.evidence !== entry.evidence);
+    });
+    if (!duplicate) selected.push(entry);
+  }
+  return selected;
 }
 
 function referenceCandidateCovered(candidate, saved) {
