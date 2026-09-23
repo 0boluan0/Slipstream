@@ -188,7 +188,26 @@ async function main() {
     assert.deepEqual(JSON.parse(args[4]), { excerpt: source, selection: 'Correlation' });
     return JSON.stringify({ quote: 'Correlation', meaning: '两个变量一起变化的统计关系。', note: '原文强调相关关系不足以推断因果。' });
   });
-  assert.equal((await lookup({ text: source, kind: 'lookup', selection: 'Correlation', settingsSnapshot: settings })).lookup.contextual, true);
+  const ordinaryLookup = (await lookup({ text: source, kind: 'lookup', selection: 'Correlation', settingsSnapshot: settings })).lookup;
+  assert.equal(ordinaryLookup.contextual, true);
+  assert.equal(ordinaryLookup.basis, 'unverified', 'legacy or incomplete output must not claim an original definition');
+  const explicitSource = 'A collider is a variable influenced by both exposure and outcome.';
+  const explicit = createReadingProcessor(async () => JSON.stringify({ quote: 'collider',
+    meaning: '同时受两个变量影响的变量。', note: '', basis: 'defined', sourceQuote: 'collider is a variable influenced by both exposure and outcome' }));
+  assert.deepEqual((await explicit({ text: explicitSource, kind: 'lookup', selection: 'collider', settingsSnapshot: settings })).lookup,
+    { quote: 'collider', meaning: '同时受两个变量影响的变量。', note: '', basis: 'defined',
+      sourceQuote: 'collider is a variable influenced by both exposure and outcome', contextual: true });
+  const informalSource = 'We hypothesize that adaptation has a low intrinsic rank.';
+  const overclaimed = createReadingProcessor(async () => JSON.stringify({ quote: 'intrinsic rank',
+    meaning: '矩阵非零奇异值的个数。', note: '', basis: 'defined', sourceQuote: informalSource }));
+  const demoted = (await overclaimed({ text: informalSource, kind: 'lookup', selection: 'intrinsic rank', settingsSnapshot: settings })).lookup;
+  assert.equal(demoted.basis, 'contextual', 'an assumption about a term cannot be labeled as its source definition');
+  assert.equal(demoted.sourceQuote, informalSource, 'the relevant sentence remains available for reader comparison');
+  const fabricated = createReadingProcessor(async () => JSON.stringify({ quote: 'intrinsic rank',
+    meaning: '一种秩的概念。', note: '', basis: 'defined', sourceQuote: 'The intrinsic rank is exactly two.' }));
+  const unsupported = (await fabricated({ text: informalSource, kind: 'lookup', selection: 'intrinsic rank', settingsSnapshot: settings })).lookup;
+  assert.equal(unsupported.basis, 'unverified');
+  assert.equal(unsupported.sourceQuote, '', 'fabricated evidence must never be displayed as original text');
   await assert.rejects(lookup({ text: source, kind: 'lookup', selection: 'invented', settingsSnapshot: settings }), /reading-invalid-input/);
   assert.equal(lookupCalls, 1);
   const wrongQuote = createReadingProcessor(async () => JSON.stringify({ quote: 'different', meaning: 'meaning', note: '' }));
