@@ -593,7 +593,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     } catch (error) {
       if (!alive(pin) || controller.signal.aborted || sequence !== pin.lookupSequence) return;
       update(pin, { lookupStatus: 'error', lookupNotice: error?.message === 'reading-invalid-output' || error instanceof SyntaxError
-        ? '这次解释未能匹配所选原文，请重试。' : classifyError(error, configuration.settings.activeBackend) });
+        ? '这次解释未能匹配所选原文，请重试。'
+        : error?.message === 'reading-unsupported-claim'
+          ? '这次解释把原文没有确认的权限状态说成了事实，已停止展示。请重试或核对原文。'
+          : classifyError(error, configuration.settings.activeBackend) });
     } finally {
       if (pin.lookupController === controller) pin.lookupController = null;
     }
