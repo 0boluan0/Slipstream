@@ -49,6 +49,60 @@ app.whenReady().then(async () => {
   require('node:http').request = denyNetwork;
   require('node:https').request = denyNetwork;
   service = require('../src/main/ocr-service');
+  for (const name of ['adam-algorithm', 'attention-equation', 'dml-paragraph']) {
+    const started = Date.now();
+    const result = await service.performReadingOCR(path.join(fixtures, `${name}.png`));
+    assert.equal(result.formulaOcr.status, 'done');
+    const formulas = mathRanges(result.text).map((item) => compact(item.tex));
+    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
+    if (name === 'adam-algorithm') {
+      assert.match(compact(result.text), /Require:\$\\alpha\$:/);
+      assert.match(compact(result.text), /parameters\$\\theta\$/);
+      assert(!result.text.includes('\\mathrm { I n i t i a l i z e }'), 'prose must stay outside the formula');
+      assert(formulas.some((tex) => tex.includes('\\widehat{m}_{t}') && tex.includes('\\beta_{1}^{t}')));
+      assert(formulas.some((tex) => tex.includes('\\widehat{v}_{t}') && tex.includes('\\beta_{2}^{t}')));
+      assert(formulas.some((tex) => tex.includes('\\sqrt{\\widehat{v}_{t}}')));
+      assert.match(result.text, /first moment estimate/);
+    } else if (name === 'attention-equation') {
+      assert(formulas.some((tex) => tex.includes('\\frac{QK^{T}}{\\sqrt{d_{k}}}')));
+      assert.match(result.text.replace(/\$/g, ''), /matrices K and V\. We compute\nthe matrix of outputs as:/);
+      assert.match(result.text, /into a matrix \$Q\$\. The keys/);
+    } else {
+      assert.match(result.text, /root-\s*\$?N\$?\s+consistent/);
+      assert(formulas.includes('\\theta_{0}'));
+      assert(formulas.includes('\\eta_{0}'));
+      assert.match(result.text, /nuisance/);
+    }
+    results.push({ case: name, elapsedMs: Date.now() - started, ...result.formulaOcr, text: result.text });
+    console.log(`${name}: formula structure and prose placement passed`);
+  }
+  for (const name of ['dml-equations', 'adam-updates']) {
+    const result = await service.performReadingOCR(path.join(fixtures, `${name}.png`));
+    assert.equal(result.formulaOcr.status, 'done');
+    const tex = mathRanges(result.text).map((item) => compact(item.tex)).join(' ');
+    if (name === 'dml-equations') {
+      assert(tex.includes('\\theta_{0}')); assert.match(tex, /E.*U/); assert.match(tex, /E.*V/);
+    } else { assert(tex.includes('\\widehat{m}_{t}')); assert(tex.includes('\\beta_{2}^{t}')); }
+    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
+    results.push({ case: name, ...result.formulaOcr, text: result.text });
+  }
+  const scaledAdam = path.join(work, 'adam-scaled.png');
+  const adamImage = require('electron').nativeImage.createFromPath(path.join(fixtures, 'adam-algorithm.png'));
+  fs.writeFileSync(scaledAdam, adamImage.resize({ width: Math.round(adamImage.getSize().width * 1.75), quality: 'best' }).toPNG());
+  for (const [name, imagePath] of [['adam-scaled', scaledAdam]]) {
+    const result = await service.performReadingOCR(imagePath);
+    assert.equal(result.formulaOcr.status, 'done', `${name}: local formula OCR must complete`);
+    const tex = compact(result.text);
+    assert.match(tex, /Require:\$\\alpha\$:/, `${name}: preserve the standalone stepsize symbol`);
+    assert.match(tex, /parameters\$\\theta\$/, `${name}: preserve the standalone parameter symbol`);
+    assert(!result.text.includes('\\dot'), `${name}: a neighboring line must not add a dot to the denominator`);
+    assert(!result.text.includes('::'), `${name}: punctuation must occur once`);
+    assert.match(result.text, /Initialize 1st moment vector/, `${name}: prose ordinals must reach the translator`);
+    assert.match(result.text, /Initialize 2nd moment vector/);
+    assert(tex.includes('\\widehat{m}_{t}') && tex.includes('\\widehat{v}_{t}'));
+    assert(tex.includes('\\sqrt{\\widehat{v}_{t}}'));
+    results.push({ case: name, ...result.formulaOcr, text: result.text });
+  }
   const math = (latex, displayMode = false) => katex.renderToString(latex, { displayMode, throwOnError: true });
   const weakAccent = await fixture('weak-inline-accent',
     `<div>Suppose that a classifier assigns estimated probabilities to every class: ${math('\\hat{f}(x)\\in[0,1]^K')}. We reserve a small calibration sample.</div>`
@@ -120,60 +174,6 @@ app.whenReady().then(async () => {
   }
   results.push({ case: 'authored-plain-matrix-dimensions', ...plainDimensionsResult.formulaOcr,
     text: plainDimensionsResult.text });
-  for (const name of ['adam-algorithm', 'attention-equation', 'dml-paragraph']) {
-    const started = Date.now();
-    const result = await service.performReadingOCR(path.join(fixtures, `${name}.png`));
-    assert.equal(result.formulaOcr.status, 'done');
-    const formulas = mathRanges(result.text).map((item) => compact(item.tex));
-    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
-    if (name === 'adam-algorithm') {
-      assert.match(compact(result.text), /Require:\$\\alpha\$:/);
-      assert.match(compact(result.text), /parameters\$\\theta\$/);
-      assert(!result.text.includes('\\mathrm { I n i t i a l i z e }'), 'prose must stay outside the formula');
-      assert(formulas.some((tex) => tex.includes('\\widehat{m}_{t}') && tex.includes('\\beta_{1}^{t}')));
-      assert(formulas.some((tex) => tex.includes('\\widehat{v}_{t}') && tex.includes('\\beta_{2}^{t}')));
-      assert(formulas.some((tex) => tex.includes('\\sqrt{\\widehat{v}_{t}}')));
-      assert.match(result.text, /first moment estimate/);
-    } else if (name === 'attention-equation') {
-      assert(formulas.some((tex) => tex.includes('\\frac{QK^{T}}{\\sqrt{d_{k}}}')));
-      assert.match(result.text.replace(/\$/g, ''), /matrices K and V\. We compute\nthe matrix of outputs as:/);
-      assert.match(result.text, /into a matrix \$Q\$\. The keys/);
-    } else {
-      assert.match(result.text, /root-\s*\$?N\$?\s+consistent/);
-      assert(formulas.includes('\\theta_{0}'));
-      assert(formulas.includes('\\eta_{0}'));
-      assert.match(result.text, /nuisance/);
-    }
-    results.push({ case: name, elapsedMs: Date.now() - started, ...result.formulaOcr, text: result.text });
-    console.log(`${name}: formula structure and prose placement passed`);
-  }
-  for (const name of ['dml-equations', 'adam-updates']) {
-    const result = await service.performReadingOCR(path.join(fixtures, `${name}.png`));
-    assert.equal(result.formulaOcr.status, 'done');
-    const tex = mathRanges(result.text).map((item) => compact(item.tex)).join(' ');
-    if (name === 'dml-equations') {
-      assert(tex.includes('\\theta_{0}')); assert.match(tex, /E.*U/); assert.match(tex, /E.*V/);
-    } else { assert(tex.includes('\\widehat{m}_{t}')); assert(tex.includes('\\beta_{2}^{t}')); }
-    for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
-    results.push({ case: name, ...result.formulaOcr, text: result.text });
-  }
-  const scaledAdam = path.join(work, 'adam-scaled.png');
-  const adamImage = require('electron').nativeImage.createFromPath(path.join(fixtures, 'adam-algorithm.png'));
-  fs.writeFileSync(scaledAdam, adamImage.resize({ width: Math.round(adamImage.getSize().width * 1.75), quality: 'best' }).toPNG());
-  for (const [name, imagePath] of [['adam-scaled', scaledAdam]]) {
-    const result = await service.performReadingOCR(imagePath);
-    assert.equal(result.formulaOcr.status, 'done', `${name}: local formula OCR must complete`);
-    const tex = compact(result.text);
-    assert.match(tex, /Require:\$\\alpha\$:/, `${name}: preserve the standalone stepsize symbol`);
-    assert.match(tex, /parameters\$\\theta\$/, `${name}: preserve the standalone parameter symbol`);
-    assert(!result.text.includes('\\dot'), `${name}: a neighboring line must not add a dot to the denominator`);
-    assert(!result.text.includes('::'), `${name}: punctuation must occur once`);
-    assert.match(result.text, /Initialize 1st moment vector/, `${name}: prose ordinals must reach the translator`);
-    assert.match(result.text, /Initialize 2nd moment vector/);
-    assert(tex.includes('\\widehat{m}_{t}') && tex.includes('\\widehat{v}_{t}'));
-    assert(tex.includes('\\sqrt{\\widehat{v}_{t}}'));
-    results.push({ case: name, ...result.formulaOcr, text: result.text });
-  }
   const matrix = await fixture('matrix', '<p>A symmetric matrix and a sample mean:</p>' + katex.renderToString(
     String.raw`A=\begin{pmatrix}a&b\\b&c\end{pmatrix},\qquad \bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i`, { displayMode: true }));
   const matrixResult = await service.performReadingOCR(matrix);
