@@ -40,6 +40,13 @@ async function main() {
   assert.deepEqual(mergeFormulaDocument({ blocks: [] }, [barred], size, { blocks: [] },
     { blocks: [{ ...paddedPlain.blocks[0], text: 'z̄i = g(hi)' }] }).uncertainFormulaStarts, [],
   'an OCR pass that also sees an accent does not create a new review marker');
+  const indexed = { ...formula, x: 10, y: 10, w: 18, h: 20, latex: 'x_i' };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [indexed], size,
+    { blocks: [word('x_i;', 10, 18)] }).text, '$x_i$',
+  'a semicolon hallucinated inside an indexed formula box is not sentence punctuation');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [indexed], size,
+    { blocks: [word('x_i;', 10, 24)] }).text, '$x_i$;',
+  'a separately visible semicolon beyond the math region is preserved');
   const periodSource = { blocks: [word('x.', 10, 24), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument({ blocks: [word('•', 29, 5)] }, [formula], size, periodSource).text, '$x$. label',
     'masked OCR may call the same source period a bullet; preserve the original punctuation once');

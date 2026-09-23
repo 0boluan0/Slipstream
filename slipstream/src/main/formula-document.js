@@ -183,7 +183,13 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     if (/[,.;:!?]$/.test(latex)) { punctuation = latex.at(-1); latex = latex.slice(0, -1).trim(); }
     else {
       const last = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x).at(-1);
-      if (last && /[,.;:!?]$/.test(last.text)) punctuation = last.text.at(-1);
+      if (last && /[,.;:!?]$/.test(last.text)) {
+        // Vision can read the subscript of x_i as a semicolon inside the
+        // formula's own box. A real separator should extend past the math
+        // region when the formula recognizer did not include it.
+        const mark = last.text.at(-1);
+        if (!/[;:]/u.test(mark) || last.x + last.w > formula.x + formula.w + 2) punctuation = mark;
+      }
     }
     // MFR often puts sentence punctuation inside the last row of an aligned
     // display. Keep it once after the TeX environment, as with inline math.
