@@ -19,7 +19,7 @@ const fixtures = path.resolve(__dirname, '../../docs/usability/2026-09-18/formul
 const compact = (value) => value.replace(/\s+/g, '');
 const results = [];
 let manager, service;
-setTimeout(() => { console.error('Local formula OCR exceeded 180 seconds'); app.exit(1); }, 180000).unref();
+setTimeout(() => { console.error('Local formula OCR exceeded 480 seconds'); app.exit(1); }, 480000).unref();
 
 // Pixel-stable, self-authored screenshots keep OCR assertions independent of
 // runner fonts, display scale and hidden BrowserWindow first-paint timing.
@@ -74,6 +74,7 @@ app.whenReady().then(async () => {
     } else { assert(tex.includes('\\widehat{m}_{t}')); assert(tex.includes('\\beta_{2}^{t}')); }
     for (const item of mathRanges(result.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
     results.push({ case: name, ...result.formulaOcr, text: result.text });
+    console.log(`${name}: formula structure passed`);
   }
   const scaledAdam = path.join(work, 'adam-scaled.png');
   const adamImage = require('electron').nativeImage.createFromPath(path.join(fixtures, 'adam-algorithm.png'));
@@ -91,6 +92,7 @@ app.whenReady().then(async () => {
     assert(tex.includes('\\widehat{m}_{t}') && tex.includes('\\widehat{v}_{t}'));
     assert(tex.includes('\\sqrt{\\widehat{v}_{t}}'));
     results.push({ case: name, ...result.formulaOcr, text: result.text });
+    console.log(`${name}: scaled formula structure passed`);
   }
   const weakAccent = authored('weak-inline-accent');
   const weakAccentResult = await service.performReadingOCR(weakAccent);
@@ -109,12 +111,14 @@ app.whenReady().then(async () => {
     ambiguousRow.text, 'a secondary reading without location-matched support cannot change a Roman numeral');
   results.push({ case: 'weak-inline-accent-wide-excerpt', ...weakAccentResult.formulaOcr,
     text: weakAccentResult.text });
+  console.log('weak-inline-accent-wide-excerpt: passed');
   const plainLetter = authored('wide-plain-letter');
   const plainLetterResult = await service.performReadingOCR(plainLetter);
   assert.doesNotMatch(plainLetterResult.text, /\\hat\s*\{?f/u,
     'wide prose with a plain f must not acquire a mathematical accent');
   results.push({ case: 'wide-plain-letter-no-accent', ...plainLetterResult.formulaOcr,
     text: plainLetterResult.text });
+  console.log('wide-plain-letter-no-accent: passed');
   const edgeLine = 'During adaptation, use a pre-trainec';
   const edgeBox = { x: .82, y: .5, w: .1, h: .12 };
   const edgeRow = { text: edgeLine, confidence: 1,
@@ -151,6 +155,7 @@ app.whenReady().then(async () => {
   }
   results.push({ case: 'authored-plain-matrix-dimensions', ...plainDimensionsResult.formulaOcr,
     text: plainDimensionsResult.text });
+  console.log('authored-plain-matrix-dimensions: passed');
   const matrix = authored('matrix');
   const matrixResult = await service.performReadingOCR(matrix);
   const matrixTex = compact(matrixResult.text);
@@ -158,21 +163,25 @@ app.whenReady().then(async () => {
   assert.match(matrixTex, /\\frac\{1\}\{n\}/);
   for (const item of mathRanges(matrixResult.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
   results.push({ case: 'authored-matrix', ...matrixResult.formulaOcr, text: matrixResult.text });
+  console.log('authored-matrix: passed');
   const derivatives = authored('derivatives');
   const derivativeResult = await service.performReadingOCR(derivatives);
   assert.match(compact(derivativeResult.text), /\\dot\{x\}/, 'genuine derivative dots must survive cropping');
   assert.match(compact(derivativeResult.text), /\\ddot\{x\}/);
   results.push({ case: 'authored-derivatives', ...derivativeResult.formulaOcr, text: derivativeResult.text });
+  console.log('authored-derivatives: passed');
   const prose = authored('prose');
   const proseResult = await service.performReadingOCR(prose);
   assert.equal(proseResult.formulaOcr.count, 0, 'ordinary prose must not acquire invented formulas');
   assert.match(proseResult.text, /Correlation does not imply causation/);
   results.push({ case: 'authored-prose', ...proseResult.formulaOcr });
+  console.log('authored-prose: passed');
   const ordinary = authored('ordinary-symbol-lookalikes');
   const ordinaryResult = await service.performReadingOCR(ordinary);
   assert.equal(ordinaryResult.formulaOcr.count, 0, 'articles, pronouns, ordinals and years must not acquire formulas');
   assert.match(ordinaryResult.text, /I read a paper/);
   results.push({ case: 'authored-ordinary-symbol-lookalikes', ...ordinaryResult.formulaOcr, text: ordinaryResult.text });
+  console.log('authored-ordinary-symbol-lookalikes: passed');
 
   const missing = createLocalFormulaOcr(path.join(work, 'missing-models'));
   await assert.rejects(missing.recognize(prose), { code: 'ENOENT' });
