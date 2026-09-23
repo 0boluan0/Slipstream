@@ -121,6 +121,12 @@ function accentedAtom(latex) {
   return match ? `\\${match[1]}{${match[2] || match[3]}}${match[4]}` : null;
 }
 
+function accentSignature(latex) {
+  const compact = latex.replace(/\s+/g, '');
+  return [...compact.matchAll(/\\(?:hat|bar|tilde|vec|breve|check|dot|ddot|widehat|widetilde)\{?[A-Za-z]\}?/g)]
+    .map((match) => match[0]).join('|');
+}
+
 function weakAccentGeometry(box, size) {
   return !box.display && box.w < box.h * 2 && box.h < size.height * .12;
 }
@@ -237,6 +243,7 @@ function createLocalFormulaOcr(modelDir) {
       // common path quick, while bounding formula-heavy captures to one minute.
       deadline = Math.max(deadline, started + Math.min(60000, 20000 + boxes.length * 2500));
       const formulas = [];
+      let accentRechecks = 0;
       for (const box of boxes) {
         cancelled(signal, deadline);
         const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
@@ -272,6 +279,22 @@ function createLocalFormulaOcr(modelDir) {
             }
           }
         }
+        // A high-confidence decoder can still invent an accent inside a long
+        // expression. Compare its accent labels under two crop margins; any
+        // disagreement asks the reader to check rather than silently changing
+        // the mathematics. Bound extra passes on dense pages.
+        let reviewAccent = false;
+        const signature = accentSignature(latex);
+        if (signature && confidence >= .7 && box.score >= .7 && !agreedAccentAtom) {
+          if (accentRechecks++ >= 8) reviewAccent = true;
+          else {
+            const first = await recognizeCrop(model, padFormulaCrop(trimmed, .1), signal, deadline);
+            const second = await recognizeCrop(model, padFormulaCrop(trimmed, .2), signal, deadline);
+            reviewAccent = accentSignature(first.latex) !== signature
+              || accentSignature(second.latex) !== signature
+              || Math.min(first.confidence, second.confidence) < .75;
+          }
+        }
         // A weak detection is not enough to turn prose into mathematics. Admit
         // only confident notation. Bare Latin atoms need stronger recognition;
         // the English words a/A/I still belong to prose in this weak-layout path.
@@ -288,7 +311,7 @@ function createLocalFormulaOcr(modelDir) {
         if (box.score < .12 && !(confidence >= .99 && (latin || indexed))) continue;
         if (box.score < .3 && !(agreedStyledAtom || agreedAccentAtom || annotatedProse || confidence >= .75 && (greek || styled || list)
           || confidence >= .95 && (latin || indexed))) continue;
-        formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
+        formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score), reviewAccent });
       }
       // Mask only recognized regions; Vision will read the remaining prose.
       const bitmap = image.toBitmap();

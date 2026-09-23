@@ -163,6 +163,59 @@ async function recheckReferenceOne(imagePath, original, padded, temporary, { sig
   return { ...original, blocks };
 }
 
+async function recheckRightEdgeWord(imagePath, original, padded, temporary, { signal, recognize = performOCR } = {}) {
+  const source = original?.blocks || [], alternative = padded?.blocks || [];
+  if (!source.length || !alternative.length) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const blocks = source.slice();
+  let checked = 0;
+  for (let row = 0; row < blocks.length && checked < 3; row++) {
+    const block = blocks[row];
+    const word = /[A-Za-z]+(?:-[A-Za-z]+)?$/u.exec(block.text);
+    if (!word || !block.boundingBox || block.boundingBox.x + block.boundingBox.w < .82
+      || !block.characters?.length || block.characters.length !== Array.from(block.text).length) continue;
+    const normalizePrefix = (value) => value.replace(/[‘’“”"']/gu, '"').replace(/\s+/gu, ' ');
+    const prior = normalizePrefix(block.text.slice(0, word.index));
+    const replacement = alternative.find((candidate) => {
+      const other = /[A-Za-z]+(?:-[A-Za-z]+)?$/u.exec(candidate.text);
+      if (!other || !candidate.boundingBox || candidate.confidence < .9
+        || normalizePrefix(candidate.text.slice(0, other.index)) !== prior
+        || Math.abs(candidate.boundingBox.x - block.boundingBox.x) > .08
+        || Math.abs(candidate.boundingBox.x + candidate.boundingBox.w
+          - block.boundingBox.x - block.boundingBox.w) > .08
+        || Math.abs(candidate.boundingBox.y + candidate.boundingBox.h / 2
+          - block.boundingBox.y - block.boundingBox.h / 2) >= Math.min(candidate.boundingBox.h, block.boundingBox.h) * .6
+        || other[0].length !== word[0].length) return false;
+      return [...other[0]].filter((letter, i) => letter !== word[0][i]).length === 1;
+    });
+    if (!replacement) continue;
+    const other = /[A-Za-z]+(?:-[A-Za-z]+)?$/u.exec(replacement.text)[0];
+    const start = Array.from(block.text.slice(0, Math.max(0, word.index - 6))).length;
+    const letters = block.characters.slice(start).filter((char) => char.boundingBox.w > 0 && char.boundingBox.h > 0);
+    if (letters.length < other.length) continue;
+    const x = Math.max(0, Math.floor(Math.min(...letters.map((char) => char.boundingBox.x)) * size.width) - 15);
+    const right = Math.min(size.width, Math.ceil(Math.max(...letters.map((char) => char.boundingBox.x + char.boundingBox.w)) * size.width) + 15);
+    const y = Math.max(0, Math.floor((1 - Math.max(...letters.map((char) => char.boundingBox.y + char.boundingBox.h))) * size.height) - 12);
+    const bottom = Math.min(size.height, Math.ceil((1 - Math.min(...letters.map((char) => char.boundingBox.y))) * size.height) + 12);
+    if (right - x < 30 || bottom - y < 12) continue;
+    const crop = path.join(temporary, `edge-word-${checked++}.png`);
+    await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+    const confirmed = await recognize(crop, { signal }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    const tail = confirmed?.text?.trim() || '';
+    if (!confirmed || confirmed.confidence < .9 || !tail.endsWith(other)
+      || (tail.length > other.length && /[A-Za-z-]/u.test(tail.at(-other.length - 1)))) continue;
+    const wordStart = Array.from(block.text.slice(0, word.index)).length;
+    blocks[row] = { ...block, text: block.text.slice(0, word.index) + other,
+      characters: block.characters.map((char, i) => i >= wordStart
+        ? { ...char, text: other[i - wordStart] } : char) };
+  }
+  return { ...original, blocks };
+}
+
 async function performReadingOCR(imagePath, { signal } = {}) {
   const [textResult, formulaResult] = await Promise.allSettled([
     performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
@@ -193,7 +246,8 @@ async function performReadingOCR(imagePath, { signal } = {}) {
         return null;
       }),
     ]);
-    const corroborated = await recheckReferenceOne(imagePath, original, edges, temporary, { signal });
+    const references = await recheckReferenceOne(imagePath, original, edges, temporary, { signal });
+    const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
     const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, corroborated, edges);
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
@@ -217,5 +271,6 @@ module.exports = {
   performOCR,
   performReadingOCR,
   recheckReferenceOne,
+  recheckRightEdgeWord,
   cleanup,
 };

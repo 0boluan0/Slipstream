@@ -234,7 +234,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
-      reviewAccent: uncorroboratedBar(formula, latex),
+      reviewAccent: formula.reviewAccent || uncorroboratedBar(formula, latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
           : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
