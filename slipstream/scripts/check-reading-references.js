@@ -140,6 +140,11 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
     'a bare function head from the same sentence adds nothing after the full notation was saved');
   assert(!referenceCandidateCovered(textbook[0], { ...textbook[0], symbol: 'N' }),
     'the full notation must still be available when only its bare head was saved');
+  const editedCandidate = { ...textbook[0], origin: 'manual', meaning: '读者校正后的解释' };
+  assert(referenceCandidateCovered(textbook[0], editedCandidate),
+    'a saved manual correction must hide the same source-backed suggestion');
+  assert(!referenceCandidateCovered(textbook[0], { ...editedCandidate, evidence: specialEvidence }),
+    'a different source passage may define the same symbol differently');
   const fixedSetting = 'Let $\\lambda = 0.1$ denote the regularization strength throughout the study.';
   assert.equal(parseReferenceCandidates([{ symbol: String.raw`\lambda`, meaning: '全篇固定的正则化系数，取值为 0.1',
     evidence: fixedSetting }], fixedSetting).length, 1,

@@ -145,7 +145,9 @@ app.whenReady().then(async () => {
   const conflictingPin = await openText(conflictingSource);
   const pending = await lookup(conflictingPin, '\\lambda');
   assert.equal(pending.definitions.length, 2, 'a newly captured definition must not silently inherit an older meaning');
-  assert(pending.definitions[0].pending);
+  assert(!pending.definitions[0].pending && pending.definitions[1].pending,
+    'a saved meaning precedes an unconfirmed proposal from the current excerpt');
+  assert(await js(conflictingPin, 'document.getElementById("lookup-references").textContent.includes("待核对的候选")'));
   conflictingPin.close();
 
   // Edit through actual form controls; a subsequent capture must see the correction.
@@ -156,7 +158,7 @@ app.whenReady().then(async () => {
   await act(reference, 'reference-save', { paperId: paperA,
     entry: { symbol: 'λ', meaning: '附录中表示另一个标量。', scope: '附录', evidence: '', source: '', origin: 'manual' } });
   assert.equal((await lookup(reading, '\\lambda')).definitions.length, 2, 'conflicting definitions remain visible');
-  assert(await js(reading, 'document.getElementById("lookup-references").textContent.includes("多处定义")'));
+  assert(await js(reading, 'document.getElementById("lookup-references").textContent.includes("多处已保存的定义")'));
   assert.equal((await snapshot(reference)).references.paper.entries.filter((item) => item.sameSymbolCount === 2).length, 2);
   console.log('ok - edit and retain conflicting definitions');
 

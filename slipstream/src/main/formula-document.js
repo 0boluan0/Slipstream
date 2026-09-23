@@ -76,6 +76,14 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   const originalWords = words({ blocks: anchored });
   const proseAnnotations = new Map();
   formulas = formulas.filter((formula) => {
+    const compact = formula.latex.replace(/\s+/gu, '');
+    if (!formula.display && /^(?:etc|e\.g|i\.e)\.\)?$/iu.test(compact)) {
+      const observed = originalWords.filter((word) => intersects(formula, word))
+        .sort((a, b) => a.x - b.x).map((word) => word.text).join('').replace(/\s+/gu, '');
+      // MFR can treat an ordinary abbreviation at the end of a parenthesis
+      // as a letter product. Keep Vision's punctuation when both agree.
+      if (observed === compact || observed === compact + '.') return false;
+    }
     const annotated = !formula.display ? proseSuperscript(formula.latex) : null;
     if (!annotated) return true;
     // The math model may recover a superscript, but cannot rewrite prose.

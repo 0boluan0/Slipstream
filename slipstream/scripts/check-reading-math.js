@@ -138,6 +138,12 @@ async function main() {
     { blocks: [word('e.g.,', 10, 20), word('H(x)', 34, 22), word('next', 75, 20)] }).text,
     String.raw`$i. e., \, \mathcal { H } ( \mathbf { x } ) - \mathbf { x }$ next`,
     'a conflicting source reading cannot rewrite the mathematical span');
+  const etcFormula = { ...formula, latex: 'e t c . )', confidence: .47 };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [etcFormula], size,
+    { blocks: [word('etc.).', 10, 18), word('next', 45, 30)] }).text, 'etc.). next',
+  'a Vision-confirmed prose abbreviation must not become a mathematical product');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [etcFormula], size).text, '$e t c. )$',
+    'without independent prose confirmation, keep the formula candidate for review');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, score: .8, latex: 'a b c d ^ { 2 }' }], size,
     { blocks: [word('abcd', 10, 18)] }).text, '$a b c d ^ { 2 }$',
   'an isolated product is not a footnote-bearing prose word');

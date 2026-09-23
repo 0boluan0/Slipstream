@@ -240,7 +240,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const saved = (paperFor(pin)?.entries || []).filter((entry) => referenceKey(entry.symbol) === referenceKey(quote));
     const pending = candidatesFor(pin).filter((entry) => referenceKey(entry.symbol) === referenceKey(quote)
       && pin.view.sourceText.includes(entry.evidence)).map((entry) => ({ ...entry, pending: true }));
-    const definitions = [...pending, ...saved];
+    const definitions = [...saved, ...pending];
     const only = definitions.length === 1 && !definitions[0].pending ? definitions[0] : null;
     return { quote, contextual: true, reference: true, definitions,
       meaning: only?.meaning || '', note: only?.scope || '', referenceSource: only?.source || '' };

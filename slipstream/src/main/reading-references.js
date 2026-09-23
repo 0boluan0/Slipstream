@@ -12,8 +12,12 @@ function referenceCandidateKey(entry) {
 
 function referenceCandidateCovered(candidate, saved) {
   if (referenceCandidateKey(candidate) === referenceCandidateKey(saved)) return true;
-  if (candidate.origin !== 'excerpt' || saved.origin !== 'excerpt'
+  if (candidate.origin !== 'excerpt'
     || candidate.evidence.replace(/\s+/gu, ' ') !== saved.evidence.replace(/\s+/gu, ' ')) return false;
+  // Editing a proposed definition changes its origin to manual. The same
+  // source-backed suggestion must disappear after the reader saves that edit.
+  if (saved.origin === 'manual' && referenceKey(candidate.symbol) === referenceKey(saved.symbol)) return true;
+  if (saved.origin !== 'excerpt') return false;
   const head = referenceKey(candidate.symbol);
   if (!/^[A-Za-z]{1,4}$/u.test(head)) return false;
   return new RegExp(`^${head}\\s*\\(`, 'u').test(saved.symbol.trim());
