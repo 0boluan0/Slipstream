@@ -35,7 +35,9 @@ function explicitlyDefinesSelection(quote, selection) {
   if (start < 0) return false;
   const before = quote.slice(0, start);
   const after = quote.slice(start + selection.length).replace(/^[\s$`]+/u, '');
-  return /^(?::=|≔|(?:is|are)\s+(?:defined\s+as|called|a\b|an\b|the\b)|means\b|denotes\b|refers\s+to\b)/iu.test(after)
+  // A bare copula is not enough: "rank is a small number" describes an
+  // assumption just as readily as "X is a variable" states a definition.
+  return /^(?::=|≔|(?:is|are)\s+(?:defined\s+as|called)|means\b|denotes\b|refers\s+to\b)/iu.test(after)
     || /\b(?:define|call|called|known\s+as|referred\s+to\s+as)\s+(?:(?:a|an|the)\s+)?$/iu.test(before);
 }
 
