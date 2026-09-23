@@ -214,6 +214,23 @@ async function main() {
   const unsupported = (await fabricated({ text: informalSource, kind: 'lookup', selection: 'intrinsic rank', settingsSnapshot: settings })).lookup;
   assert.equal(unsupported.basis, 'unverified');
   assert.equal(unsupported.sourceQuote, '', 'fabricated evidence must never be displayed as original text');
+  const dependentSource = 'Without access controls, some consumers may be undeclared, silently using model output as another system input.';
+  let authorizationAttempts = 0;
+  const repairedAuthorization = createReadingProcessor(async (...args) => {
+    authorizationAttempts += 1;
+    if (authorizationAttempts === 1) return JSON.stringify({ quote: 'undeclared', meaning: '未经授权使用模型输出的下游系统。', note: '' });
+    assert.match(args[3], /A missing access control or an undeclared dependency does not itself establish unauthorized use/);
+    return JSON.stringify({ quote: 'undeclared', meaning: '没有被列入依赖关系的下游使用方。', note: '本段说缺少访问控制时，其中一些使用方可能未被声明。' });
+  });
+  assert.equal((await repairedAuthorization({ text: dependentSource, kind: 'lookup', selection: 'undeclared', settingsSnapshot: settings })).lookup.meaning,
+    '没有被列入依赖关系的下游使用方。');
+  assert.equal(authorizationAttempts, 2, 'an unsupported permission claim gets one bounded repair');
+  const persistentOverclaim = createReadingProcessor(async () => JSON.stringify({ quote: 'undeclared', meaning: '未获授权的下游使用方。', note: '' }));
+  await assert.rejects(persistentOverclaim({ text: dependentSource, kind: 'lookup', selection: 'undeclared', settingsSnapshot: settings }),
+    /reading-unsupported-claim/, 'a failed repair must not display the overclaim');
+  const explicitAuthorization = createReadingProcessor(async () => JSON.stringify({ quote: 'Unauthorized', meaning: '未经授权使用模型输出的行为。', note: '' }));
+  assert.equal((await explicitAuthorization({ text: 'Unauthorized use of model output is prohibited.', kind: 'lookup', selection: 'Unauthorized', settingsSnapshot: settings })).lookup.meaning,
+    '未经授权使用模型输出的行为。', 'explicit source wording can support an authorization claim');
   await assert.rejects(lookup({ text: source, kind: 'lookup', selection: 'invented', settingsSnapshot: settings }), /reading-invalid-input/);
   assert.equal(lookupCalls, 1);
   const wrongQuote = createReadingProcessor(async () => JSON.stringify({ quote: 'different', meaning: 'meaning', note: '' }));
