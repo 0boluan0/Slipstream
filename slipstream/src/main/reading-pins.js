@@ -786,7 +786,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const markedUncertain = localFormula?.uncertain && uncertainStarts.length === localFormula.uncertain;
         const denseFormula = localFormula?.count >= 8 && localFormula?.uncertain >= 4;
         const formulaNotice = localFormula?.count
-          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${denseFormula ? '这一框公式较密集，建议重新框选一两条公式，逐一核对字母、箭头和上下标。' : '请对照原图核对。'}`
+          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${denseFormula ? '这一框公式较密集。先把公式滚到屏幕中部、四周留白，再重新框选一两条公式，逐一核对字母、箭头和上下标。' : '请对照原图核对。'}`
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,

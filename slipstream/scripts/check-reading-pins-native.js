@@ -447,7 +447,7 @@ app.whenReady().then(async () => {
   await manager.capture();
   const dense = cards()[0];
   await until(phaseIs(dense, 'review'), 'dense formula capture must wait for review');
-  assert.match((await stateOf(dense)).formulaNotice, /重新框选一两条公式/);
+  assert.match((await stateOf(dense)).formulaNotice, /滚到屏幕中部、四周留白.*重新框选一两条公式/);
   assert.equal(providerCalls, beforeDense);
   manager.clear();
   formulaOcrOverride = null;
