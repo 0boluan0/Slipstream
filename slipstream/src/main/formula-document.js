@@ -178,6 +178,11 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     return (edgeProse?.blocks || []).some((block) => block.boundingBox
       && intersects(formula, pixelBox(block.boundingBox)) && plain.test(block.text.trim()));
   }
+  function footnoteInsideFormula(latex) {
+    // A sentence-ending period followed by a raised star is a footnote
+    // marker, not part of the preceding mathematical expression.
+    return /\.\s*\^\s*\{\s*(?:\*|\\ast)\s*\}\s*$/u.test(latex);
+  }
   for (const formula of formulas) {
     let latex = formula.latex.trim(), punctuation = '';
     if (/[,.;:!?]$/.test(latex)) { punctuation = latex.at(-1); latex = latex.slice(0, -1).trim(); }
@@ -234,7 +239,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
-      reviewRecognition: formula.reviewAccent || formula.reviewSymbol || uncorroboratedBar(formula, latex),
+      reviewRecognition: formula.reviewAccent || formula.reviewSymbol || uncorroboratedBar(formula, latex)
+        || footnoteInsideFormula(latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
           : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });

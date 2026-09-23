@@ -97,15 +97,19 @@ function createSegment(segment) {
   window.renderReadingMath(source, segment.source);
   const translation = document.createElement('p');
   translation.className = 'translation-paragraph';
+  const mathCue = document.createElement('p');
+  mathCue.className = 'muted math-scroll-hint';
+  mathCue.textContent = '长公式可在公式上左右滚动，查看完整内容。';
+  mathCue.hidden = true;
   const terms = document.createElement('div');
   terms.className = 'term-list';
   const termsNotice = document.createElement('p');
   termsNotice.className = 'muted terms-notice';
   const referenceHits = document.createElement('div');
   referenceHits.className = 'reference-hit-list';
-  section.append(tools, source, translation, terms, termsNotice, referenceHits);
+  section.append(tools, source, translation, mathCue, terms, termsNotice, referenceHits);
   byId('translation').append(section);
-  const node = { section, source, translation, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  const node = { section, source, translation, mathCue, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
   segmentNodes.set(segment.id, node);
   return node;
 }
@@ -196,6 +200,15 @@ function renderSegments(segments) {
   }
 }
 
+function refreshMathCues() {
+  for (const node of segmentNodes.values()) {
+    const paragraphs = mode === 'parallel' || !node.source.hidden
+      ? [node.source, node.translation] : [node.translation];
+    node.mathCue.hidden = !paragraphs.some((paragraph) => [...paragraph.querySelectorAll('.math-block')]
+      .some((formula) => formula.scrollWidth > formula.clientWidth + 2));
+  }
+}
+
 function render(next) {
   const previousLookup = state?.lookup;
   state = next;
@@ -253,6 +266,7 @@ function render(next) {
   byId('formula-notice').textContent = state.formulaNotice || '';
   if (state.formulaStatus) byId('formula-tools').open = true;
   renderSegments(segments);
+  requestAnimationFrame(refreshMathCues);
   const lookup = state.lookup;
   byId('lookup-panel').hidden = !lookup && !state.lookupNotice;
   if (lookup || state.lookupNotice) {
@@ -372,6 +386,7 @@ function changeFont(delta) {
   document.documentElement.style.setProperty('--reading-size', `${fontSize}px`);
   byId('smaller').disabled = fontSize === 13;
   byId('larger').disabled = fontSize === 24;
+  requestAnimationFrame(refreshMathCues);
 }
 byId('smaller').onclick = () => changeFont(-1);
 byId('larger').onclick = () => changeFont(1);
@@ -387,6 +402,8 @@ document.querySelectorAll('[role="tab"]').forEach((button) => {
   };
 });
 document.addEventListener('selectionchange', captureSelection);
+window.addEventListener('resize', () => requestAnimationFrame(refreshMathCues));
+document.fonts.ready.then(refreshMathCues);
 document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'w') { event.preventDefault(); act('close'); }
   else if (event.key === 'Escape') {

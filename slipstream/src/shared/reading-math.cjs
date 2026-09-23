@@ -28,8 +28,9 @@
       if (end < 0) continue;
       const tex = text.slice(i + pair[0].length, end);
       const number = /^\d+(?:[.,]\d+)?$/u.test(tex);
+      const coefficient = /^\d+(?:[.,]\d+)?[A-Za-z]$/u.test(tex);
       if (!tex.trim() || (pair[0] === '$' && (/\n|\s$/u.test(tex)
-        || (/^\d/u.test(tex) && !number && !/[\\_^=+*/<>|{}]/u.test(tex))
+        || (/^\d/u.test(tex) && !number && !coefficient && !/[\\_^=+*/<>|{}]/u.test(tex))
         || (number && /\d/u.test(text[end + 1] || ''))))) continue;
       ranges.push({ start: i, end: end + pair[1].length, tex, display: pair[2] });
       i = end + pair[1].length - 1;

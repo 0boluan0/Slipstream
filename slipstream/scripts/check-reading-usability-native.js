@@ -123,6 +123,15 @@ app.whenReady().then(async () => {
       window.renderReadingMath(host, '$' + 'x+'.repeat(100) + 'y$'); const formula = host.querySelector('.math-inline');
       formula.scrollLeft = 80; return formula.scrollWidth > formula.clientWidth && formula.scrollLeft > 0; })()`));
   });
+  await check('cropped display math explains horizontal scrolling', async () => {
+    assert(await js(longPin, `new Promise(resolve => {
+      const paragraph = document.querySelector('.translation-paragraph');
+      window.renderReadingMath(paragraph, '$$' + 'x+'.repeat(100) + 'y$$');
+      window.dispatchEvent(new Event('resize'));
+      requestAnimationFrame(() => resolve([...document.querySelectorAll('.math-scroll-hint')]
+        .some(hint => !hint.hidden && hint.textContent.includes('左右滚动'))));
+    })`));
+  });
   manager.openText('A collider is influenced by two variables. Conditioning can introduce selection bias.');
   const compact = BrowserWindow.getAllWindows().find((window) => window !== reading && window !== longPin && window !== reference);
   await until(async () => (await snapshot(compact)).phase === 'done' && compact.getBounds().height < 500, 'compact translation');

@@ -41,6 +41,10 @@ async function main() {
     { blocks: [{ ...paddedPlain.blocks[0], text: 'z̄i = g(hi)' }] }).uncertainFormulaStarts, [],
   'an OCR pass that also sees an accent does not create a new review marker');
   const indexed = { ...formula, x: 10, y: 10, w: 18, h: 20, latex: 'x_i' };
+  const footnoteMerged = mergeFormulaDocument({ blocks: [] }, [{ ...formula,
+    latex: String.raw`\langle \vec\beta_1,\ldots\rangle. ^{*}`, confidence: .99 }], size);
+  assert.equal(footnoteMerged.uncertainFormulaCount, 1,
+    'a footnote star swallowed after formula punctuation must be visibly flagged');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [indexed], size,
     { blocks: [word('x_i;', 10, 18)] }).text, '$x_i$',
   'a semicolon hallucinated inside an indexed formula box is not sentence punctuation');
@@ -228,6 +232,8 @@ The sample mean is \(\bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i\).`;
   assert(!isMathOnly('The mean is $x$.'));
   assert.equal(mathRanges(String.raw`Price \$5 and \$10. The value is $x_1^2$.`).length, 1);
   assert.equal(mathRanges('Price $5 and $10.').length, 0);
+  assert.deepEqual(mathRanges('Removing $2x$ still leaves a spanning set.').map(({ tex }) => tex), ['2x'],
+    'a scalar coefficient times a variable must render as mathematics');
   assert.equal(mathRanges('范数不超过 $1$，概率为 $0.5$。').length, 2, 'explicitly delimited constants are mathematics');
   assert.equal(mathRanges('Prices $5$10 are adjacent amounts.').length, 0, 'a second price marker is not a closing math delimiter');
   assert.equal(mathRanges('`$x$` and ```\n$$x$$\n```').length, 0);

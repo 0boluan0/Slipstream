@@ -26,12 +26,17 @@ function looksLikeOwnReadingUi(text) {
 }
 
 function looksLikeClippedProse(ocr, text = ocr?.text || '') {
-  // A tight right edge can silently turn a complete sentence into plausible
-  // OCR fragments. Two long lines touching that edge warrant a new crop.
+  // Text touching a selection edge can be read as a plausible fragment.
+  // The reader should inspect the screenshot before sending that text.
   const blocks = ocr?.blocks || [];
   if (blocks.filter((block) => block?.text?.trim().length >= 25
     && Number.isFinite(block.boundingBox?.x) && Number.isFinite(block.boundingBox?.w)
     && block.boundingBox.x + block.boundingBox.w >= 0.985).length >= 2) return 'right';
+  if (blocks.filter((block) => block?.text?.trim().length >= 25
+    && Number.isFinite(block.boundingBox?.x) && block.boundingBox.x <= 0.015).length >= 2) return 'left';
+  if (blocks.some((block) => block?.text?.trim().length >= 20
+    && Number.isFinite(block.boundingBox?.y) && Number.isFinite(block.boundingBox?.h)
+    && block.boundingBox.y + block.boundingBox.h >= 0.94)) return 'top';
   // Vision coordinates start at the bottom. A final, unfinished line pressed
   // against the lower edge means the reader may miss the rest of that sentence.
   if (blocks.some((block) => block?.text?.trim().length > 0
@@ -45,6 +50,18 @@ function looksLikeBrokenBrackets(text) {
   for (const char of text) {
     if (char === '[') open += 1;
     else if (char === ']') {
+      if (open === 0) return true;
+      open -= 1;
+    }
+  }
+  return open !== 0;
+}
+
+function looksLikeBrokenMathBraces(text) {
+  let open = 0;
+  for (const char of text) {
+    if (char === '{') open += 1;
+    else if (char === '}') {
       if (open === 0) return true;
       open -= 1;
     }
@@ -755,6 +772,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const ownUiCapture = looksLikeOwnReadingUi(document.text);
         const clippedProse = looksLikeClippedProse(ocr, document.text);
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
+        const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
         const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
         pin.controller = null;
         let destination = '';
@@ -765,19 +783,23 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const formulaIssue = localFormula?.status === 'failed' || (localFormula?.status === 'unavailable' && mathReview);
         const uncertainStarts = Array.isArray(localFormula?.uncertainStarts) ? localFormula.uncertainStarts : [];
         const markedUncertain = localFormula?.uncertain && uncertainStarts.length === localFormula.uncertain;
+        const denseFormula = localFormula?.count >= 8 && localFormula?.uncertain >= 4;
         const formulaNotice = localFormula?.count
-          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。请对照原图核对。`
+          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${denseFormula ? '这一框公式较密集，建议重新框选一两条公式，逐一核对字母、箭头和上下标。' : '请对照原图核对。'}`
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedProse || brokenBrackets || missingQuotedCharacter || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedProse || brokenBrackets || brokenMathBraces || missingQuotedCharacter || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
             : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}`
+            : clippedProse === 'left' ? '选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。'
+            : clippedProse === 'top' ? '选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。'
             : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}`
             : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
+            : brokenMathBraces ? '花括号可能漏识别，集合或公式的含义可能失真。请对照截图校正。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
             : document.rowRecovered ? '正文有跨行识别冲突，已按原图位置重新排好。请对照截图核对文字顺序。'

@@ -65,8 +65,11 @@ app.whenReady().then(async () => {
   let failMatching = '';
   let noTerms = false;
   let ocrClipped = false;
+  let ocrLeftClipped = false;
+  let ocrTopClipped = false;
   let ocrBottomClipped = false;
   let ocrBottomShortBlock = false;
+  let formulaOcrOverride = null;
   let holdReview = false, resolveReview, reviewSignal;
   const provider = createReadingProcessor(async (...args) => {
     providerCalls += 1;
@@ -122,9 +125,13 @@ app.whenReady().then(async () => {
           else options.signal?.addEventListener('abort', fail, { once: true });
         });
       }
-      if (ocrOverride) return { text: ocrOverride, confidence: .99, blocks: ocrClipped
+      if (ocrOverride) return { text: ocrOverride, confidence: .99, formulaOcr: formulaOcrOverride || undefined, blocks: ocrClipped
         ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
           boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
+        : ocrLeftClipped ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .005, y: .7 - index * .1, w: .8, h: .06 } }))
+        : ocrTopClipped ? [{ text: ocrOverride, confidence: .99,
+          boundingBox: { x: .08, y: .94, w: .8, h: .06 } }]
         : ocrBottomClipped ? [{ text: ocrOverride, confidence: .99,
           boundingBox: { x: .08, y: .0163, w: .8, h: .08 } }]
         : ocrBottomShortBlock ? [{ text: 'the final hidden vector', confidence: .99,
@@ -377,6 +384,26 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeClipped, 'cropped prose must stay local until reviewed');
   manager.clear();
   ocrClipped = false;
+  ocrLeftClipped = true;
+  ocrOverride = 'ode feature inputs enter a shared transformation\nhe first operation applies the weight matrix to each node';
+  const beforeLeft = providerCalls;
+  await manager.capture();
+  const left = cards()[0];
+  await until(phaseIs(left, 'review'), 'left-edge cropped prose review');
+  assert.match((await stateOf(left)).notice, /左侧可能截断/);
+  assert.equal(providerCalls, beforeLeft, 'left-cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrLeftClipped = false;
+  ocrTopClipped = true;
+  ocrOverride = 'isily compared across different nodes with the softmax function.';
+  const beforeTop = providerCalls;
+  await manager.capture();
+  const top = cards()[0];
+  await until(phaseIs(top, 'review'), 'top-edge cropped prose review');
+  assert.match((await stateOf(top)).notice, /顶部可能截断/);
+  assert.equal(providerCalls, beforeTop, 'top-cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrTopClipped = false;
   ocrBottomClipped = true;
   ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
   const beforeBottom = providerCalls;
@@ -405,6 +432,24 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(brokenBrackets)).notice, /方括号可能漏识别/);
   assert.equal(providerCalls, beforeBrokenBrackets);
   manager.clear();
+  ocrOverride = 'The span of {1,x) is unchanged after removing 2x.';
+  const beforeBrokenBraces = providerCalls;
+  await manager.capture();
+  const brokenBraces = cards()[0];
+  await until(phaseIs(brokenBraces, 'review'), 'broken set braces must trigger review');
+  assert.match((await stateOf(brokenBraces)).notice, /花括号可能漏识别/);
+  assert.equal(providerCalls, beforeBrokenBraces);
+  manager.clear();
+  ocrOverride = 'The axioms are $v+w$, $w+v$, $rv$, $r(w+v)$, $(r+s)v$, $r(sv)$, $0+v$, and $v+(-v)$.';
+  formulaOcrOverride = { status: 'done', count: 8, uncertain: 5, uncertainStarts: [] };
+  const beforeDense = providerCalls;
+  await manager.capture();
+  const dense = cards()[0];
+  await until(phaseIs(dense, 'review'), 'dense formula capture must wait for review');
+  assert.match((await stateOf(dense)).formulaNotice, /重新框选一两条公式/);
+  assert.equal(providerCalls, beforeDense);
+  manager.clear();
+  formulaOcrOverride = null;
   ocrOverride = 'Two tosses give outcomes where "h" denotes "heads" and "" denotes "tails".';
   const beforeMissingQuote = providerCalls;
   await manager.capture();
