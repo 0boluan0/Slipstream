@@ -39,6 +39,10 @@ function looksLikeClippedProse(ocr) {
   return null;
 }
 
+function looksLikeMissingQuotedCharacter(text) {
+  return /(?:^|[^\p{L}\p{N}])(?:""|“”|‘’)(?=\s|$)/u.test(text);
+}
+
 function cardBounds(point, workArea) {
   const width = Math.min(460, workArea.width);
   const height = Math.min(540, workArea.height);
@@ -726,6 +730,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const review = assessOcrReview({ source: 'ocr', text: ocr.text, capture: ocr });
         const ownUiCapture = looksLikeOwnReadingUi(document.text);
         const clippedProse = looksLikeClippedProse(ocr);
+        const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
         pin.controller = null;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* continue through explicit review */ }
@@ -742,8 +747,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedProse || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedProse || missingQuotedCharacter || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
+            : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
             : clippedProse === 'right' ? '选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。'
             : clippedProse === 'bottom' ? '选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'

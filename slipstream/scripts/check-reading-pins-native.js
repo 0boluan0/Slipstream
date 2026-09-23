@@ -321,6 +321,14 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeBottom, 'bottom-edge cropped prose must stay local until reviewed');
   manager.clear();
   ocrBottomClipped = false;
+  ocrOverride = 'Two tosses give outcomes where "h" denotes "heads" and "" denotes "tails".';
+  const beforeMissingQuote = providerCalls;
+  await manager.capture();
+  const missingQuote = cards()[0];
+  await until(phaseIs(missingQuote, 'review'), 'missing quoted character review');
+  assert.match((await stateOf(missingQuote)).notice, /引号之间可能漏识别/);
+  assert.equal(providerCalls, beforeMissingQuote, 'an empty OCR quote must be checked before translation');
+  manager.clear();
   ocrOverride = 'The next section describes the results.';
   const beforePlain = providerCalls;
   await manager.capture();
