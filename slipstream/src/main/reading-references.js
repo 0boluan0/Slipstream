@@ -10,10 +10,30 @@ function referenceCandidateKey(entry) {
   return JSON.stringify([...identity, entry.evidence, entry.source, entry.scope, entry.meaning]);
 }
 
+function evidenceDefinesSymbol(entry) {
+  if (entry.origin !== 'excerpt') return false;
+  let occurrences = referenceOccurrences(entry.evidence, entry.symbol);
+  const functionHead = referenceKey(entry.symbol).match(/^([A-Za-z]{1,4})\s*\(/u)?.[1];
+  if (!occurrences.length && functionHead) occurrences = referenceOccurrences(entry.evidence, functionHead);
+  return occurrences.some(({ start, end }) => {
+    const before = entry.evidence.slice(0, start).replace(/[\s$]+$/u, '');
+    const after = entry.evidence.slice(end).replace(/^[\s$]+/u, '');
+    if (/^(?::=|=|\\coloneqq\b)/u.test(after)) return true;
+    if (!/^(?:be|is|are|denotes?|means?|represents?|refers?\s+to|stands?\s+for|as)\b/iu.test(after)) return false;
+    return /\b(?:let|where|define|denote|call|write|refer\s+to)$/iu.test(before)
+      || /(?:^|[.!?;]\s*)$/u.test(before);
+  });
+}
+
+function preferExplicitReferenceCandidates(candidates) {
+  const explicit = new Set(candidates.filter(evidenceDefinesSymbol).map((entry) => referenceKey(entry.symbol)));
+  return candidates.filter((entry) => !explicit.has(referenceKey(entry.symbol)) || evidenceDefinesSymbol(entry));
+}
+
 function referenceCandidateCovered(candidate, saved) {
   if (referenceCandidateKey(candidate) === referenceCandidateKey(saved)) return true;
   if (candidate.origin === 'excerpt' && referenceKey(candidate.symbol) === referenceKey(saved.symbol)
-    && !/\b(?:let|denot(?:e|es|ed)|defin(?:e|es|ed)|redefin(?:e|es|ed)|where|refer(?:s|red)?\s+to|stands?\s+for|we\s+(?:write|call))\b|:=|\\coloneqq/iu.test(candidate.evidence)) {
+    && !evidenceDefinesSymbol(candidate)) {
     // Merely using a saved symbol in another paragraph is not a new
     // definition. Keep proposals that explicitly rebind it for this section.
     return true;
@@ -147,5 +167,6 @@ function parseReferenceCandidates(items, source) {
   });
 }
 
-module.exports = { referenceKey, referenceCandidateKey, referenceCandidateCovered,
+module.exports = { referenceKey, referenceCandidateKey, referenceCandidateCovered, evidenceDefinesSymbol,
+  preferExplicitReferenceCandidates,
   referenceOccurrences, referenceSymbol, isNotation, parseReferenceCandidates };

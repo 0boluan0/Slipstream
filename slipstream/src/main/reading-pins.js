@@ -11,7 +11,7 @@ const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
 const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation');
 const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms } = require('./reading-document');
-const { referenceKey, referenceCandidateKey, referenceCandidateCovered, referenceOccurrences, isNotation } = require('./reading-references');
+const { referenceKey, referenceCandidateKey, referenceCandidateCovered, preferExplicitReferenceCandidates, referenceOccurrences, isNotation } = require('./reading-references');
 
 const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
 const ENTRY_URL = pathToFileURL(ENTRY).href;
@@ -89,7 +89,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         if (!saved.some((item) => referenceCandidateCovered(entry, item))) candidates.set(key, { ...entry, key });
       }
     }
-    return [...candidates.values()];
+    return preferExplicitReferenceCandidates([...candidates.values()]);
   }
 
   async function refreshReferences() {

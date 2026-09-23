@@ -5,7 +5,8 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { createReadingReferenceStore } = require('../src/main/reading-reference-store');
-const { referenceKey, referenceCandidateKey, referenceCandidateCovered, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
+const { referenceKey, referenceCandidateKey, referenceCandidateCovered, evidenceDefinesSymbol,
+  preferExplicitReferenceCandidates, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { matchesReferenceSearch } = require('../src/shared/reading-notation.cjs');
 
@@ -150,6 +151,15 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
     'reusing a saved symbol in an architecture bullet must not suggest a second definition');
   assert(!referenceCandidateCovered({ ...phiSaved, evidence: 'In this section, let $\\phi$ denote the inverse map.' }, phiSaved),
     'an explicit local redefinition remains available for review');
+  const binDefinition = { symbol: 'B_m', origin: 'excerpt', evidence: 'Let $B_m$ be the set of indices of samples in the interval.' };
+  const binUsage = { ...binDefinition, evidence: 'We define the average confidence within bin $B_m$ as a mean.' };
+  assert(evidenceDefinesSymbol(binDefinition));
+  assert(!evidenceDefinesSymbol(binUsage), 'defining confidence within a bin does not redefine the bin');
+  assert(referenceCandidateCovered(binUsage, binDefinition), 'a saved bin definition covers a later incidental use');
+  assert.deepEqual(preferExplicitReferenceCandidates([binUsage, binDefinition]), [binDefinition],
+    'show the source definition once rather than a duplicate use of the same symbol');
+  assert(!referenceCandidateCovered({ ...binDefinition, evidence: 'In this section, let $B_m$ be the set of incorrectly classified samples.' }, binDefinition),
+    'a genuine local redefinition of the bin remains available');
   const fixedSetting = 'Let $\\lambda = 0.1$ denote the regularization strength throughout the study.';
   assert.equal(parseReferenceCandidates([{ symbol: String.raw`\lambda`, meaning: '全篇固定的正则化系数，取值为 0.1',
     evidence: fixedSetting }], fixedSetting).length, 1,
