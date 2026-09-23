@@ -38,6 +38,16 @@ async function main() {
     size, { blocks: [word('v+w∈V', 10, 18)] });
   assert.equal(vectorAsGreek.uncertainFormulaCount, 1,
     'confident Greek vector glyphs must be reviewed when independent OCR sees Latin v/w');
+  const repeatedVector = mergeFormulaDocument({ blocks: [] },
+    [{ ...formula, latex: '\\vec{\\nu}\\in V', confidence: .95 },
+      { ...formula, x: 55, latex: '\\vec{w}\\in V', confidence: .95 }],
+    size, { blocks: [] });
+  assert.equal(repeatedVector.uncertainFormulaCount, 1,
+    'a confusable Greek vector is reviewable when the same selection also has Latin vector notation');
+  assert.equal(mergeFormulaDocument({ blocks: [] },
+    [{ ...formula, latex: '\\vec{\\omicron}\\in V', confidence: .95 }],
+    size, { blocks: [word('0∈V', 10, 18)] }).uncertainFormulaCount, 1,
+  'a confident Greek omicron must be reviewed when independent OCR sees a zero');
   assert.equal(mergeFormulaDocument({ blocks: [] },
     [{ ...formula, latex: '\\vec{\\nu}\\in V', confidence: .95 }],
     size, { blocks: [word('ν∈V', 10, 18)] }).uncertainFormulaCount, 0,

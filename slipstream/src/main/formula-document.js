@@ -119,13 +119,14 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   // when Vision read the Latin letter in the same formula rectangle.
   const independentWords = words(original);
   function latinGreekConflict(formula, latex) {
-    if (!/\\(?:nu|upsilon)\b/u.test(latex)) return false;
+    if (!/\\(?:nu|upsilon|omicron)\b/u.test(latex)) return false;
     const observed = independentWords.filter((word) => intersects(formula, word))
       .sort((a, b) => a.x - b.x).map((word) => word.text).join('').replace(/\s+/gu, '');
     const compact = latex.replace(/\s+/gu, '');
     if (/^\\nu[,.;:!?]?$/u.test(compact)) return /^[Vv]$/u.test(observed);
+    if (/\\vec(?:\{|\\(?:boldsymbol|mathbf|mathrm)\{)*\\omicron\b/u.test(compact)) return /[0O]/u.test(observed);
     return /\\vec(?:\{|\\(?:boldsymbol|mathbf|mathrm)\{)*\\(?:nu|upsilon)\b/u.test(compact)
-      && /[vwW]/u.test(observed);
+      && (/[vwW]/u.test(observed) || latinVectorInSelection);
   }
   const proseAnnotations = new Map();
   formulas = formulas.filter((formula) => {
@@ -197,6 +198,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     // marker, not part of the preceding mathematical expression.
     return /\.\s*\^\s*\{\s*(?:\*|\\ast)\s*\}\s*$/u.test(latex);
   }
+  const latinVectorInSelection = formulas.some(({ latex }) =>
+    /\\vec\{?(?:\\(?:boldsymbol|mathbf|mathrm)\{?)?[vw]\b/u.test(latex.replace(/\s+/gu, '')));
   for (const formula of formulas) {
     let latex = formula.latex.trim(), punctuation = '';
     if (/[,.;:!?]$/.test(latex)) { punctuation = latex.at(-1); latex = latex.slice(0, -1).trim(); }
