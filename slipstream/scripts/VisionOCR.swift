@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 6
+let OCR_VERSION = 7
 
 import Vision
 import AppKit
@@ -13,16 +13,36 @@ struct FrontWindow: Codable {
     let title: String
 }
 
+func windowRect(_ window: [String: Any]) -> CGRect? {
+    guard let bounds = window[kCGWindowBounds as String] as? [String: Any],
+          let x = bounds["X"] as? NSNumber, let y = bounds["Y"] as? NSNumber,
+          let width = bounds["Width"] as? NSNumber, let height = bounds["Height"] as? NSNumber else { return nil }
+    return CGRect(x: x.doubleValue, y: y.doubleValue, width: width.doubleValue, height: height.doubleValue)
+}
+
 func frontWindow() -> FrontWindow? {
     guard let app = NSWorkspace.shared.frontmostApplication,
           let bundleId = app.bundleIdentifier,
           let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] else { return nil }
-    for window in windows {
+    for (index, window) in windows.enumerated() {
         guard (window[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier,
               (window[kCGWindowLayer as String] as? Int) == 0,
               let title = window[kCGWindowName as String] as? String,
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+        // The active app can report a document on a different Space while a
+        // normal window covers its pixels. Do not bind that screenshot to the
+        // obscured document's local reading context.
+        guard let target = windowRect(window), target.width > 0, target.height > 0 else { return nil }
+        let obscured = windows.prefix(index).contains { other in
+            guard (other[kCGWindowLayer as String] as? Int) == 0,
+                  (other[kCGWindowOwnerPID as String] as? Int32) != app.processIdentifier,
+                  (other[kCGWindowAlpha as String] as? Double ?? 1) > 0.01,
+                  let rect = windowRect(other) else { return false }
+            let overlap = target.intersection(rect)
+            return !overlap.isNull && overlap.width * overlap.height >= target.width * target.height * 0.5
+        }
+        if obscured { return nil }
         return FrontWindow(bundleId: bundleId, title: title)
     }
     return nil
