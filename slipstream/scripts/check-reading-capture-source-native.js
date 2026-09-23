@@ -74,7 +74,29 @@ app.whenReady().then(async () => {
   const sixth = await capture();
   assert.equal((await state(sixth)).paperId, null, 'an unknown window cannot borrow the last paper');
   assert.equal((await state(second)).paperId, simclr, 'existing cards retain their original paper');
-  console.log('Native capture source scope passed: new and unknown windows temporary, bind on choice, same PDF reuse, cross-PDF isolation.');
+  frontWindow = { bundleId: 'com.apple.Preview', title: 'conformal.pdf' };
+  const seventh = await capture();
+  assert.equal((await state(seventh)).paperId, null);
+  const existing = new Set(BrowserWindow.getAllWindows());
+  await act(seventh, 'reference-open');
+  const references = BrowserWindow.getAllWindows().find((window) => !existing.has(window)
+    && window.getTitle() === 'Slipstream · 本文速查');
+  assert(references, 'opening the paper library from a reading card creates its linked window');
+  await references.webContents.executeJavaScript('document.fonts.ready');
+  await act(references, 'paper-create', { title: 'Conformal' });
+  const conformal = (await state(references)).paperId;
+  assert.equal((await state(seventh)).paperId, conformal,
+    'creating a paper from the linked library updates the originating reading card');
+  const eighth = await capture();
+  assert.equal((await state(eighth)).paperId, conformal);
+  assert.equal((await state(second)).paperId, simclr, 'other cards keep their own paper');
+  await manager.openReferences();
+  await act(references, 'paper-create', { title: 'Unbound' });
+  const unbound = (await store.read()).papers.find((paper) => paper.title === 'Unbound');
+  assert.equal(unbound.sourceKey, undefined, 'opening the library globally must clear an old window source');
+  assert.equal((await state(seventh)).paperId, conformal,
+    'a global library operation must not reassign the former originating card');
+  console.log('Native capture source scope passed: temporary unknown windows, linked-library assignment, global source clearing, same PDF reuse, cross-PDF isolation.');
   manager.dispose();
   fs.rmSync(work, { recursive: true, force: true });
   app.exit(0);
