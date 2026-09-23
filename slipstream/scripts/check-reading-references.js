@@ -31,6 +31,10 @@ async function main() {
   assert.equal(referenceOccurrences('We use $x_{i}$ and xᵢ.', 'x_i').length, 2);
   assert.equal(referenceOccurrences('The value λ is positive.', '\\lambda').length, 1);
   assert.equal(referenceOccurrences('Our ELBO estimate is unbiased.', 'ELBO').length, 1);
+  assert.equal(referenceOccurrences(String.raw`$(t \sim \mathcal T)$`, 'sim').length, 0,
+    'a saved similarity function cannot match the unrelated TeX sampling relation');
+  assert.equal(referenceOccurrences(String.raw`$\operatorname{sim}(u,v)$`, 'sim').length, 1,
+    'the same function name remains findable when typeset as a named operator');
   assert.equal(referenceOccurrences('x_{ij}', 'x_i').length, 0);
   // Real MMD OCR spells the operator as separated letters. Its p is not a
   // distribution variable and must not surface that paper's p definition.

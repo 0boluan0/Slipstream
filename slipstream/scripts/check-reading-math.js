@@ -29,6 +29,17 @@ async function main() {
   assert.deepEqual(borderline.uncertainFormulaStarts, [mathRanges(borderline.text)[0].start],
     'small formula details need review even when the model assigns moderate confidence');
   assert.deepEqual(mergeFormulaDocument(masked, [{ ...formula, confidence: .9 }], size, original).uncertainFormulaStarts, []);
+  const barred = { ...formula, confidence: .9,
+    latex: String.raw`\bar { \boldsymbol { z } _ { i } } = g ( h_i )` };
+  const paddedPlain = { blocks: [{ ...word('zi = g(hi)', 10, 40), confidence: 1,
+    boundingBox: { x: .1, y: .7, w: .4, h: .2 } }] };
+  const accentConflict = mergeFormulaDocument({ blocks: [] }, [barred], size, { blocks: [] }, paddedPlain);
+  assert.equal(accentConflict.uncertainFormulaCount, 1);
+  assert.deepEqual(accentConflict.uncertainFormulaStarts, [mathRanges(accentConflict.text)[0].start],
+    'a high-confidence barred symbol needs review when a second OCR pass reads the unbarred relation');
+  assert.deepEqual(mergeFormulaDocument({ blocks: [] }, [barred], size, { blocks: [] },
+    { blocks: [{ ...paddedPlain.blocks[0], text: 'z̄i = g(hi)' }] }).uncertainFormulaStarts, [],
+  'an OCR pass that also sees an accent does not create a new review marker');
   const periodSource = { blocks: [word('x.', 10, 24), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument({ blocks: [word('•', 29, 5)] }, [formula], size, periodSource).text, '$x$. label',
     'masked OCR may call the same source period a bullet; preserve the original punctuation once');

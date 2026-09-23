@@ -113,7 +113,11 @@ function referenceOccurrences(source, symbol) {
     let start = source.indexOf(symbol);
     while (start >= 0) {
       const end = start + symbol.length;
-      if (!/[\p{L}\p{N}_]/u.test(source[start - 1] || '') && !/[\p{L}\p{N}_]/u.test(source[end] || '')) add(start, end);
+      // A plain function name such as sim must not match the distinct TeX
+      // relation \sim. The token pass above already compares command names
+      // with their backslash intact.
+      if (source[start - 1] !== '\\' && !/[\p{L}\p{N}_]/u.test(source[start - 1] || '')
+        && !/[\p{L}\p{N}_]/u.test(source[end] || '')) add(start, end);
       start = source.indexOf(symbol, start + 1);
     }
   }

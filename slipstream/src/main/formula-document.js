@@ -167,6 +167,17 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   }
   const labelledWords = new Set([...equationLabels.values()].map(({ word }) => word));
   const items = sourceWords.filter((word) => !removed.includes(word) && !labelledWords.has(word));
+  function uncorroboratedBar(formula, latex) {
+    // A high-scoring formula decoder can hallucinate a tiny bar. The padded
+    // text pass is not strong enough to rewrite TeX, but an unbarred leading
+    // symbol on the same printed row is enough to ask the reader to check it.
+    const compact = latex.replace(/\\(?:boldsymbol|mathbf|mathit|mathrm)\b/gu, '').replace(/[{}\s]/gu, '');
+    const symbol = compact.match(/^\\bar([A-Za-z])_([A-Za-z0-9])=/u);
+    if (!symbol) return false;
+    const plain = new RegExp(`^${symbol[1]}\\s*${symbol[2]}\\s*=`, 'u');
+    return (edgeProse?.blocks || []).some((block) => block.boundingBox
+      && intersects(formula, pixelBox(block.boundingBox)) && plain.test(block.text.trim()));
+  }
   for (const formula of formulas) {
     let latex = formula.latex.trim(), punctuation = '';
     if (/[,.;:!?]$/.test(latex)) { punctuation = latex.at(-1); latex = latex.slice(0, -1).trim(); }
@@ -217,6 +228,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
+      reviewAccent: uncorroboratedBar(formula, latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
           : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
@@ -257,7 +269,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       if (at < 0) continue;
       // A source-confirmed footnote can be attached to prose (biased$^{2}$).
       // The marker belongs on the math delimiter, not on the English word.
-      if (fragment.item.math && fragment.item.confidence < FORMULA_REVIEW_CONFIDENCE) for (const range of mathRanges(normalized)) {
+      if (fragment.item.math && (fragment.item.confidence < FORMULA_REVIEW_CONFIDENCE || fragment.item.reviewAccent)) for (const range of mathRanges(normalized)) {
         uncertainFormulaStarts.push(text.length + separator.length + at + range.start);
       }
       cursor = at + normalized.length;
@@ -268,7 +280,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   const mathematical = items.filter((item) => item.math);
   return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0, rowRecovered,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
-    uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE)
+    uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE || item.reviewAccent)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaStarts };
 }
