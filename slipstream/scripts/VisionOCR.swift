@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 7
+let OCR_VERSION = 8
 
 import Vision
 import AppKit
@@ -33,7 +33,10 @@ func frontWindow() -> FrontWindow? {
         // The active app can report a document on a different Space while a
         // normal window covers its pixels. Do not bind that screenshot to the
         // obscured document's local reading context.
-        guard let target = windowRect(window), target.width > 0, target.height > 0 else { return nil }
+        guard let target = windowRect(window) else { continue }
+        // Preview can put a tiny "Window" title-bar accessory above the PDF.
+        // It is not a readable document and must not become the paper identity.
+        guard target.width >= 200, target.height >= 120 else { continue }
         let obscured = windows.prefix(index).contains { other in
             guard (other[kCGWindowLayer as String] as? Int) == 0,
                   (other[kCGWindowOwnerPID as String] as? Int32) != app.processIdentifier,

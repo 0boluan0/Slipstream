@@ -25,7 +25,7 @@ function looksLikeOwnReadingUi(text) {
       && /(?:卡片盒|本文速查|屏幕旁|术语卡片)/u.test(text));
 }
 
-function looksLikeClippedProse(ocr) {
+function looksLikeClippedProse(ocr, text = ocr?.text || '') {
   // A tight right edge can silently turn a complete sentence into plausible
   // OCR fragments. Two long lines touching that edge warrant a new crop.
   const blocks = ocr?.blocks || [];
@@ -34,10 +34,22 @@ function looksLikeClippedProse(ocr) {
     && block.boundingBox.x + block.boundingBox.w >= 0.985).length >= 2) return 'right';
   // Vision coordinates start at the bottom. A final, unfinished line pressed
   // against the lower edge means the reader may miss the rest of that sentence.
-  if (blocks.some((block) => block?.text?.trim().length >= 25
-    && Number.isFinite(block.boundingBox?.y) && block.boundingBox.y <= 0.025
-    && !/[.!?。！？]$/u.test(block.text.trim()))) return 'bottom';
+  if (blocks.some((block) => block?.text?.trim().length > 0
+    && Number.isFinite(block.boundingBox?.y) && block.boundingBox.y <= 0.08)
+    && !/[.!?。！？]$/u.test(text.trim())) return 'bottom';
   return null;
+}
+
+function looksLikeBrokenBrackets(text) {
+  let open = 0;
+  for (const char of text) {
+    if (char === '[') open += 1;
+    else if (char === ']') {
+      if (open === 0) return true;
+      open -= 1;
+    }
+  }
+  return open !== 0;
 }
 
 function looksLikeMissingQuotedCharacter(text) {
@@ -741,7 +753,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const document = readingTextFromOcr(ocr);
         const review = assessOcrReview({ source: 'ocr', text: ocr.text, capture: ocr });
         const ownUiCapture = looksLikeOwnReadingUi(document.text);
-        const clippedProse = looksLikeClippedProse(ocr);
+        const clippedProse = looksLikeClippedProse(ocr, document.text);
+        const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
         pin.controller = null;
         let destination = '';
@@ -759,11 +772,12 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedProse || missingQuotedCharacter || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedProse || brokenBrackets || missingQuotedCharacter || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
-            : clippedProse === 'right' ? '选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。'
-            : clippedProse === 'bottom' ? '选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。'
+            : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}`
+            : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}`
+            : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
             : document.rowRecovered ? '正文有跨行识别冲突，已按原图位置重新排好。请对照截图核对文字顺序。'

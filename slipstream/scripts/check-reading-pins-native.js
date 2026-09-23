@@ -66,6 +66,7 @@ app.whenReady().then(async () => {
   let noTerms = false;
   let ocrClipped = false;
   let ocrBottomClipped = false;
+  let ocrBottomShortBlock = false;
   let holdReview = false, resolveReview, reviewSignal;
   const provider = createReadingProcessor(async (...args) => {
     providerCalls += 1;
@@ -126,6 +127,9 @@ app.whenReady().then(async () => {
           boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
         : ocrBottomClipped ? [{ text: ocrOverride, confidence: .99,
           boundingBox: { x: .08, y: .0163, w: .8, h: .08 } }]
+        : ocrBottomShortBlock ? [{ text: 'the final hidden vector', confidence: .99,
+          boundingBox: { x: .08, y: .2, w: .8, h: .08 } },
+          { text: 'as', confidence: .99, boundingBox: { x: .08, y: .019, w: .1, h: .05 } }]
         : [{ text: ocrOverride, confidence: .99 }] };
       if (!realOcrDone) {
         const result = await require('../src/main/ocr-service').performOCR(file, options);
@@ -383,6 +387,24 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeBottom, 'bottom-edge cropped prose must stay local until reviewed');
   manager.clear();
   ocrBottomClipped = false;
+  ocrBottomShortBlock = true;
+  ocrOverride = 'the final hidden vector for the token as $T_i \\in \\mathbb{R}^H$';
+  const beforeShortBottom = providerCalls;
+  await manager.capture();
+  const shortBottom = cards()[0];
+  await until(phaseIs(shortBottom, 'review'), 'short edge line after math must trigger review');
+  assert.match((await stateOf(shortBottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforeShortBottom);
+  manager.clear();
+  ocrBottomShortBlock = false;
+  ocrOverride = 'The first token is [CLS]. The separator is [SEP 1 in the OCR text.';
+  const beforeBrokenBrackets = providerCalls;
+  await manager.capture();
+  const brokenBrackets = cards()[0];
+  await until(phaseIs(brokenBrackets, 'review'), 'broken special-token bracket must trigger review');
+  assert.match((await stateOf(brokenBrackets)).notice, /方括号可能漏识别/);
+  assert.equal(providerCalls, beforeBrokenBrackets);
+  manager.clear();
   ocrOverride = 'Two tosses give outcomes where "h" denotes "heads" and "" denotes "tails".';
   const beforeMissingQuote = providerCalls;
   await manager.capture();
