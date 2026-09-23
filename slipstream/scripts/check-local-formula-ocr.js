@@ -22,12 +22,13 @@ const results = [];
 let manager, service;
 setTimeout(() => { console.error('Local formula OCR exceeded 180 seconds'); app.exit(1); }, 180000).unref();
 
-async function fixture(name, html) {
-  const win = new BrowserWindow({ width: 900, height: 360, show: false,
+async function fixture(name, html, { width = 900, height = 360,
+  bodyStyle = 'padding:30px;font:24px/1.6 Georgia;background:white;color:black' } = {}) {
+  const win = new BrowserWindow({ width, height, show: false,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   const css = pathToFileURL(path.join(path.dirname(require.resolve('katex/package.json')), 'dist/katex.min.css')).href;
   const file = path.join(work, `${name}.html`);
-  fs.writeFileSync(file, `<html><meta charset="utf-8"><link rel="stylesheet" href="${css}"><body style="padding:30px;font:24px/1.6 Georgia;background:white;color:black">${html}</body></html>`);
+  fs.writeFileSync(file, `<html><meta charset="utf-8"><link rel="stylesheet" href="${css}"><body style="${bodyStyle}">${html}</body></html>`);
   await win.loadFile(file);
   await win.webContents.executeJavaScript('document.fonts.ready');
   const imagePath = path.join(work, `${name}.png`);
@@ -48,6 +49,77 @@ app.whenReady().then(async () => {
   require('node:http').request = denyNetwork;
   require('node:https').request = denyNetwork;
   service = require('../src/main/ocr-service');
+  const math = (latex, displayMode = false) => katex.renderToString(latex, { displayMode, throwOnError: true });
+  const weakAccent = await fixture('weak-inline-accent',
+    `<div>Suppose that a classifier assigns estimated probabilities to every class: ${math('\\hat{f}(x)\\in[0,1]^K')}. We reserve a small calibration sample.</div>`
+    + `<div>These samples contain unseen images and class labels ${math('(X_1,Y_1),\\ldots,(X_n,Y_n)')}. Using ${math('\\hat{f}')} and calibration data, we construct a prediction set.</div>`
+    + `<div>${math('1-\\alpha\\leq\\mathbb{P}(Y_{test}\\in C(X_{test}))\\leq1-\\alpha+\\frac{1}{n+1}', true)}</div>`
+    + '<div>The resulting marginal coverage is an average property over random test points. See Figure 1 for examples.</div>',
+    { width: 920, height: 282, bodyStyle: 'margin:0;padding:8px 46px;font:18px/1.32 Georgia,serif;background:white;color:#111' });
+  const weakAccentResult = await service.performReadingOCR(weakAccent);
+  assert.match(weakAccentResult.text, /Using\s+\$\\hat\{f\}\$\s+and/, 'a weak isolated accent in a wide screenshot must not silently become a plain letter');
+  const accentText = await service.performOCR(weakAccent, { characters: true });
+  const figureRow = accentText.blocks.find((block) => /Figure 1\b/u.test(block.text));
+  assert(figureRow?.characters?.length, 'authored cross-reference is available as character-located OCR');
+  const numeralIndex = Array.from(figureRow.text.slice(0, figureRow.text.indexOf('Figure 1') + 'Figure 1'.length)).length - 1;
+  const ambiguousRow = { ...figureRow, text: figureRow.text.replace('Figure 1', 'Figure I'),
+    characters: figureRow.characters.map((char, i) => i === numeralIndex ? { ...char, text: 'I' } : char) };
+  const ambiguous = { blocks: [ambiguousRow] };
+  const rechecked = await service.recheckReferenceOne(weakAccent, ambiguous, accentText, work);
+  assert.match(rechecked.blocks[0].text, /Figure 1\b/u,
+    'a tight third OCR crop resolves an I/1 disagreement at the same source location');
+  assert.equal((await service.recheckReferenceOne(weakAccent, ambiguous, { blocks: [] }, work)).blocks[0].text,
+    ambiguousRow.text, 'a secondary reading without location-matched support cannot change a Roman numeral');
+  results.push({ case: 'weak-inline-accent-wide-excerpt', ...weakAccentResult.formulaOcr,
+    text: weakAccentResult.text });
+  const plainLetter = await fixture('wide-plain-letter',
+    '<div>A classifier f assigns a probability to each possible class. The calibration sample contains images and labels.</div>'
+    + '<div>Using f and the calibration data, we construct a prediction set for a new observation.</div>'
+    + '<div>The argument below explains why this set has marginal coverage over repeated samples.</div>',
+    { width: 920, height: 282, bodyStyle: 'margin:0;padding:8px 46px;font:18px/1.32 Georgia,serif;background:white;color:#111' });
+  const plainLetterResult = await service.performReadingOCR(plainLetter);
+  assert.doesNotMatch(plainLetterResult.text, /\\hat\s*\{?f/u,
+    'wide prose with a plain f must not acquire a mathematical accent');
+  results.push({ case: 'wide-plain-letter-no-accent', ...plainLetterResult.formulaOcr,
+    text: plainLetterResult.text });
+  const edgeLine = 'During adaptation, use a pre-trainec';
+  const edgeBox = { x: .82, y: .5, w: .1, h: .12 };
+  const edgeRow = { text: edgeLine, confidence: 1,
+    boundingBox: { x: .04, y: .5, w: .9, h: .12 },
+    characters: Array.from(edgeLine, (letter) => ({ text: letter, boundingBox: edgeBox })) };
+  const edgeAlternative = { blocks: [{ ...edgeRow, text: 'During adaptation, use a pre-trained' }] };
+  const edgeOriginal = { blocks: [edgeRow] };
+  const confirmedWord = await service.recheckRightEdgeWord(plainLetter, edgeOriginal, edgeAlternative, work,
+    { recognize: async () => ({ text: 'use a pre-trained', confidence: 1 }) });
+  assert.equal(confirmedWord.blocks[0].text, 'During adaptation, use a pre-trained',
+    'a third local crop can repair one disputed final letter of an edge word');
+  assert.equal(confirmedWord.blocks[0].characters.at(-1).text, 'd',
+    'the corrected character must also reach layout-based prose assembly');
+  const unconfirmedWord = await service.recheckRightEdgeWord(plainLetter, edgeOriginal, edgeAlternative, work,
+    { recognize: async () => ({ text: 'use a pre-trainec', confidence: 1 }) });
+  assert.equal(unconfirmedWord.blocks[0].text, edgeLine,
+    'two competing line reads cannot change a word without third-pass confirmation');
+  const unrelatedRow = { blocks: [{ ...edgeRow, text: 'Another sentence ends with pre-trained' }] };
+  assert.equal((await service.recheckRightEdgeWord(plainLetter, edgeOriginal, unrelatedRow, work,
+    { recognize: async () => ({ text: 'pre-trained', confidence: 1 }) })).blocks[0].text, edgeLine,
+    'a different line cannot supply a substitute word');
+  const shiftedRow = { blocks: [{ ...edgeRow, text: 'During adaptation, use a pre-trained',
+    boundingBox: { x: .5, y: .5, w: .4, h: .12 } }] };
+  assert.equal((await service.recheckRightEdgeWord(plainLetter, edgeOriginal, shiftedRow, work,
+    { recognize: async () => ({ text: 'pre-trained', confidence: 1 }) })).blocks[0].text, edgeLine,
+    'a different column cannot supply a substitute word');
+  const plainDimensions = await fixture('plain-matrix-dimensions',
+    `<div>Let ${math('W_0\\in\\mathbb{R}^{d\\times k}')} be the original matrix. Its update uses ${math('B\\in\\mathbb{R}^{d\\times r}')} and ${math('A\\in\\mathbb{R}^{r\\times k}')}.</div>`,
+    { width: 1040, height: 175, bodyStyle: 'margin:0;padding:16px 28px;font:22px/1.45 Georgia,serif;background:white;color:#111' });
+  const plainDimensionsResult = await service.performReadingOCR(plainDimensions);
+  const dimensionRanges = mathRanges(plainDimensionsResult.text);
+  assert(dimensionRanges.length >= 1, 'self-authored matrix dimensions must reach formula review');
+  for (const range of dimensionRanges.filter((item) => /\\(?:breve|vec|hat|tilde|bar)\s*\{?\s*k/u.test(item.tex))) {
+    assert(plainDimensionsResult.formulaOcr.uncertainStarts.includes(range.start),
+      'an invented accent on a plain dimension must never pass without a review marker');
+  }
+  results.push({ case: 'authored-plain-matrix-dimensions', ...plainDimensionsResult.formulaOcr,
+    text: plainDimensionsResult.text });
   for (const name of ['adam-algorithm', 'attention-equation', 'dml-paragraph']) {
     const started = Date.now();
     const result = await service.performReadingOCR(path.join(fixtures, `${name}.png`));
