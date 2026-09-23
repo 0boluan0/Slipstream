@@ -5,7 +5,6 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { pathToFileURL } = require('node:url');
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const katex = require('katex');
 const { mathRanges } = require('../src/shared/reading-math.cjs');
@@ -22,19 +21,9 @@ const results = [];
 let manager, service;
 setTimeout(() => { console.error('Local formula OCR exceeded 180 seconds'); app.exit(1); }, 180000).unref();
 
-async function fixture(name, html, { width = 900, height = 360,
-  bodyStyle = 'padding:30px;font:24px/1.6 Georgia;background:white;color:black' } = {}) {
-  const win = new BrowserWindow({ width, height, show: false,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
-  const css = pathToFileURL(path.join(path.dirname(require.resolve('katex/package.json')), 'dist/katex.min.css')).href;
-  const file = path.join(work, `${name}.html`);
-  fs.writeFileSync(file, `<html><meta charset="utf-8"><link rel="stylesheet" href="${css}"><body style="${bodyStyle}">${html}</body></html>`);
-  await win.loadFile(file);
-  await win.webContents.executeJavaScript('document.fonts.ready');
-  const imagePath = path.join(work, `${name}.png`);
-  fs.writeFileSync(imagePath, (await win.webContents.capturePage()).toPNG());
-  win.destroy(); return imagePath;
-}
+// Pixel-stable, self-authored screenshots keep OCR assertions independent of
+// runner fonts, display scale and hidden BrowserWindow first-paint timing.
+const authored = (name) => path.join(fixtures, `authored-${name}.png`);
 
 app.whenReady().then(async () => {
   // Release apps contain a compiled Swift helper. Build the development helper
@@ -103,13 +92,7 @@ app.whenReady().then(async () => {
     assert(tex.includes('\\sqrt{\\widehat{v}_{t}}'));
     results.push({ case: name, ...result.formulaOcr, text: result.text });
   }
-  const math = (latex, displayMode = false) => katex.renderToString(latex, { displayMode, throwOnError: true });
-  const weakAccent = await fixture('weak-inline-accent',
-    `<div>Suppose that a classifier assigns estimated probabilities to every class: ${math('\\hat{f}(x)\\in[0,1]^K')}. We reserve a small calibration sample.</div>`
-    + `<div>These samples contain unseen images and class labels ${math('(X_1,Y_1),\\ldots,(X_n,Y_n)')}. Using ${math('\\hat{f}')} and calibration data, we construct a prediction set.</div>`
-    + `<div>${math('1-\\alpha\\leq\\mathbb{P}(Y_{test}\\in C(X_{test}))\\leq1-\\alpha+\\frac{1}{n+1}', true)}</div>`
-    + '<div>The resulting marginal coverage is an average property over random test points. See Figure 1 for examples.</div>',
-    { width: 920, height: 282, bodyStyle: 'margin:0;padding:8px 46px;font:18px/1.32 Georgia,serif;background:white;color:#111' });
+  const weakAccent = authored('weak-inline-accent');
   const weakAccentResult = await service.performReadingOCR(weakAccent);
   assert.match(weakAccentResult.text, /Using\s+\$\\hat\{f\}\$\s+and/, 'a weak isolated accent in a wide screenshot must not silently become a plain letter');
   const accentText = await service.performOCR(weakAccent, { characters: true });
@@ -126,11 +109,7 @@ app.whenReady().then(async () => {
     ambiguousRow.text, 'a secondary reading without location-matched support cannot change a Roman numeral');
   results.push({ case: 'weak-inline-accent-wide-excerpt', ...weakAccentResult.formulaOcr,
     text: weakAccentResult.text });
-  const plainLetter = await fixture('wide-plain-letter',
-    '<div>A classifier f assigns a probability to each possible class. The calibration sample contains images and labels.</div>'
-    + '<div>Using f and the calibration data, we construct a prediction set for a new observation.</div>'
-    + '<div>The argument below explains why this set has marginal coverage over repeated samples.</div>',
-    { width: 920, height: 282, bodyStyle: 'margin:0;padding:8px 46px;font:18px/1.32 Georgia,serif;background:white;color:#111' });
+  const plainLetter = authored('wide-plain-letter');
   const plainLetterResult = await service.performReadingOCR(plainLetter);
   assert.doesNotMatch(plainLetterResult.text, /\\hat\s*\{?f/u,
     'wide prose with a plain f must not acquire a mathematical accent');
@@ -162,9 +141,7 @@ app.whenReady().then(async () => {
   assert.equal((await service.recheckRightEdgeWord(plainLetter, edgeOriginal, shiftedRow, work,
     { recognize: async () => ({ text: 'pre-trained', confidence: 1 }) })).blocks[0].text, edgeLine,
     'a different column cannot supply a substitute word');
-  const plainDimensions = await fixture('plain-matrix-dimensions',
-    `<div>Let ${math('W_0\\in\\mathbb{R}^{d\\times k}')} be the original matrix. Its update uses ${math('B\\in\\mathbb{R}^{d\\times r}')} and ${math('A\\in\\mathbb{R}^{r\\times k}')}.</div>`,
-    { width: 1040, height: 175, bodyStyle: 'margin:0;padding:16px 28px;font:22px/1.45 Georgia,serif;background:white;color:#111' });
+  const plainDimensions = authored('plain-matrix-dimensions');
   const plainDimensionsResult = await service.performReadingOCR(plainDimensions);
   const dimensionRanges = mathRanges(plainDimensionsResult.text);
   assert(dimensionRanges.length >= 1, 'self-authored matrix dimensions must reach formula review');
@@ -174,26 +151,24 @@ app.whenReady().then(async () => {
   }
   results.push({ case: 'authored-plain-matrix-dimensions', ...plainDimensionsResult.formulaOcr,
     text: plainDimensionsResult.text });
-  const matrix = await fixture('matrix', '<p>A symmetric matrix and a sample mean:</p>' + katex.renderToString(
-    String.raw`A=\begin{pmatrix}a&b\\b&c\end{pmatrix},\qquad \bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i`, { displayMode: true }));
+  const matrix = authored('matrix');
   const matrixResult = await service.performReadingOCR(matrix);
   const matrixTex = compact(matrixResult.text);
   assert.match(matrixTex.replace(/\{([abc])\}/g, '$1'), /\\begin\{[pb]?matrix\}a&b\\\\b&c/);
   assert.match(matrixTex, /\\frac\{1\}\{n\}/);
   for (const item of mathRanges(matrixResult.text)) katex.renderToString(item.tex, { throwOnError: true, trust: false, displayMode: item.display });
   results.push({ case: 'authored-matrix', ...matrixResult.formulaOcr, text: matrixResult.text });
-  const derivatives = await fixture('derivatives', '<p>Time derivatives:</p>' + katex.renderToString(
-    String.raw`\dot{x}(t)=v(t),\qquad \ddot{x}(t)=a(t)`, { displayMode: true }));
+  const derivatives = authored('derivatives');
   const derivativeResult = await service.performReadingOCR(derivatives);
   assert.match(compact(derivativeResult.text), /\\dot\{x\}/, 'genuine derivative dots must survive cropping');
   assert.match(compact(derivativeResult.text), /\\ddot\{x\}/);
   results.push({ case: 'authored-derivatives', ...derivativeResult.formulaOcr, text: derivativeResult.text });
-  const prose = await fixture('prose', '<p>Correlation does not imply causation.</p><p>The meeting starts on Friday. Bring the blue notebook.</p>');
+  const prose = authored('prose');
   const proseResult = await service.performReadingOCR(prose);
   assert.equal(proseResult.formulaOcr.count, 0, 'ordinary prose must not acquire invented formulas');
   assert.match(proseResult.text, /Correlation does not imply causation/);
   results.push({ case: 'authored-prose', ...proseResult.formulaOcr });
-  const ordinary = await fixture('ordinary-symbol-lookalikes', '<p>I read a paper and tested a model.</p><p>We report the 1st and 2nd estimates from 2024.</p>');
+  const ordinary = authored('ordinary-symbol-lookalikes');
   const ordinaryResult = await service.performReadingOCR(ordinary);
   assert.equal(ordinaryResult.formulaOcr.count, 0, 'articles, pronouns, ordinals and years must not acquire formulas');
   assert.match(ordinaryResult.text, /I read a paper/);
