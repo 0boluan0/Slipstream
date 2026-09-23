@@ -202,6 +202,15 @@ app.whenReady().then(async () => {
   const smallerLookalikes = await service.performReadingOCR(path.join(fixtures, 'authored-symbol-lookalikes-650.png'));
   assert.match(smallerLookalikes.text, /The sample space \$\\Omega\$/,
     'a smaller screenshot must retain the Greek symbol in its heading');
+  if (!/For this invented example, \$\\Omega\$ contains/u.test(smallerLookalikes.text)) {
+    const observed = await service.performOCR(path.join(fixtures, 'authored-symbol-lookalikes-650.png'), { characters: true });
+    const glyphs = observed.blocks.filter((block) => /invented/u.test(block.text)).map((block) => ({
+      text: block.text,
+      characters: Array.from(block.text).flatMap((letter, index) => /^[SΩ€&$]$/u.test(letter)
+        ? [{ index, letter, box: block.characters?.[index]?.boundingBox }] : []),
+    }));
+    console.error(`Small Greek glyph diagnostic: ${JSON.stringify({ glyphs, formulaOcr: smallerLookalikes.formulaOcr })}`);
+  }
   assert.match(smallerLookalikes.text, /For this invented example, \$\\Omega\$ contains/,
     'blank pixels around a small Greek character must not turn a crop recheck into a false subscript');
   assert.match(smallerLookalikes.text, /The plain set S is a different label/,
