@@ -79,7 +79,8 @@ app.whenReady().then(async () => {
         ? '因果关系意味着改变一个因素，会引起另一个因素的变化。仅仅观察到两者一起变化，还不足以说明存在这种关系。'
         : '相关关系描述两个变量在统计上一起变化的程度；它本身不能说明一个变量导致了另一个变量。',
       note: '这段提到共同原因：两个变量可以受到同一个因素影响，因此一起变化，却没有直接的因果关系。',
-      ...(input.selection === 'Correlation' ? { basis: 'contextual', sourceQuote: 'Correlation does not imply causation.' } : {}) });
+      ...(input.selection === 'Correlation' ? { basis: 'contextual',
+        sourceQuote: input.excerpt.slice(input.excerpt.indexOf('Correlation'), input.excerpt.indexOf('Correlation') + 90) } : {}) });
     if (args[3].includes('"translation"')) return JSON.stringify({ translation: chinese,
       terms: noTerms ? [] : [{ quote: 'Correlation', label: '相关关系', role: 'core' }, { quote: 'causation', label: '因果关系', role: 'core' }] });
     return args[8] ? JSON.stringify({ terms: [{ quote: 'Correlation', explanation: '指变量一起变化的统计关系；这里没有据此断定因果。' }], sentences: [] }) : chinese;
@@ -144,8 +145,8 @@ app.whenReady().then(async () => {
   assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence").hidden'), false);
   await first.webContents.executeJavaScript('document.querySelector("#lookup-evidence summary").click()');
   assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence").open'), true);
-  assert.match(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence-quote").textContent'),
-    /Correlation does not imply causation\./);
+  assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence-quote").textContent'),
+    (await stateOf(first)).lookup.sourceQuote, 'the disclosure must display the exact source-backed excerpt');
   await first.webContents.executeJavaScript('document.getElementById("lookup-close").click()');
   await until(() => first.webContents.executeJavaScript('document.activeElement.classList.contains("term-chip")'), 'return focus to the concept button');
   await first.webContents.executeJavaScript('document.querySelector(".term-chip").click()');
