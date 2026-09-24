@@ -15,6 +15,12 @@ async function main() {
   const masked = { blocks: [word(':', 29, 5), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument(masked, [formula], size, original).text, '$x$: label',
     'the same punctuation recovered from an original word and masked OCR must appear once');
+  for (const colon of [String.raw`\colon`, String.raw`\mathbf { : }`, String.raw`\mathsf { : }`]) {
+    const mathColon = { ...formula, latex: String.raw`r,s\in\mathbb R` + colon };
+    assert.equal(mergeFormulaDocument({ blocks: [word(':', 29, 5)] }, [mathColon], size,
+      { blocks: [word('r,s∈R:', 10, 24)] }).text, String.raw`$r,s\in\mathbb R$:`,
+    'a colon decoded inside TeX and outside the formula mask must appear once as prose punctuation');
+  }
   const placedWord = (text, x, y, w, h) => ({ text, confidence: 1,
     characters: [{ text, boundingBox: { x: x / 100, y: (100 - y - h) / 100, w: w / 100, h: h / 100 } }] });
   const adjacentRows = { blocks: [placedWord('In', 10, 10, 20, 30), placedWord('prose', 45, 10, 40, 30),
@@ -48,6 +54,18 @@ async function main() {
     [{ ...formula, latex: '\\vec{\\omicron}\\in V', confidence: .95 }],
     size, { blocks: [word('0∈V', 10, 18)] }).uncertainFormulaCount, 1,
   'a confident Greek omicron must be reviewed when independent OCR sees a zero');
+  const zeroVector = mergeFormulaDocument({ blocks: [] },
+    [{ ...formula, latex: '\\vec{\\omicron}\\in V', confidence: .95 }],
+    size, { blocks: [word('there is a zero vector 0∈V', 10, 25)] });
+  assert.equal(zeroVector.text, '$\\vec{0}\\in V$',
+    'a zero-vector declaration and independent zero glyph correct an omicron decode');
+  assert.equal(zeroVector.uncertainFormulaCount, 1,
+    'a context-corrected vector glyph still asks for image review');
+  assert.equal(mergeFormulaDocument({ blocks: [] },
+    [{ ...formula, latex: String.raw`\vec { \omicron } \in V`, confidence: .95 }],
+    size, { blocks: [word('there is a zero vector 0∈V', 10, 25)] }).text,
+  String.raw`$\vec { 0 } \in V$`,
+  'spaces emitted by the real decoder must not prevent the zero-vector correction');
   assert.equal(mergeFormulaDocument({ blocks: [] },
     [{ ...formula, latex: '\\vec{\\nu}\\in V', confidence: .95 }],
     size, { blocks: [word('ν∈V', 10, 18)] }).uncertainFormulaCount, 0,

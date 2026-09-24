@@ -128,6 +128,15 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     return /\\vec(?:\{|\\(?:boldsymbol|mathbf|mathrm)\{)*\\(?:nu|upsilon)\b/u.test(compact)
       && (/[vwW]/u.test(observed) || latinVectorInSelection);
   }
+  function corroboratedZeroVector(formula, latex) {
+    const compact = latex.replace(/\s+/gu, '');
+    if ((compact.match(/\\omicron\b/gu) || []).length !== 1
+      || !/\\vec(?:\{|\\(?:boldsymbol|mathbf|mathrm)\{)*\\omicron\b/u.test(compact)) return false;
+    const observed = independentWords.filter((word) => intersects(formula, word))
+      .map((word) => word.text).join('');
+    return /0/u.test(observed) && sourceBlocks.some((block) => /\bzero vector\b/iu.test(block.text)
+      && words({ blocks: [block] }).some((word) => intersects(formula, word)));
+  }
   const proseAnnotations = new Map();
   formulas = formulas.filter((formula) => {
     const compact = formula.latex.replace(/\s+/gu, '');
@@ -202,7 +211,15 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     /\\vec\{?(?:\\(?:boldsymbol|mathbf|mathrm)\{?)?[vw]\b/u.test(latex.replace(/\s+/gu, '')));
   for (const formula of formulas) {
     let latex = formula.latex.trim(), punctuation = '';
-    if (/[,.;:!?]$/.test(latex)) { punctuation = latex.at(-1); latex = latex.slice(0, -1).trim(); }
+    const correctedZero = corroboratedZeroVector(formula, latex);
+    if (correctedZero) latex = latex.replace(/\\omicron\b/u, '0');
+    const encodedColon = !formula.display && latex.match(/(?:\\colon|\\(?:mathbf|mathsf|mathrm|mathtt)\s*\{\s*:\s*\})\s*$/u);
+    if (encodedColon) {
+      // The math decoder sometimes includes the sentence colon in TeX while
+      // masked Vision also reads that same glyph just outside the math box.
+      punctuation = ':';
+      latex = latex.slice(0, encodedColon.index).trim();
+    } else if (/[,.;:!?]$/.test(latex)) { punctuation = latex.at(-1); latex = latex.slice(0, -1).trim(); }
     else {
       const last = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x).at(-1);
       if (last && /[,.;:!?]$/.test(last.text)) {
@@ -257,7 +274,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
       reviewRecognition: formula.reviewAccent || formula.reviewSymbol || uncorroboratedBar(formula, latex)
-        || footnoteInsideFormula(latex) || latinGreekConflict(formula, latex),
+        || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
           : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
