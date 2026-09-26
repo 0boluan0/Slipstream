@@ -13,6 +13,21 @@ function proseSuperscript(latex) {
   return match ? { text: match[1], superscript: match[2] } : null;
 }
 
+function repairUnpairedEvaluationBars(latex) {
+  // MFR can omit the invisible \left. before the second evaluation bar of
+  // a multi-row derivation. A lone \right| is invalid TeX; \big| renders the
+  // same visible bar without inventing any mathematical content. Delimiters
+  // must balance within each aligned row, so reset at a row break.
+  return latex.split(/(\\\\)/u).map((row) => {
+    let depth = 0;
+    return row.replace(/\\(?:left|right)\s*(?:\\[A-Za-z]+|[^\s])/gu, (delimiter) => {
+      if (/^\\left\b/u.test(delimiter)) { depth += 1; return delimiter; }
+      if (depth > 0) { depth -= 1; return delimiter; }
+      return /^\\right\s*\|/u.test(delimiter) ? delimiter.replace(/\\right/u, '\\big') : delimiter;
+    });
+  }).join('');
+}
+
 // Keep the original prose as the reading-order anchor. Masking can make Vision
 // merge adjacent lines or hallucinate short fragments, so it is only a fallback
 // for a prose word that shares a bounding box with a recognized formula.
@@ -210,7 +225,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   const latinVectorInSelection = formulas.some(({ latex }) =>
     /\\vec\{?(?:\\(?:boldsymbol|mathbf|mathrm)\{?)?[vw]\b/u.test(latex.replace(/\s+/gu, '')));
   for (const formula of formulas) {
-    let latex = formula.latex.trim(), punctuation = '';
+    let latex = repairUnpairedEvaluationBars(formula.latex.trim()), punctuation = '';
+    const repairedEvaluationBar = latex !== formula.latex.trim();
     const correctedZero = corroboratedZeroVector(formula, latex);
     if (correctedZero) latex = latex.replace(/\\omicron\b/u, '0');
     const encodedColon = !formula.display && latex.match(/(?:\\colon|\\(?:mathbf|mathsf|mathrm|mathtt)\s*\{\s*:\s*\})\s*$/u);
@@ -273,7 +289,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
-      reviewRecognition: formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
+      reviewRecognition: repairedEvaluationBar || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
@@ -331,4 +347,4 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     uncertainFormulaStarts };
 }
 
-module.exports = { mergeFormulaDocument, proseSuperscript };
+module.exports = { mergeFormulaDocument, proseSuperscript, repairUnpairedEvaluationBars };

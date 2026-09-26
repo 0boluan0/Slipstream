@@ -75,7 +75,10 @@ function captureEdgeInk(imagePath) {
           if (Math.min(a, b, c) > 220) light += 1;
           if (Math.max(a, b, c) < 160) ink += 1;
         }
-        if (light >= length * .8) {
+        // A cut printed line can cover more than 20% of a narrow PDF crop's
+        // edge. It is still a light page, and its dark strokes are exactly
+        // the evidence this check must retain.
+        if (light >= length * .6) {
           lightStrips += 1;
           if (ink >= minInk) touchingStrips += 1;
         }
@@ -827,7 +830,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const edgeInk = captureEdgeInk(file);
         const geometry = looksLikeClippedProse(ocr, document.text);
         const pixelEdge = ['top', 'right', 'left', 'bottom'].find((edge) => edgeInk[edge] === true);
-        const clippedProse = pixelEdge || ((geometry === 'right' || geometry === 'left')
+        const clippedProse = pixelEdge || (geometry !== 'bottom'
           && edgeInk[geometry] === false ? null : geometry);
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);

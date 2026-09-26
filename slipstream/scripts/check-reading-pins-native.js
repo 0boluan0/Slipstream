@@ -47,6 +47,13 @@ app.whenReady().then(async () => {
   }
   const cutFixture = path.join(work, 'top-cut.png');
   fs.writeFileSync(cutFixture, nativeImage.createFromBitmap(cutBitmap, { width: 300, height: 100 }).toPNG());
+  const denseTopBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let y = 0; y < 3; y++) for (let x = 30; x < 102; x++) {
+    const offset = (y * 300 + x) * 4;
+    denseTopBitmap.fill(0, offset, offset + 3);
+  }
+  const denseTopFixture = path.join(work, 'dense-top-cut.png');
+  fs.writeFileSync(denseTopFixture, nativeImage.createFromBitmap(denseTopBitmap, { width: 300, height: 100 }).toPNG());
   function edgeFixture(edge) {
     const bitmap = Buffer.alloc(300 * 100 * 4, 255);
     for (let strip = 0; strip < 4; strip++) for (let position = 30; position < 44; position++) {
@@ -91,6 +98,7 @@ app.whenReady().then(async () => {
   let ocrTopClipped = false;
   let ocrTopPadded = false;
   let imageTopCut = false;
+  let imageDenseTopCut = false;
   let imageBottomCut = false;
   let ocrLeftPadded = false;
   let ocrRightPadded = false;
@@ -140,7 +148,7 @@ app.whenReady().then(async () => {
       }
       if (cancel) { const error = new Error('cancel'); error.isCancellation = true; throw error; }
       const file = path.join(work, `capture-${++selectionCount}.png`);
-      fs.copyFileSync(imageTopCut ? cutFixture : imageBottomCut ? bottomCutFixture
+      fs.copyFileSync(imageDenseTopCut ? denseTopFixture : imageTopCut ? cutFixture : imageBottomCut ? bottomCutFixture
         : ocrClipped ? rightCutFixture : ocrLeftClipped ? leftCutFixture : fixture, file);
       return file;
     },
@@ -447,14 +455,12 @@ app.whenReady().then(async () => {
   manager.clear();
   ocrRightPadded = false;
   ocrTopClipped = true;
-  ocrOverride = 'isily compared across different nodes with the softmax function. The set {1,x) is shown.';
+  ocrOverride = 'A complete first line sits near the crop boundary but remains fully legible.';
   const beforeTop = providerCalls;
   await manager.capture();
   const top = cards()[0];
-  await until(phaseIs(top, 'review'), 'top-edge cropped prose review');
-  assert.match((await stateOf(top)).notice, /顶部可能截断/);
-  assert.match((await stateOf(top)).notice, /花括号也可能漏识别/);
-  assert.equal(providerCalls, beforeTop, 'top-cropped prose must stay local until reviewed');
+  await until(phaseIs(top, 'done'), 'complete prose near the top edge');
+  assert.equal(providerCalls, beforeTop + 1, 'white source pixels overrule an overextended top OCR box');
   manager.clear();
   ocrTopClipped = false;
   ocrTopPadded = true;
@@ -476,6 +482,16 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforePixelCut, 'pixels crossing the top edge must pause before translation');
   manager.clear();
   imageTopCut = false;
+  imageDenseTopCut = true;
+  ocrOverride = 'The source line is dense enough that OCR may miss its cut glyphs.';
+  const beforeDenseTop = providerCalls;
+  await manager.capture();
+  const denseTop = cards()[0];
+  await until(phaseIs(denseTop, 'review'), 'dense printed line cut by the selection top');
+  assert.match((await stateOf(denseTop)).notice, /顶部可能截断/);
+  assert.equal(providerCalls, beforeDenseTop, 'a dense edge must stay local even when OCR reports a complete sentence');
+  manager.clear();
+  imageDenseTopCut = false;
   imageBottomCut = true;
   ocrOverride = 'The OCR ends with a complete sentence while source glyphs are cut below it.';
   const beforePixelBottom = providerCalls;

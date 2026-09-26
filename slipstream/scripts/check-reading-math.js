@@ -4,7 +4,7 @@ const { mathRanges, needsMathReview, isMathOnly } = require('../src/shared/readi
 const { readingSegments } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
 const { createReadingProcessor } = require('../src/main/reading-service');
-const { mergeFormulaDocument } = require('../src/main/formula-document');
+const { mergeFormulaDocument, repairUnpairedEvaluationBars } = require('../src/main/formula-document');
 
 async function main() {
   const size = { width: 100, height: 100 };
@@ -151,6 +151,21 @@ async function main() {
     'a display equation comma read by both recognizers appears only once');
   assert.match(alignedDocument.text, /\\end\{aligned\}\$\$,/u,
     'sentence punctuation follows rather than enters the aligned equation');
+  const orphanBar = String.raw`\begin{aligned} f &= \left.\frac{dL}{d\epsilon}\right|_{\epsilon=0} \\ &= \frac{d\theta}{d\epsilon}\right|_{\epsilon=0} \end{aligned}`;
+  const repairedBar = repairUnpairedEvaluationBars(orphanBar);
+  assert.match(repairedBar, /\\left\.\\frac\{dL\}\{d\\epsilon\}\\right\|/u,
+    'the correctly paired first row stays exactly as recognized');
+  assert.match(repairedBar, /\\frac\{d\\theta\}\{d\\epsilon\}\\big\|/u,
+    'a lone evaluation bar in the next row retains its visible meaning');
+  assert.doesNotThrow(() => require('katex').renderToString(repairedBar, { throwOnError: true, displayMode: true }),
+    'the displayed multi-row derivative must render as math');
+  const repairedDocument = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
+    latex: orphanBar, confidence: .99 }], size);
+  assert.match(repairedDocument.text,
+    /\\big\|_\{\\epsilon=0\}/u,
+    'formula OCR repair reaches the text actually shown to the reader');
+  assert.equal(repairedDocument.uncertainFormulaCount, 1,
+    'a syntactically repaired formula remains marked for human source comparison');
   const edgeSize = { width: 1000, height: 100 };
   const edgeWord = (text, x, w) => ({ ...word(text, x / 10, w / 10),
     characters: [...text].map((char) => ({ text: char, boundingBox: { x: x / 1000, y: .7, w: w / 1000, h: .2 } })) });
