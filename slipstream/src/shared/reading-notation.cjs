@@ -17,10 +17,10 @@ function referenceKey(value) {
     .replace(/\p{Script=Greek}/gu, (letter) => greek[letter] ? `\\${greek[letter]}` : letter)
     .replace(/[₀₁₂₃₄₅₆₇₈₉ᵢⱼₙₖ]+/gu, (run) => `_{${[...run].map((letter) => subvalues[subscripts.indexOf(letter)]).join('')}}`)
     .replace(/\\bf\s+([A-Za-z])\b/gu, '\\mathbf{$1}')
-    .replace(/\\(mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\s+([A-Za-z])\b/gu, '\\$1{$2}')
+    .replace(/\\(mathbf|boldsymbol|mathbb|mathcal|mathrm|widehat|hat|bar|tilde|vec)\s+([A-Za-z])\b/gu, '\\$1{$2}')
     // Formula OCR inserts spaces around commands and braces. They do not
     // change the symbol; keep command boundaries and inner names intact.
-    .replace(/\\(mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\s*\{\s*([^{}]*?)\s*\}/gu, '\\$1{$2}')
+    .replace(/\\(mathbf|boldsymbol|mathbb|mathcal|mathrm|widehat|hat|bar|tilde|vec)\s*\{\s*([^{}]*?)\s*\}/gu, '\\$1{$2}')
     .replace(/([_^])\s*\{\s*([^{}]*?)\s*\}/gu, '$1{$2}')
     .replace(/([_^])\{([^{}])\}/gu, '$1$2')
     .replace(/\s*([_^])\s*/gu, '$1')
@@ -29,7 +29,7 @@ function referenceKey(value) {
 
 function isNotation(value) {
   const key = referenceKey(value);
-  return /^(?:\\(?:mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\{[^{}]+\}|\\[A-Za-z]+|[A-Za-z\p{Script=Greek}])(?:[_^](?:\{[^{}]+\}|\\[A-Za-z]+|[A-Za-z0-9]))*$/u.test(key);
+  return /^(?:\\(?:mathbf|boldsymbol|mathbb|mathcal|mathrm|widehat|hat|bar|tilde|vec)\{[^{}]+\}|\\[A-Za-z]+|[A-Za-z\p{Script=Greek}])(?:[_^](?:\{[^{}]+\}|\\[A-Za-z]+|[A-Za-z0-9]))*$/u.test(key);
 }
 
 // Search tolerates flattened PDF subscripts. Never use this for storage,

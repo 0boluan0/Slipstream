@@ -92,6 +92,10 @@ async function main() {
   assert.equal(referenceKey(assignment.references[0].symbol), String.raw`\mathbf{x}`);
   assert.equal(referenceKey(String.raw`\mathbf { x } _ { i }`), referenceKey(String.raw`\mathbf{x}_i`));
   assert(isNotation(String.raw`\mathbf { x } _ { i }`));
+  assert.equal(referenceKey(String.raw`\widehat { x } _ { i }`), referenceKey(String.raw`\widehat{x}_i`),
+    'OCR spaces do not change an accented algorithm result');
+  assert(isNotation(String.raw`\widehat{x}_i`));
+  assert.notEqual(referenceKey(String.raw`\widehat{x}_i`), referenceKey('x_i'));
   const algorithmSource = String.raw`// mini-batch mean
 
 $$\mu _ { \mathcal { B } } \gets \frac { 1 } { m } \sum _ { i = 1 } ^ { m } x _ { i }$$`;
@@ -104,6 +108,21 @@ $$\mu _ { \mathcal { B } } \gets \frac { 1 } { m } \sum _ { i = 1 } ^ { m } x _ 
   });
   assert.deepEqual((await algorithmProcessor({ text: algorithmSource, kind: 'references', settingsSnapshot: settings }))
     .references.map(({ symbol }) => symbol), [algorithmSymbol]);
+  const normalizedSource = String.raw`// normalize
+
+$$\widehat { x } _ { i } \gets \frac { x _ { i } - \mu _ { \mathcal { B } } } { \sqrt { \sigma _ { \mathcal { B } } ^ { 2 } + \epsilon } }$$`;
+  const normalizedSymbol = String.raw`\widehat{x}_i`;
+  assert.equal(referenceOccurrences(normalizedSource, normalizedSymbol).length, 1,
+    'a saved accented output must anchor in the original OCR formula');
+  assert(evidenceDefinesSymbol({ symbol: normalizedSymbol, evidence: normalizedSource, origin: 'excerpt' }));
+  const normalizedProcessor = createReadingProcessor(async (_settings, _backend, _model, prompt) => {
+    assert.match(prompt, /distinct left-hand result/);
+    assert.match(prompt, /Include accented output symbols exactly/);
+    return JSON.stringify({ references: [{ symbol: normalizedSymbol,
+      meaning: '当前小批量中第 i 个输入归一化后的值', evidence: normalizedSource }] });
+  });
+  assert.equal((await normalizedProcessor({ text: normalizedSource, kind: 'references', settingsSnapshot: settings }))
+    .references[0].symbol, normalizedSymbol, 'a source-backed normalized value survives local candidate filtering');
   assert.notEqual(referenceKey(String.raw`\mathbf { x }`), referenceKey('x'));
   assert.notEqual(referenceKey(String.raw`\mathbf { X }`), referenceKey(String.raw`\mathbf{x}`));
   assert.equal(referenceOccurrences(String.raw`The data $\mathbf{x}$ and $\mathbf { x }$ agree.`, String.raw`\mathbf{x}`).length, 2);

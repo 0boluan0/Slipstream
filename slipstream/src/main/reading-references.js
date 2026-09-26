@@ -95,7 +95,7 @@ function referenceOccurrences(source, symbol) {
     }
   }
   // Whole tokens protect against matching x inside x_i or an ordinary word.
-  const tokens = /(?:\\(?:mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\s*(?:\{(?:[^{}]|\{[^{}]*\})+\}|[A-Za-z])|\\bf\s+[A-Za-z]|\\[A-Za-z]+|[\p{L}\p{N}]+)(?:(?:\s*[_^]\s*(?:\{(?:[^{}]|\{[^{}]*\})+\}|\\[A-Za-z]+|[A-Za-z0-9]))|[₀₁₂₃₄₅₆₇₈₉ᵢⱼₙₖ]+)*/gu;
+  const tokens = /(?:\\(?:mathbf|boldsymbol|mathbb|mathcal|mathrm|widehat|hat|bar|tilde|vec)\s*(?:\{(?:[^{}]|\{[^{}]*\})+\}|[A-Za-z])|\\bf\s+[A-Za-z]|\\[A-Za-z]+|[\p{L}\p{N}]+)(?:(?:\s*[_^]\s*(?:\{(?:[^{}]|\{[^{}]*\})+\}|\\[A-Za-z]+|[A-Za-z0-9]))|[₀₁₂₃₄₅₆₇₈₉ᵢⱼₙₖ]+)*/gu;
   for (const token of source.matchAll(tokens)) {
     if (operatorLabels.some((label) => token.index >= label.start && token.index < label.end)) continue;
     if (referenceKey(token[0]) === key) add(token.index, token.index + token[0].length);
