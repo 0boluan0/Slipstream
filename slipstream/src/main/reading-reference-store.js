@@ -9,13 +9,29 @@ const bounded = (value, limit) => typeof value === 'string' && value.length <= l
 const validId = (id) => typeof id === 'string' && /^[a-f0-9-]{36}$/u.test(id);
 const validSourceKey = (key) => typeof key === 'string' && /^[a-f0-9]{64}$/u.test(key);
 
+function manualEvidenceMatches(source, evidence) {
+  if (source.includes(evidence)) return true;
+  // A reader may copy the sentence from the PDF while the captured OCR keeps
+  // line wrapping, a split word, or a superscript footnote as an asterisk.
+  // Match only a contiguous passage and retain both original strings on disk.
+  const normalized = (text, joinSplitWords) => text.replace(/\r\n?/gu, '\n')
+    .replace(/(\p{L})-\s*\n\s*(?=\p{L})/gu, joinSplitWords ? '$1' : '$1-')
+    .replace(/(\p{L}{2,})[*⁰¹²³⁴⁵⁶⁷⁸⁹]+(?=\s|[.,;:]|$)/gu, '$1')
+    .replace(/\s+/gu, ' ').trim();
+  return [true, false].some((joinSplitWords) =>
+    normalized(source, joinSplitWords).includes(normalized(evidence, joinSplitWords)));
+}
+
 function validateEntry(input) {
   if (!bounded(input?.symbol, 120) || !input.symbol.trim() || !bounded(input.meaning, 1500) || !input.meaning.trim()
     || !bounded(input.scope, 160) || !bounded(input.evidence, 3000) || !bounded(input.source, 10000)
     || !['excerpt', 'manual'].includes(input.origin)
-    || (input.evidence && !input.source.includes(input.evidence))
     || (input.origin === 'excerpt' && (!input.evidence || !referenceOccurrences(input.evidence, input.symbol).length))) {
     throw new Error('reference-invalid-entry');
+  }
+  if (input.evidence && !input.source.includes(input.evidence)) {
+    if (input.origin !== 'manual') throw new Error('reference-invalid-entry');
+    if (!manualEvidenceMatches(input.source, input.evidence)) throw new Error('reference-evidence-mismatch');
   }
 }
 

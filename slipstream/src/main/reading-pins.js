@@ -425,6 +425,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         pin.referenceStatus = '';
         pin.referenceNotice = error?.message === 'reference-conflict'
           ? '这条定义已在另一窗口修改。你的输入已保留，请重新打开最新条目后合并。'
+          : error?.message === 'reference-evidence-mismatch'
+            ? '原文依据与截图识别文字对不上。请核对引句或重新框选；已输入内容不会丢失。'
           : '这次操作未完成，输入和已保存的定义会保留。请重试。';
         publish(pin);
       }

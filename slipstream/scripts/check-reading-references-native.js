@@ -95,6 +95,10 @@ app.whenReady().then(async () => {
     && !document.getElementById('reference-paper-tools').hidden`), 'new paper form rendered');
   await js(reference, 'document.getElementById("paper-title").value = "正则化 · 阅读速查"; document.getElementById("paper-rename").click()');
   await until(async () => (await snapshot(reference)).references.paper.title === '正则化 · 阅读速查', 'paper rename');
+  assert.equal(await act(reference, 'reference-save', { paperId: paperA,
+    entry: { symbol: 'x_i', meaning: '无来源的说法。', scope: '', evidence: 'A fabricated quote.', source, origin: 'manual' } }), false);
+  assert.match((await snapshot(reference)).references.notice, /原文依据与截图识别文字对不上/,
+    'an unmatched quote gives a specific, recoverable error');
   const definitionPin = await openText(source);
   assert.equal((await snapshot(definitionPin)).paperId, paperA);
   await until(async () => (await snapshot(reference)).references.candidates.length === 2, 'definition candidates');

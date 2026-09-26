@@ -236,6 +236,15 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
     await assert.rejects(store.add(a.id, definition), /reference-paper-not-found/);
     await store.restorePaper(removed);
     assert.equal((await fresh.read()).activePaperId, a.id);
+    const dataCascadeSource = 'Data Cascades: compounding\nevents causing negative effects, result-\ning in technical debt* over time.';
+    const cleanQuote = 'Data Cascades: compounding events causing negative effects, resulting in technical debt over time.';
+    const manualQuote = await store.add(a.id, { symbol: 'Data Cascades', meaning: '数据问题的连锁下游影响。',
+      scope: 'Introduction, PDF p. 2', evidence: cleanQuote, source: dataCascadeSource, origin: 'manual' });
+    assert.equal(manualQuote.evidence, cleanQuote, 'a reader can save an accurate PDF quote despite OCR line breaks and footnote marks');
+    assert.equal((await fresh.read()).papers.find((paper) => paper.id === a.id).entries.find((entry) => entry.id === manualQuote.id).evidence,
+      cleanQuote, 'the readable quote and original OCR both survive a reload');
+    await assert.rejects(store.add(a.id, { ...manualQuote, evidence: 'A fabricated definition with no source match.' }),
+      /reference-evidence-mismatch/, 'manual evidence still needs to match the captured source');
     const file = path.join(directory, 'references.json');
     const oldData = JSON.parse(await fs.readFile(file, 'utf8'));
     const legacy = { ...assignmentDefinition, id: '47d85bad-bf42-4ec5-b55d-0811a96b22a2', revision: 1 };
