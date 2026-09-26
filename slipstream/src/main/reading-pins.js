@@ -522,11 +522,13 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
                 settingsSnapshot: configuration.settings, signal: controller.signal,
                 onTranslation: (early) => {
                   if (!active()) return;
-                  Object.assign(segment, { translation: early.translation, terms: [], termsStatus: 'reviewing', status: 'done', error: '' });
+                  Object.assign(segment, { translation: early.translation, scopeNotice: early.scopeNotice || '',
+                    terms: [], termsStatus: 'reviewing', status: 'done', error: '' });
                   report();
                 } });
               if (!active()) return;
               segment.translation = result.translation;
+              segment.scopeNotice = result.scopeNotice || '';
               segment.terms = result.terms || [];
               segment.termsStatus = result.termsStatus || 'ready';
               segment.referenceCandidates = pin.view.paperId === requestPaperId ? result.references || [] : [];

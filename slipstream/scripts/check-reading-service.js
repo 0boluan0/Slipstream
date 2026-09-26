@@ -65,6 +65,21 @@ async function main() {
   assert.equal(calls[0][8], false);
   assert.deepEqual(JSON.parse(calls[0][4]), { excerpt: source });
   assert.match(calls[0][3], /untrusted source material/);
+  const studySource = 'We report on data practices from interviews with 53 AI practitioners. Data cascades are pervasive (92% prevalence).';
+  const unscopedRate = '我们访谈了 53 位 AI 从业者。数据级联普遍存在（92% 的流行率）。';
+  const rateProcessor = createReadingProcessor(async () => JSON.stringify({ translation: unscopedRate, terms: [] }));
+  const rateResult = await rateProcessor({ text: studySource, withTerms: true, settingsSnapshot: settings });
+  assert.match(rateResult.scopeNotice, /92% 的统计对象/, 'a study rate with no local scope must be flagged beside the translation');
+  assert.equal(rateResult.translation, unscopedRate, 'the guard must not silently rewrite a model translation');
+  const scopedRate = createReadingProcessor(async () => JSON.stringify({ translation: '在本研究受访者中，92% 报告遇到数据级联。', terms: [] }));
+  assert.equal((await scopedRate({ text: studySource, withTerms: true, settingsSnapshot: settings })).scopeNotice, undefined,
+    'a percentage explicitly scoped in the same sentence needs no warning');
+  const populationSource = 'Across the entire population, data cascades have 92% prevalence.';
+  assert.equal((await rateProcessor({ text: populationSource, withTerms: true, settingsSnapshot: settings })).scopeNotice, undefined,
+    'a stated population rate must not inherit a fictional interview sample');
+  const plainRate = createReadingProcessor(async () => unscopedRate);
+  assert.match((await plainRate({ text: studySource, settingsSnapshot: settings })).scopeNotice, /92% 的统计对象/,
+    'the plain model translation path should receive the same source guard');
   const explained = await process({ text: source, kind: 'explain', settingsSnapshot: settings });
   assert.equal(explained.explanations.terms.length, 1, 'unmatched quotations must be removed');
   assert.equal(calls.length, 2);

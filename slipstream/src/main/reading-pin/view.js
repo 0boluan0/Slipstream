@@ -97,6 +97,9 @@ function createSegment(segment) {
   window.renderReadingMath(source, segment.source);
   const translation = document.createElement('p');
   translation.className = 'translation-paragraph';
+  const scopeNotice = document.createElement('p');
+  scopeNotice.className = 'scope-notice';
+  scopeNotice.setAttribute('role', 'note');
   const mathCue = document.createElement('p');
   mathCue.className = 'muted math-scroll-hint';
   mathCue.textContent = '长公式可在公式上左右滚动，查看完整内容。';
@@ -107,9 +110,9 @@ function createSegment(segment) {
   termsNotice.className = 'muted terms-notice';
   const referenceHits = document.createElement('div');
   referenceHits.className = 'reference-hit-list';
-  section.append(tools, source, translation, mathCue, terms, termsNotice, referenceHits);
+  section.append(tools, source, translation, scopeNotice, mathCue, terms, termsNotice, referenceHits);
   byId('translation').append(section);
-  const node = { section, source, translation, mathCue, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  const node = { section, source, translation, scopeNotice, mathCue, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
   segmentNodes.set(segment.id, node);
   return node;
 }
@@ -146,6 +149,8 @@ function renderSegments(segments) {
       : segment.status === 'error' ? segment.error
         : segment.status === 'translating' ? '正在翻译这一段…' : '等待翻译…';
     window.renderReadingMath(node.translation, value);
+    node.scopeNotice.hidden = !segment.scopeNotice || segment.status !== 'done';
+    node.scopeNotice.textContent = segment.scopeNotice || '';
     const visibleTerms = segment.terms || [];
     const termsKey = JSON.stringify(visibleTerms);
     if (node.termsKey !== termsKey) {
