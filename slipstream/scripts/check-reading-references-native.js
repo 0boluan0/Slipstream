@@ -119,6 +119,16 @@ app.whenReady().then(async () => {
   assert(unknown.reference && unknown.definitions.length === 0);
   assert.equal(providerCalls, calls, 'unknown symbols are not guessed by a provider');
   assert(await js(reading, 'document.getElementById("lookup-references").textContent.includes("尚未留下")'));
+  assert(await js(reading, '!document.getElementById("reference-from-lookup").hidden'));
+  await js(reading, 'document.getElementById("reference-from-lookup").click()');
+  await until(() => js(reference, 'document.getElementById("reference-editor").hidden === false'),
+    'source-backed draft from lookup');
+  assert.equal(await js(reference, 'document.getElementById("reference-evidence").value'), usage,
+    'a lookup draft carries the exact source segment for the reader to review');
+  assert(await js(reference, 'document.getElementById("reference-editor-details").open'),
+    'the source evidence is visible before saving');
+  await js(reference, 'document.getElementById("reference-editor-cancel").click()');
+  await manager.openReferences(paperA);
   await lookup(reading, '\\lambda');
   await act(reference, 'reference-save', { paperId: paperA,
     entry: { symbol: String.raw`PE^{\ast}`, meaning: '间隔函数小于零的概率。', scope: '', evidence: '', source: '', origin: 'manual' } });

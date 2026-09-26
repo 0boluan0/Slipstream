@@ -318,7 +318,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (action === 'reference-draft') {
         const lookup = pin.view.lookup;
         return openReferences(pin.view.paperId, { symbol: lookup?.quote || '', meaning: lookup?.meaning || '',
-          source: pin.view.sourceText, evidence: '', scope: '', origin: 'manual' }, pin.captureSource, pin);
+          source: pin.view.sourceText,
+          evidence: lookup?.quote && pin.lookupEvidence?.includes(lookup.quote) ? pin.lookupEvidence : '',
+          scope: '', origin: 'manual' }, pin.captureSource, pin);
       }
       if (action === 'reference-refresh') { await refreshReferences(); return true; }
       if (action === 'paper-undo') {
@@ -588,6 +590,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       }
       symbol = entry.symbol;
     }
+    pin.lookupEvidence = segment.source;
     const local = referenceLookup(pin, symbol);
     if (paperFor(pin) && (local.definitions.length || isNotation(symbol))) {
       pin.lookupController?.abort();
