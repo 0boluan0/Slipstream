@@ -92,6 +92,18 @@ async function main() {
   assert.equal(referenceKey(assignment.references[0].symbol), String.raw`\mathbf{x}`);
   assert.equal(referenceKey(String.raw`\mathbf { x } _ { i }`), referenceKey(String.raw`\mathbf{x}_i`));
   assert(isNotation(String.raw`\mathbf { x } _ { i }`));
+  const algorithmSource = String.raw`// mini-batch mean
+
+$$\mu _ { \mathcal { B } } \gets \frac { 1 } { m } \sum _ { i = 1 } ^ { m } x _ { i }$$`;
+  const algorithmSymbol = String.raw`\mu _ { \mathcal { B } }`;
+  assert(evidenceDefinesSymbol({ symbol: algorithmSymbol, evidence: algorithmSource, origin: 'excerpt' }),
+    'a labeled algorithm assignment explicitly defines its left-hand result');
+  const algorithmProcessor = createReadingProcessor(async (_settings, _backend, _model, prompt) => {
+    assert.match(prompt, /algorithm assignment/);
+    return JSON.stringify({ references: [{ symbol: algorithmSymbol, meaning: '小批量均值', evidence: algorithmSource }] });
+  });
+  assert.deepEqual((await algorithmProcessor({ text: algorithmSource, kind: 'references', settingsSnapshot: settings }))
+    .references.map(({ symbol }) => symbol), [algorithmSymbol]);
   assert.notEqual(referenceKey(String.raw`\mathbf { x }`), referenceKey('x'));
   assert.notEqual(referenceKey(String.raw`\mathbf { X }`), referenceKey(String.raw`\mathbf{x}`));
   assert.equal(referenceOccurrences(String.raw`The data $\mathbf{x}$ and $\mathbf { x }$ agree.`, String.raw`\mathbf{x}`).length, 2);

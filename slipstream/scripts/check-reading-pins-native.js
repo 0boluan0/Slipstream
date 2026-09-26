@@ -47,6 +47,21 @@ app.whenReady().then(async () => {
   }
   const cutFixture = path.join(work, 'top-cut.png');
   fs.writeFileSync(cutFixture, nativeImage.createFromBitmap(cutBitmap, { width: 300, height: 100 }).toPNG());
+  function edgeFixture(edge) {
+    const bitmap = Buffer.alloc(300 * 100 * 4, 255);
+    for (let strip = 0; strip < 4; strip++) for (let position = 30; position < 44; position++) {
+      const x = edge === 'left' ? strip : edge === 'right' ? 299 - strip : position;
+      const y = edge === 'bottom' ? 99 - strip : position;
+      const offset = (y * 300 + x) * 4;
+      bitmap.fill(0, offset, offset + 3);
+    }
+    const file = path.join(work, `${edge}-cut.png`);
+    fs.writeFileSync(file, nativeImage.createFromBitmap(bitmap, { width: 300, height: 100 }).toPNG());
+    return file;
+  }
+  const rightCutFixture = edgeFixture('right');
+  const leftCutFixture = edgeFixture('left');
+  const bottomCutFixture = edgeFixture('bottom');
   const mainWindow = new BrowserWindow({ width: 400, height: 300, show: false,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   await mainWindow.loadURL('about:blank');
@@ -76,6 +91,9 @@ app.whenReady().then(async () => {
   let ocrTopClipped = false;
   let ocrTopPadded = false;
   let imageTopCut = false;
+  let imageBottomCut = false;
+  let ocrLeftPadded = false;
+  let ocrRightPadded = false;
   let ocrBottomClipped = false;
   let ocrBottomShortBlock = false;
   let formulaOcrOverride = null;
@@ -122,7 +140,8 @@ app.whenReady().then(async () => {
       }
       if (cancel) { const error = new Error('cancel'); error.isCancellation = true; throw error; }
       const file = path.join(work, `capture-${++selectionCount}.png`);
-      fs.copyFileSync(imageTopCut ? cutFixture : fixture, file);
+      fs.copyFileSync(imageTopCut ? cutFixture : imageBottomCut ? bottomCutFixture
+        : ocrClipped ? rightCutFixture : ocrLeftClipped ? leftCutFixture : fixture, file);
       return file;
     },
     performOCR: async (file, options) => {
@@ -139,6 +158,10 @@ app.whenReady().then(async () => {
           boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
         : ocrLeftClipped ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
           boundingBox: { x: .005, y: .7 - index * .1, w: .8, h: .06 } }))
+        : ocrLeftPadded ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .005, y: .7 - index * .1, w: .8, h: .06 } }))
+        : ocrRightPadded ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
         : ocrTopClipped ? [{ text: ocrOverride, confidence: .99,
           boundingBox: { x: .08, y: .94, w: .8, h: .06 } }]
         : ocrTopPadded ? [{ text: ocrOverride, confidence: .99,
@@ -405,6 +428,24 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeLeft, 'left-cropped prose must stay local until reviewed');
   manager.clear();
   ocrLeftClipped = false;
+  ocrLeftPadded = true;
+  ocrOverride = 'Both complete lines have room at the left edge.\nTheir content is fully visible.';
+  const beforePaddedLeft = providerCalls;
+  await manager.capture();
+  const paddedLeft = cards()[0];
+  await until(phaseIs(paddedLeft, 'done'), 'complete prose near the left edge');
+  assert.equal(providerCalls, beforePaddedLeft + 1, 'white pixels at the left edge overrule a near-edge OCR box');
+  manager.clear();
+  ocrLeftPadded = false;
+  ocrRightPadded = true;
+  ocrOverride = 'Both complete lines have room at the right edge.\nTheir content is fully visible.';
+  const beforePaddedRight = providerCalls;
+  await manager.capture();
+  const paddedRight = cards()[0];
+  await until(phaseIs(paddedRight, 'done'), 'complete prose near the right edge');
+  assert.equal(providerCalls, beforePaddedRight + 1, 'white pixels at the right edge overrule a near-edge OCR box');
+  manager.clear();
+  ocrRightPadded = false;
   ocrTopClipped = true;
   ocrOverride = 'isily compared across different nodes with the softmax function. The set {1,x) is shown.';
   const beforeTop = providerCalls;
@@ -435,6 +476,16 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforePixelCut, 'pixels crossing the top edge must pause before translation');
   manager.clear();
   imageTopCut = false;
+  imageBottomCut = true;
+  ocrOverride = 'The OCR ends with a complete sentence while source glyphs are cut below it.';
+  const beforePixelBottom = providerCalls;
+  await manager.capture();
+  const pixelBottom = cards()[0];
+  await until(phaseIs(pixelBottom, 'review'), 'source line cut off below the OCR');
+  assert.match((await stateOf(pixelBottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforePixelBottom, 'bottom-edge source ink must pause before translation');
+  manager.clear();
+  imageBottomCut = false;
   ocrBottomClipped = true;
   ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
   const beforeBottom = providerCalls;

@@ -18,7 +18,7 @@ function evidenceDefinesSymbol(entry) {
   return occurrences.some(({ start, end }) => {
     const before = entry.evidence.slice(0, start).replace(/[\s$]+$/u, '');
     const after = entry.evidence.slice(end).replace(/^[\s$]+/u, '');
-    if (/^(?::=|=|\\coloneqq\b)/u.test(after)) return true;
+    if (/^(?::=|=|\\coloneqq\b|\\gets\b|\\leftarrow\b|←)/u.test(after)) return true;
     if (!/^(?:be|is|are|denotes?|means?|represents?|refers?\s+to|stands?\s+for|as)\b/iu.test(after)) return false;
     return /\b(?:let|where|define|denote|call|write|refer\s+to)$/iu.test(before)
       || /(?:^|[.!?;]\s*)$/u.test(before);
@@ -66,7 +66,7 @@ function referenceCandidateCovered(candidate, saved) {
 function referenceSymbol(value) {
   const symbol = value.trim();
   const range = mathRanges(symbol).find((item) => item.start === 0 && item.end === symbol.length);
-  const declaration = (range?.tex || symbol).match(/^(.+?)\s*(?:\\in\b|∈|=)\s*.+$/u);
+  const declaration = (range?.tex || symbol).match(/^(.+?)\s*(?:\\in\b|∈|=|\\gets\b|\\leftarrow\b|←)\s*.+$/u);
   // Use the explicitly named variable, retaining its declaration as evidence.
   // Only excerpt-derived names use this rule; user-authored expressions do not.
   return declaration && isNotation(declaration[1].trim()) ? declaration[1].trim() : symbol;
@@ -95,7 +95,7 @@ function referenceOccurrences(source, symbol) {
     }
   }
   // Whole tokens protect against matching x inside x_i or an ordinary word.
-  const tokens = /(?:\\(?:mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\s*(?:\{[^{}]+\}|[A-Za-z])|\\bf\s+[A-Za-z]|\\[A-Za-z]+|[\p{L}\p{N}]+)(?:(?:\s*[_^]\s*(?:\{[^{}]+\}|\\[A-Za-z]+|[A-Za-z0-9]))|[₀₁₂₃₄₅₆₇₈₉ᵢⱼₙₖ]+)*/gu;
+  const tokens = /(?:\\(?:mathbf|boldsymbol|mathbb|mathcal|mathrm|hat|bar|tilde|vec)\s*(?:\{(?:[^{}]|\{[^{}]*\})+\}|[A-Za-z])|\\bf\s+[A-Za-z]|\\[A-Za-z]+|[\p{L}\p{N}]+)(?:(?:\s*[_^]\s*(?:\{(?:[^{}]|\{[^{}]*\})+\}|\\[A-Za-z]+|[A-Za-z0-9]))|[₀₁₂₃₄₅₆₇₈₉ᵢⱼₙₖ]+)*/gu;
   for (const token of source.matchAll(tokens)) {
     if (operatorLabels.some((label) => token.index >= label.start && token.index < label.end)) continue;
     if (referenceKey(token[0]) === key) add(token.index, token.index + token[0].length);

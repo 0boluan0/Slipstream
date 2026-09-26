@@ -47,30 +47,43 @@ function looksLikeClippedProse(ocr, text = ocr?.text || '') {
   return null;
 }
 
-function topEdgeHasInk(imagePath) {
-  // OCR may omit a line cut through by the selection edge entirely. On a
-  // light page, touching glyph pixels remain visible in the original PNG.
+function captureEdgeInk(imagePath) {
+  // OCR can omit glyphs cut by any selection edge. On a light page, the
+  // original pixels distinguish a genuinely cut line from an OCR box that
+  // merely sits close to a complete line. Keep OCR geometry as the fallback
+  // when the background is not light enough to make this check meaningful.
+  const edges = { top: null, right: null, bottom: null, left: null };
   try {
     const image = require('electron').nativeImage.createFromPath(imagePath);
-    if (image.isEmpty()) return false;
+    if (image.isEmpty()) return edges;
     const { width, height } = image.getSize();
-    if (width < 100 || height < 40 || width * height > 12_000_000) return false;
+    if (width < 100 || height < 40 || width * height > 12_000_000) return edges;
     const pixels = image.toBitmap();
-    if (pixels.length !== width * height * 4) return false;
-    const minInk = Math.max(6, Math.ceil(width * .004));
-    let touchingRows = 0;
-    for (let y = 0; y < 3; y++) {
-      let light = 0, ink = 0;
-      for (let x = 0; x < width; x++) {
-        const offset = (y * width + x) * 4;
-        const a = pixels[offset], b = pixels[offset + 1], c = pixels[offset + 2];
-        if (Math.min(a, b, c) > 220) light += 1;
-        if (Math.max(a, b, c) < 160) ink += 1;
+    if (pixels.length !== width * height * 4) return edges;
+    for (const edge of Object.keys(edges)) {
+      const horizontal = edge === 'top' || edge === 'bottom';
+      const length = horizontal ? width : height;
+      const minInk = Math.max(6, Math.ceil(length * .004));
+      let lightStrips = 0, touchingStrips = 0;
+      for (let strip = 0; strip < 3; strip++) {
+        let light = 0, ink = 0;
+        for (let position = 0; position < length; position++) {
+          const x = horizontal ? position : edge === 'left' ? strip : width - strip - 1;
+          const y = horizontal ? edge === 'top' ? strip : height - strip - 1 : position;
+          const offset = (y * width + x) * 4;
+          const a = pixels[offset], b = pixels[offset + 1], c = pixels[offset + 2];
+          if (Math.min(a, b, c) > 220) light += 1;
+          if (Math.max(a, b, c) < 160) ink += 1;
+        }
+        if (light >= length * .8) {
+          lightStrips += 1;
+          if (ink >= minInk) touchingStrips += 1;
+        }
       }
-      if (light >= width * .8 && ink >= minInk) touchingRows += 1;
+      if (lightStrips >= 2) edges[edge] = touchingStrips >= 2;
     }
-    return touchingRows >= 2;
-  } catch { return false; }
+  } catch { /* OCR geometry remains the fallback */ }
+  return edges;
 }
 
 function looksLikeBrokenBrackets(text) {
@@ -811,7 +824,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const document = readingTextFromOcr(ocr);
         const review = assessOcrReview({ source: 'ocr', text: ocr.text, capture: ocr });
         const ownUiCapture = looksLikeOwnReadingUi(document.text);
-        const clippedProse = topEdgeHasInk(file) ? 'top' : looksLikeClippedProse(ocr, document.text);
+        const edgeInk = captureEdgeInk(file);
+        const geometry = looksLikeClippedProse(ocr, document.text);
+        const pixelEdge = ['top', 'right', 'left', 'bottom'].find((edge) => edgeInk[edge] === true);
+        const clippedProse = pixelEdge || ((geometry === 'right' || geometry === 'left')
+          && edgeInk[geometry] === false ? null : geometry);
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
         const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
