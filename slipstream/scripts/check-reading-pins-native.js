@@ -459,6 +459,14 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(missingQuote)).notice, /引号之间可能漏识别/);
   assert.equal(providerCalls, beforeMissingQuote, 'an empty OCR quote must be checked before translation');
   manager.clear();
+  ocrOverride = 'AI models are used in high-stakes Al applications.';
+  const beforeAmbiguousAi = providerCalls;
+  await manager.capture();
+  const ambiguousAi = cards()[0];
+  await until(phaseIs(ambiguousAi, 'review'), 'AI/Al glyph ambiguity review');
+  assert.match((await stateOf(ambiguousAi)).notice, /AI 和 Al.*核对/);
+  assert.equal(providerCalls, beforeAmbiguousAi, 'ambiguous acronym glyphs must stay local until reviewed');
+  manager.clear();
   ocrOverride = 'The next section describes the results.';
   const beforePlain = providerCalls;
   await manager.capture();

@@ -73,6 +73,12 @@ function looksLikeMissingQuotedCharacter(text) {
   return /(?:^|[^\p{L}\p{N}])(?:""|“”|‘’)(?=\s|$)/u.test(text);
 }
 
+function looksLikeAiAlConfusion(text) {
+  // Vision can report full confidence for both readings of this glyph pair.
+  // A mixed capture is worth checking, but neither reading proves the other.
+  return /\bAI\b/u.test(text) && /\bAl\b/u.test(text);
+}
+
 function cardBounds(point, workArea) {
   const width = Math.min(460, workArea.width);
   const height = Math.min(540, workArea.height);
@@ -779,6 +785,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
         const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
         const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
+        const ambiguousAiAl = looksLikeAiAlConfusion(document.text);
         pin.controller = null;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* continue through explicit review */ }
@@ -797,10 +804,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || brokenBrackets || brokenMathBraces || missingQuotedCharacter || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedBottomFormula || clippedProse || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? '选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。'
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
+            : ambiguousAiAl ? '同一选区出现 AI 和 Al；大写 I 与小写 l 可能被识错。请对照截图核对后再翻译。'
             : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${brokenGroupHint}`
             : clippedProse === 'left' ? `选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。${brokenGroupHint}`
             : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${brokenGroupHint}`
