@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
 const { createReadingPins } = require('../src/main/reading-pins');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
@@ -40,6 +40,13 @@ app.whenReady().then(async () => {
   const fixture = path.join(work, 'source.png');
   fs.writeFileSync(fixture, (await sourceWindow.webContents.capturePage()).toPNG());
   sourceWindow.destroy();
+  const cutBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let y = 0; y < 4; y++) for (let x = 30; x < 42; x++) {
+    const offset = (y * 300 + x) * 4;
+    cutBitmap.fill(0, offset, offset + 3);
+  }
+  const cutFixture = path.join(work, 'top-cut.png');
+  fs.writeFileSync(cutFixture, nativeImage.createFromBitmap(cutBitmap, { width: 300, height: 100 }).toPNG());
   const mainWindow = new BrowserWindow({ width: 400, height: 300, show: false,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   await mainWindow.loadURL('about:blank');
@@ -68,6 +75,7 @@ app.whenReady().then(async () => {
   let ocrLeftClipped = false;
   let ocrTopClipped = false;
   let ocrTopPadded = false;
+  let imageTopCut = false;
   let ocrBottomClipped = false;
   let ocrBottomShortBlock = false;
   let formulaOcrOverride = null;
@@ -114,7 +122,7 @@ app.whenReady().then(async () => {
       }
       if (cancel) { const error = new Error('cancel'); error.isCancellation = true; throw error; }
       const file = path.join(work, `capture-${++selectionCount}.png`);
-      fs.copyFileSync(fixture, file);
+      fs.copyFileSync(imageTopCut ? cutFixture : fixture, file);
       return file;
     },
     performOCR: async (file, options) => {
@@ -417,6 +425,16 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforePaddedTop + 1, 'complete first line with a small margin should continue');
   manager.clear();
   ocrTopPadded = false;
+  imageTopCut = true;
+  ocrOverride = 'In the electronics industry, a component has a datasheet describing its limits.';
+  const beforePixelCut = providerCalls;
+  await manager.capture();
+  const pixelCut = cards()[0];
+  await until(phaseIs(pixelCut, 'review'), 'source line cut off before OCR');
+  assert.match((await stateOf(pixelCut)).notice, /顶部可能截断/);
+  assert.equal(providerCalls, beforePixelCut, 'pixels crossing the top edge must pause before translation');
+  manager.clear();
+  imageTopCut = false;
   ocrBottomClipped = true;
   ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
   const beforeBottom = providerCalls;

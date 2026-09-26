@@ -47,6 +47,32 @@ function looksLikeClippedProse(ocr, text = ocr?.text || '') {
   return null;
 }
 
+function topEdgeHasInk(imagePath) {
+  // OCR may omit a line cut through by the selection edge entirely. On a
+  // light page, touching glyph pixels remain visible in the original PNG.
+  try {
+    const image = require('electron').nativeImage.createFromPath(imagePath);
+    if (image.isEmpty()) return false;
+    const { width, height } = image.getSize();
+    if (width < 100 || height < 40 || width * height > 12_000_000) return false;
+    const pixels = image.toBitmap();
+    if (pixels.length !== width * height * 4) return false;
+    const minInk = Math.max(6, Math.ceil(width * .004));
+    let touchingRows = 0;
+    for (let y = 0; y < 3; y++) {
+      let light = 0, ink = 0;
+      for (let x = 0; x < width; x++) {
+        const offset = (y * width + x) * 4;
+        const a = pixels[offset], b = pixels[offset + 1], c = pixels[offset + 2];
+        if (Math.min(a, b, c) > 220) light += 1;
+        if (Math.max(a, b, c) < 160) ink += 1;
+      }
+      if (light >= width * .8 && ink >= minInk) touchingRows += 1;
+    }
+    return touchingRows >= 2;
+  } catch { return false; }
+}
+
 function looksLikeBrokenBrackets(text) {
   let open = 0;
   for (const char of text) {
@@ -785,7 +811,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const document = readingTextFromOcr(ocr);
         const review = assessOcrReview({ source: 'ocr', text: ocr.text, capture: ocr });
         const ownUiCapture = looksLikeOwnReadingUi(document.text);
-        const clippedProse = looksLikeClippedProse(ocr, document.text);
+        const clippedProse = topEdgeHasInk(file) ? 'top' : looksLikeClippedProse(ocr, document.text);
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
         const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
