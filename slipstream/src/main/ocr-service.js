@@ -265,12 +265,22 @@ async function recheckEmptyEdgeQuote(imagePath, original, temporary, { signal, r
   return { ...original, blocks };
 }
 
+function withoutClippedBottomRows(ocr, size, cutoffY) {
+  if (!ocr || cutoffY === null) return ocr;
+  const blocks = (ocr.blocks || []).filter((block) => {
+    const box = block.boundingBox;
+    if (!box || !Number.isFinite(box.y) || !Number.isFinite(box.h)) return true;
+    return (1 - box.y - box.h / 2) * size.height < cutoffY;
+  });
+  return { ...ocr, blocks, text: cleanOcrText(blocks.map((block) => block.text).join('\n')) };
+}
+
 async function performReadingOCR(imagePath, { signal } = {}) {
   const [textResult, formulaResult] = await Promise.allSettled([
     performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
   ]);
   if (textResult.status === 'rejected') throw textResult.reason;
-  const original = textResult.value;
+  let original = textResult.value;
   if (formulaResult.status === 'rejected') {
     const error = formulaResult.reason;
     if (signal?.aborted || error?.isCancellation) throw error;
@@ -285,8 +295,10 @@ async function performReadingOCR(imagePath, { signal } = {}) {
       // region-level result if this bounded second pass cannot finish.
     }
   }
+  const clippedBottom = Number.isFinite(recognized.clippedBottomY);
+  if (clippedBottom) original = withoutClippedBottomRows(original, recognized.size, recognized.clippedBottomY);
   if (!recognized.formulas.length) {
-    return { ...original, formulaOcr: { status: 'done', count: 0, milliseconds: recognized.milliseconds } };
+    return { ...original, formulaOcr: { status: 'done', count: 0, clippedBottom, milliseconds: recognized.milliseconds } };
   }
   const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
   createOcrEnvironment(cacheDir);
@@ -294,7 +306,7 @@ async function performReadingOCR(imagePath, { signal } = {}) {
   try {
     const maskedPath = path.join(temporary, 'prose.png');
     await fs.writeFile(maskedPath, recognized.masked, { mode: 0o600 });
-    const [prose, edges] = await Promise.all([
+    let [prose, edges] = await Promise.all([
       performOCR(maskedPath, { signal, characters: true }),
       // A second layout may recover a clipped edge word, but must not replace
       // whole sentences: padding can also make correct OCR worse elsewhere.
@@ -303,6 +315,10 @@ async function performReadingOCR(imagePath, { signal } = {}) {
         return null;
       }),
     ]);
+    if (clippedBottom) {
+      prose = withoutClippedBottomRows(prose, recognized.size, recognized.clippedBottomY);
+      edges = withoutClippedBottomRows(edges, recognized.size, recognized.clippedBottomY);
+    }
     const references = await recheckReferenceOne(imagePath, original, edges, temporary, { signal });
     const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
     const quoted = await recheckEmptyEdgeQuote(imagePath, corroborated, temporary, { signal });
@@ -310,6 +326,7 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
+        clippedBottom,
         uncertain: document.uncertainFormulaCount,
         uncertainStarts: document.uncertainFormulaStarts,
         milliseconds: recognized.milliseconds } };

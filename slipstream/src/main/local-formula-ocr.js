@@ -364,9 +364,18 @@ function createLocalFormulaOcr(modelDir) {
       // common path quick, while bounding formula-heavy captures to one minute.
       deadline = Math.max(deadline, started + Math.min(60000, 20000 + boxes.length * 2500));
       const formulas = [];
+      let clippedBottomY = null;
       let accentRechecks = 0;
       for (const box of boxes) {
         cancelled(signal, deadline);
+        const touchingBottom = size.height - (box.y + box.h) <= 2;
+        // A weak region touching the lower edge can be only the top of the
+        // next line. Strong regions may still contain complete notation, so
+        // keep them for recognition and mark them for review below.
+        if (touchingBottom && box.score < .5) {
+          clippedBottomY = clippedBottomY === null ? box.y : Math.min(clippedBottomY, box.y);
+          continue;
+        }
         const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
         const trimmed = trimFormulaCrop(crop);
         let { latex, confidence } = await recognizeCrop(model, trimmed, signal, deadline);
@@ -432,11 +441,16 @@ function createLocalFormulaOcr(modelDir) {
         if (box.score < .12 && !(confidence >= .99 && (latin || indexed))) continue;
         if (box.score < .3 && !(agreedStyledAtom || agreedAccentAtom || annotatedProse || confidence >= .75 && (greek || styled || list)
           || confidence >= .95 && (latin || indexed))) continue;
-        formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score), reviewAccent });
+        if (touchingBottom && confidence < .3) {
+          clippedBottomY = clippedBottomY === null ? box.y : Math.min(clippedBottomY, box.y);
+          continue;
+        }
+        formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score), reviewAccent,
+          reviewEdge: touchingBottom });
       }
       // Mask only recognized regions; Vision will read the remaining prose.
       const masked = maskFormulaRegions(image, formulas, size);
-      return { formulas, masked, size, milliseconds: Date.now() - started };
+      return { formulas, masked, size, milliseconds: Date.now() - started, clippedBottomY };
     });
     queue = run.catch(() => {});
     try { return await run; }
