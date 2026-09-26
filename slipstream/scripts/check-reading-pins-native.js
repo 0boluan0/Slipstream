@@ -67,6 +67,7 @@ app.whenReady().then(async () => {
   let ocrClipped = false;
   let ocrLeftClipped = false;
   let ocrTopClipped = false;
+  let ocrTopPadded = false;
   let ocrBottomClipped = false;
   let ocrBottomShortBlock = false;
   let formulaOcrOverride = null;
@@ -132,6 +133,8 @@ app.whenReady().then(async () => {
           boundingBox: { x: .005, y: .7 - index * .1, w: .8, h: .06 } }))
         : ocrTopClipped ? [{ text: ocrOverride, confidence: .99,
           boundingBox: { x: .08, y: .94, w: .8, h: .06 } }]
+        : ocrTopPadded ? [{ text: ocrOverride, confidence: .99,
+          boundingBox: { x: .08, y: .91, w: .8, h: .06 } }]
         : ocrBottomClipped ? [{ text: ocrOverride, confidence: .99,
           boundingBox: { x: .08, y: .0163, w: .8, h: .08 } }]
         : ocrBottomShortBlock ? [{ text: 'the final hidden vector', confidence: .99,
@@ -405,6 +408,15 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeTop, 'top-cropped prose must stay local until reviewed');
   manager.clear();
   ocrTopClipped = false;
+  ocrTopPadded = true;
+  ocrOverride = 'We propose a complete description for each dataset. Its limits should also be recorded.';
+  const beforePaddedTop = providerCalls;
+  await manager.capture();
+  const paddedTop = cards()[0];
+  await until(phaseIs(paddedTop, 'done'), 'complete prose with a small top margin');
+  assert.equal(providerCalls, beforePaddedTop + 1, 'complete first line with a small margin should continue');
+  manager.clear();
+  ocrTopPadded = false;
   ocrBottomClipped = true;
   ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
   const beforeBottom = providerCalls;

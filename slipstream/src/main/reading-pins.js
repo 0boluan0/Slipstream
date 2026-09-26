@@ -34,9 +34,11 @@ function looksLikeClippedProse(ocr, text = ocr?.text || '') {
     && block.boundingBox.x + block.boundingBox.w >= 0.985).length >= 2) return 'right';
   if (blocks.filter((block) => block?.text?.trim().length >= 25
     && Number.isFinite(block.boundingBox?.x) && block.boundingBox.x <= 0.015).length >= 2) return 'left';
+  // A complete first line can sit a few pixels from the selection edge.
+  // Only a line actually touching the top is strong enough to block reading.
   if (blocks.some((block) => block?.text?.trim().length >= 20
     && Number.isFinite(block.boundingBox?.y) && Number.isFinite(block.boundingBox?.h)
-    && block.boundingBox.y + block.boundingBox.h >= 0.94)) return 'top';
+    && block.boundingBox.y + block.boundingBox.h >= 0.985)) return 'top';
   // Vision coordinates start at the bottom. A final, unfinished line pressed
   // against the lower edge means the reader may miss the rest of that sentence.
   if (blocks.some((block) => block?.text?.trim().length > 0
