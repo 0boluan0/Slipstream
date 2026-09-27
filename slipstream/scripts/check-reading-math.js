@@ -67,6 +67,25 @@ async function main() {
     'formula-rich OCR must join a confirmed English visual split outside TeX');
   assert.deepEqual(joinedFormulaDocument.uncertainFormulaStarts,
     [mathRanges(joinedFormulaDocument.text)[0].start], 'a prose join must shift the later formula review marker');
+  const wrappedSize = { width: 1562, height: 276 };
+  const wrappedParts = [
+    { x: 1183, y: 90, w: 268, h: 44, latex: String.raw`E[z_\omega(x)'z_\omega(y)] =`, display: false, confidence: .95 },
+    { x: 45, y: 136, w: 110, h: 41, latex: 'k(x,y)', display: false, confidence: .95 },
+    { x: 1096, y: 135, w: 357, h: 41, latex: String.raw`z_\omega(x)=\sqrt{2}\cos(\omega'x+`, display: false, confidence: .95 },
+    { x: 44, y: 175, w: 31, h: 40, latex: 'b)', display: false, confidence: .95 },
+  ];
+  const wrapped = mergeFormulaDocument({ blocks: [] }, wrappedParts, wrappedSize, { blocks: [] });
+  assert.equal(wrapped.wrappedFormulaRepairs, 2,
+    'a line-end equality and an open cosine both continue into the first math fragment of the next printed row');
+  assert.equal(wrapped.formulaCount, 2, 'the two complete expressions replace four misleading math fragments');
+  assert.equal(wrapped.uncertainFormulaStarts.length, 2, 'a stitched equation still requires source review');
+  assert.match(wrapped.text, /\$E\[z_\\omega\(x\)'z_\\omega\(y\)\] = k\(x,y\)\$/u);
+  assert.match(wrapped.text, /\$z_\\omega\(x\)=\\sqrt\{2\}\\cos\(\\omega'x\+ b\)\$/u);
+  const separateEquations = mergeFormulaDocument({ blocks: [] }, [
+    { ...wrappedParts[0], latex: String.raw`E[z_\omega(x)]` }, wrappedParts[1],
+  ], wrappedSize, { blocks: [] });
+  assert.equal(separateEquations.wrappedFormulaRepairs, 0,
+    'an equation ending without a continuation operator must stay separate');
   const gridSize = { width: 1000, height: 400 };
   const gridFormula = (x, y, h, latex) => ({ x, y, w: 180, h, latex, display: true, confidence: .95 });
   const gridFormulas = [

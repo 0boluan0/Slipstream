@@ -637,9 +637,39 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     }
     index = end;
   }
+  let wrappedFormulaRepairs = 0;
+  const inlineMath = (value) => value.match(/^\$([\s\S]+)\$([,.;:!?]?)$/u);
+  for (let index = 0; index + 1 < rows.length; index++) {
+    const row = rows[index], next = rows[index + 1];
+    if (row.display || next.display) continue;
+    row.items.sort((a, b) => a.x - b.x);
+    next.items.sort((a, b) => a.x - b.x);
+    const left = row.items.at(-1), right = next.items[0];
+    if (!left?.math || !right?.math || left.x + left.w < size.width * .85
+      || right.x > size.width * .12
+      || next.center - row.center > Math.max(row.height, next.height) * 1.5) continue;
+    const before = inlineMath(left.text), after = inlineMath(right.text);
+    if (!before || !after || before[2]) continue;
+    const tail = before[1].trimEnd();
+    if (!/[+=]$/u.test(tail)) continue;
+    if (tail.endsWith('+')) {
+      const balance = (value) => (value.match(/\(/gu) || []).length - (value.match(/\)/gu) || []).length;
+      if (balance(before[1]) !== 1 || balance(after[1]) !== -1) continue;
+    }
+    const combined = `${tail} ${after[1].trim()}`;
+    if (!canRenderMath(combined, false)) continue;
+    left.text = `$${combined}$${after[2]}`;
+    left.punctuation = after[2];
+    left.confidence = Math.min(left.confidence, right.confidence);
+    left.reviewRecognition = true;
+    next.items.shift();
+    items.splice(items.indexOf(right), 1);
+    wrappedFormulaRepairs++;
+  }
   let text = '', previous, layoutReview = reorderedGrid;
   const uncertainFormulaStarts = [];
   for (const row of rows) {
+    if (!row.items.length) continue;
     row.items.sort((a, b) => a.x - b.x);
     for (let i = 1; i < row.items.length; i++) {
       const a = row.items[i - 1], b = row.items[i];
@@ -668,7 +698,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   const mathematical = items.filter((item) => item.math);
   const joinedProse = joinVisualHyphenation(text,
     [...(original?.spellJoinCandidates || []), ...(edgeProse?.spellJoinCandidates || [])]);
-  return { text: joinedProse.text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
+  return { text: joinedProse.text, layoutReview, wrappedFormulaRepairs,
+    edgeRecovered: recoveredLeading.length > 0,
     interiorRecovered: verifiedInterior.length, rowRecovered, proseSpellingConflicts, proseSymbolConflicts,
     caseDelimiterRepairs, unrenderableFormulaCount,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
