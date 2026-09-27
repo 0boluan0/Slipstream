@@ -486,6 +486,14 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforePaddedTop + 1, 'complete first line with a small margin should continue');
   manager.clear();
   ocrTopPadded = false;
+  ocrOverride = 'performance may vary, and measures of model performance. We advocate for results by intersectional groups.';
+  const beforeSentenceTail = providerCalls;
+  await manager.capture();
+  const sentenceTail = cards()[0];
+  await until(phaseIs(sentenceTail, 'review'), 'intact earlier-sentence tail review');
+  assert.match((await stateOf(sentenceTail)).notice, /上一句的尾部/);
+  assert.equal(providerCalls, beforeSentenceTail, 'a plausible but incomplete prose start must stay local');
+  manager.clear();
   imageTopCut = true;
   ocrOverride = 'In the electronics industry, a component has a datasheet describing its limits.';
   const beforePixelCut = providerCalls;

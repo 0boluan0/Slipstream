@@ -1,10 +1,43 @@
 'use strict';
 
+const fs = require('node:fs');
 const { mathRanges } = require('../shared/reading-math.cjs');
+
+let englishWords;
+function knownEnglishWord(word, exact = false) {
+  if (!englishWords) {
+    // This is a local, optional macOS word list. With no dictionary, leave
+    // uncertain OCR spelling untouched for the reader to compare with pixels.
+    try { englishWords = new Set(fs.readFileSync('/usr/share/dict/words', 'utf8').toLowerCase().split(/\s+/u)); }
+    catch { englishWords = new Set(); }
+  }
+  if (englishWords.has(word)) return true;
+  if (exact) return false;
+  if (word.endsWith('ies')) return englishWords.has(`${word.slice(0, -3)}y`);
+  if (word.endsWith('ing')) return englishWords.has(word.slice(0, -3)) || englishWords.has(`${word.slice(0, -3)}e`);
+  if (word.endsWith('ed')) return englishWords.has(word.slice(0, -2)) || englishWords.has(word.slice(0, -1));
+  if (word.endsWith('es')) return englishWords.has(word.slice(0, -2)) || englishWords.has(word.slice(0, -1));
+  return word.endsWith('s') && englishWords.has(word.slice(0, -1));
+}
+
+function joinProseLine(previous, next, isWord) {
+  const end = /([A-Za-z]{2,})-$/u.exec(previous);
+  const start = /^([a-z]{2,})(?![A-Za-z])/u.exec(next);
+  if (end && start) {
+    if (!/^(?:pre|post|non|anti|self)$/iu.test(end[1])
+      && !(end[1].length >= 4 && start[1].length >= 4
+        && isWord(end[1].toLowerCase(), true) && isWord(start[1].toLowerCase(), true))
+      && isWord((end[1] + start[1]).toLowerCase())) {
+      return previous.slice(0, -1) + next;
+    }
+    return previous + next;
+  }
+  return `${previous} ${next}`;
+}
 
 // Vision emits visual lines. Join wrapped prose while retaining paragraph gaps;
 // keep the untouched capture available for checking notation and reading order.
-function readingTextFromOcr(ocr) {
+function readingTextFromOcr(ocr, isWord = knownEnglishWord) {
   if (ocr.document) return ocr.document;
   const lines = ocr.blocks;
   if (!Array.isArray(lines) || !lines.length || lines.some((line) =>
@@ -32,7 +65,7 @@ function readingTextFromOcr(ocr) {
       || Math.abs(a.h - b.h) > Math.min(a.h, b.h) * .8
       || b.y > a.y + a.h);
     if (newParagraph && paragraph) { paragraphs.push(paragraph); paragraph = ''; }
-    paragraph += (paragraph ? ' ' : '') + text;
+    paragraph = paragraph ? joinProseLine(paragraph, text, isWord) : text;
     previous = line;
   }
   if (paragraph) paragraphs.push(paragraph);

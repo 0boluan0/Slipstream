@@ -47,6 +47,14 @@ function looksLikeClippedProse(ocr, text = ocr?.text || '') {
   return null;
 }
 
+function looksLikeLeadingSentenceTail(text) {
+  // A selection can begin with the intact tail of an earlier sentence even
+  // when no ink touches the image edge. Do not silently translate that tail
+  // as the start of a new paragraph; keep this cue narrow to prose followed
+  // by a distinct sentence, not formulas or lower-case abbreviations.
+  return /^[a-z]{2,}\b[^.!?\n]{0,150}[.!?]\s+[A-Z]/u.test(text.trimStart());
+}
+
 function captureEdgeInk(imagePath) {
   // OCR can omit glyphs cut by any selection edge. On a light page, the
   // original pixels distinguish a genuinely cut line from an OCR box that
@@ -835,6 +843,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const pixelEdge = ['top', 'right', 'left', 'bottom'].find((edge) => edgeInk[edge] === true);
         const clippedProse = pixelEdge || (geometry !== 'bottom'
           && edgeInk[geometry] === false ? null : geometry);
+        const leadingTail = looksLikeLeadingSentenceTail(document.text);
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
         const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
@@ -858,7 +867,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? '选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。'
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
@@ -867,6 +876,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : clippedProse === 'left' ? `选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。${brokenGroupHint}`
             : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${brokenGroupHint}`
             : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${brokenGroupHint}`
+            : leadingTail ? '这段原文似乎从上一句的尾部开始。请对照截图核对开头，必要时从完整句子重新框选。'
             : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
             : brokenMathBraces ? '花括号可能漏识别，集合或公式的含义可能失真。请对照截图校正。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'

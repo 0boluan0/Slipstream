@@ -260,6 +260,13 @@ async function main() {
   assert.equal(readingSegments(longText).map((segment) => segment.source).join(' '), longText, 'splitting must not lose source content');
   const block = (text, x, y, w = .8) => ({ text, boundingBox: { x, y, w, h: .04 } });
   assert.deepEqual(readingTextFromOcr({ text: 'fallback', blocks: [block('A wrapped', .1, .8), block('sentence.', .1, .74), block('New paragraph.', .1, .6)] }), { text: 'A wrapped sentence.\n\nNew paragraph.', layoutReview: false });
+  const words = new Set(['education', 'performance', 'phenotypic', 'procedures', 'derive', 'retraining', 'closed', 'form', 'closedform', 'pretrained']);
+  const wrapped = ['Documentation in edu-', 'cation reports perfor-', 'mance by phe-', 'notypic groups and pro-', 'cedures. We de-', 'rive a result by retrain-', 'ing. The closed-', 'form and pre-', 'trained baselines remain distinct.'];
+  assert.equal(readingTextFromOcr({ text: wrapped.join('\n'), blocks: wrapped.map((line, index) => block(line, .1, .9 - index * .06)) }, (word) => words.has(word)).text,
+    'Documentation in education reports performance by phenotypic groups and procedures. We derive a result by retraining. The closed-form and pre-trained baselines remain distinct.',
+    'only verified whole words should lose a visual line-break hyphen');
+  assert.equal(readingTextFromOcr({ text: 'A closed-\nform method.', blocks: [block('A closed-', .1, .8), block('form method.', .1, .6)] }, (word) => words.has(word)).text,
+    'A closed-\n\nform method.', 'a new paragraph must not be joined across its gap');
   assert.equal(readingTextFromOcr({ text: 'left\nright', blocks: [block('left', .05, .8, .35), block('right', .55, .8, .35)] }).layoutReview, true);
   const secondDisplay = { x: -1920, y: -200, width: 1920, height: 1080 };
   const bounds = cardBounds({ x: -10, y: 850 }, secondDisplay);
