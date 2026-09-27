@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
-const { createReadingPins, looksLikeClippedProse, suspiciousDimensionToken } = require('../src/main/reading-pins');
+const { createReadingPins, looksLikeClippedProse, suspiciousDimensionToken, ambiguousMultiplierToken } = require('../src/main/reading-pins');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
 
@@ -27,6 +27,11 @@ assert.equal(looksLikeClippedProse({ blocks: [{ text: 'as',
 assert.equal(suspiciousDimensionToken('The model receives a YD sequence of embeddings.'), 'YD');
 assert.equal(suspiciousDimensionToken('The model receives a 1D sequence of embeddings.'), null);
 assert.equal(suspiciousDimensionToken('The model receives HD images.'), null);
+assert.equal(ambiguousMultiplierToken('The kernel is up to 3X faster on A100 GPUs.'), '3X');
+assert.equal(ambiguousMultiplierToken('A 3x speedup was observed.'), '3x');
+assert.equal(ambiguousMultiplierToken('The kernel is up to 3× faster on A100 GPUs.'), null);
+assert.equal(ambiguousMultiplierToken('The 3X model uses a different kernel.'), null);
+assert.equal(ambiguousMultiplierToken('We multiply the 3X3 matrix.'), null);
 const cards = () => BrowserWindow.getAllWindows().filter((window) => window.getTitle() === 'Slipstream · 阅读卡片');
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate, label, timeout = 30000) {
@@ -397,6 +402,19 @@ app.whenReady().then(async () => {
   await until(() => referenceCard.isDestroyed(), 'close unresolved-reference card');
   ocrOverride = null;
   ocrReferenceConflicts = null;
+  ocrOverride = 'The resulting implementation is up to 3X faster on A100 GPUs.';
+  const callsBeforeMultiplier = providerCalls;
+  await manager.capture();
+  const multiplierCard = cards().find((window) => window !== second);
+  await until(phaseIs(multiplierCard, 'review'), 'OCR multiplication glyph ambiguity review');
+  assert.equal(providerCalls, callsBeforeMultiplier, 'uncertain multiplier glyph must not be sent before review');
+  assert.match((await stateOf(multiplierCard)).notice, /3X.*倍数符号.*×/u);
+  assert.match((await stateOf(multiplierCard)).formulaNotice, /3X.*倍数符号.*×/u);
+  assert.match((await stateOf(multiplierCard)).sourceText, /3X faster/u,
+    'ambiguous OCR glyph must remain unmodified until source comparison');
+  void action(multiplierCard, 'close').catch(() => {});
+  await until(() => multiplierCard.isDestroyed(), 'close multiplication-glyph card');
+  ocrOverride = null;
   cancel = true;
   mainWindow.showInactive();
   await manager.capture();
