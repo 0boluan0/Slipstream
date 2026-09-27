@@ -175,12 +175,12 @@ function explicitEquationDefinitions(source) {
 }
 
 function exampleValueCandidate(symbol, meaning, evidence) {
-  // Model output can turn parameters of one worked example into definitions
-  // reused for the entire paper. Numeric assignments in an explicitly local
-  // case are better left for the reader to save with a manual scope.
+  // Model output can turn a worked example or an experiment's parameter
+  // settings into definitions reused for the entire paper. Readers can still
+  // save a value with a manual scope when it matters to their reading.
   return isNotation(symbol)
     && /(?:取值|数值|设(?:定)?|等于|固定|为|是|[=＝])\s*(?:为|是|等于|[=＝])?\s*[-−+]?\d+(?:\.\d+)?/u.test(meaning)
-    && /\b(?:example|for instance|suppose|consider|in this case|special case|standard normal distribution|with mean|with standard deviation|with variance|if|when)\b/iu.test(evidence);
+    && /\b(?:example|for instance|suppose|consider|in this case|special case|standard normal distribution|with mean|with standard deviation|with variance|if|when|(?:parameters?|hyperparameters?)\s+(?:were|was|are|is)\s+(?:set|fixed|chosen)\s+to|we\s+(?:set|fix|chose))\b/iu.test(evidence);
 }
 
 function acronymDefinedInEvidence(symbol, evidence) {

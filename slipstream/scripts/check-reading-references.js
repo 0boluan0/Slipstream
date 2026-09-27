@@ -94,6 +94,23 @@ async function main() {
   const rmseValue = 'RMSE is 0.9016 for this model.';
   assert.deepEqual(parseReferenceCandidates([{ ...rmseProposal, evidence: rmseValue }], rmseValue), [],
     'a reported numeric value is not a reusable acronym definition');
+  // Native PMF p. 7 capture: these four values are settings for this
+  // experiment, not four paper-wide symbol definitions to save.
+  const pmfSettings = String.raw`For both
+the PMF and constrained PMF models the regularization parameters were set to $\lambda _ { U } = \lambda _ { Y } = \lambda _ { V } =$
+$\lambda _ { W } ~ = ~ 0. 0 0 1$.`;
+  const pmfSettingProposals = ['U', 'Y', 'V', 'W'].map((subscript) => ({
+    symbol: String.raw`\lambda _ { ${subscript} }`,
+    meaning: 'PMF 和受约束 PMF 模型中的正则化参数，设为 0.001',
+    evidence: pmfSettings,
+  }));
+  assert.deepEqual(parseReferenceCandidates(pmfSettingProposals, pmfSettings), [],
+    'experiment-only parameter settings must not fill the paper-wide reference panel');
+  const pmfSettingsProcessor = createReadingProcessor(async () => JSON.stringify({
+    translation: '正则化参数设为 0.001。', terms: [], references: pmfSettingProposals,
+  }));
+  assert.deepEqual((await pmfSettingsProcessor({ text: pmfSettings, withReferences: true, settingsSnapshot: settings })).references, [],
+    'the installed translation path must filter experiment-only settings too');
   const vitSource = 'where (H, W) is the resolution of the original image, C is the number of channels, '
     + '(P, P) is the resolution of each image patch, and $N = H W / P ^ { 2 }$ is the resulting number '
     + 'of patches, which also serves as the effective input sequence length for the Transformer. '
