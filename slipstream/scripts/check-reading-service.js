@@ -80,6 +80,49 @@ async function main() {
   const plainRate = createReadingProcessor(async () => unscopedRate);
   assert.match((await plainRate({ text: studySource, settingsSnapshot: settings })).scopeNotice, /92% 的统计对象/,
     'the plain model translation path should receive the same source guard');
+  const orthonormalSource = 'Linear combinations of orthonormal vectors use an orthonormal basis.';
+  let orthonormalCalls = 0;
+  const orthonormal = createReadingProcessor(async (...args) => {
+    orthonormalCalls += 1;
+    if (orthonormalCalls === 2) assert.match(args[3], /unit norm/,
+      'the bounded repair must explain the missing mathematical qualification');
+    return JSON.stringify({ translation: orthonormalCalls === 1
+      ? '正交向量的线性组合使用正交基。' : '标准正交向量的线性组合使用标准正交基。', terms: [] });
+  });
+  assert.equal((await orthonormal({ text: orthonormalSource, withTerms: true,
+    settingsSnapshot: settings })).translation, '标准正交向量的线性组合使用标准正交基。');
+  assert.equal(orthonormalCalls, 2, 'a mistranslated orthonormal premise gets one bounded retry');
+  let earlyMathTranslation;
+  let mathProviderCalls = 0;
+  const reviewedMath = createReadingProcessor(async (...args) => {
+    const input = JSON.parse(args[4]);
+    if (input.candidates) return '{"keep":[0]}';
+    mathProviderCalls += 1;
+    return JSON.stringify({ translation: mathProviderCalls === 1 ? '正交向量的线性组合。' : '标准正交向量的线性组合。',
+      terms: [{ quote: 'orthonormal', label: mathProviderCalls === 1 ? '正交' : '标准正交', role: 'core' },
+        { quote: 'Linear combinations', label: '线性组合', role: 'core' }] });
+  });
+  await reviewedMath({ text: orthonormalSource, withTerms: true, settingsSnapshot: settings,
+    onTranslation: (result) => { earlyMathTranslation = result.translation; } });
+  assert.equal(earlyMathTranslation, '标准正交向量的线性组合。',
+    'an invalid draft must never flash while optional term review is pending');
+  assert.match(readingMessages('Orthonormality is a property of the set.', 'translate', null, true).systemPrompt,
+    /unit norm/, 'the distinction also applies when the source names orthonormality');
+  assert.doesNotMatch(readingMessages('Orthogonal vectors.', 'translate', null, true).systemPrompt,
+    /unit norm/, 'unrelated excerpts should not pay for the specialist translation rule');
+  const wrongLabel = createReadingProcessor(async (...args) => JSON.stringify({
+    translation: '标准正交向量的线性组合。', terms: [{ quote: 'orthonormal', label: args[3].includes('previous draft')
+      ? '标准正交' : '正交', role: 'core' }],
+  }));
+  assert.equal((await wrongLabel({ text: orthonormalSource, withTerms: true,
+    settingsSnapshot: settings })).terms[0].label, '标准正交', 'the concept button must not undo a correct translation');
+  const persistentMismatch = createReadingProcessor(async () => JSON.stringify({ translation: '正交向量。', terms: [] }));
+  await assert.rejects(persistentMismatch({ text: orthonormalSource, withTerms: true,
+    settingsSnapshot: settings }), /reading-terminology-mismatch/,
+  'a repeated error must not appear as a completed translation');
+  const orthogonal = createReadingProcessor(async () => JSON.stringify({ translation: '正交向量。', terms: [] }));
+  assert.equal((await orthogonal({ text: 'Orthogonal vectors.', withTerms: true,
+    settingsSnapshot: settings })).translation, '正交向量。', 'orthogonal alone must remain valid');
   const explained = await process({ text: source, kind: 'explain', settingsSnapshot: settings });
   assert.equal(explained.explanations.terms.length, 1, 'unmatched quotations must be removed');
   assert.equal(calls.length, 2);

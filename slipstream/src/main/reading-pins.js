@@ -617,8 +617,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             } catch (error) {
               if (!active()) return;
               segment.status = 'error';
-              segment.error = error?.message === 'reading-invalid-output'
-                ? '这一段的译文不完整，请重试。' : classifyError(error, configuration.settings.activeBackend);
+              segment.error = error?.message === 'reading-terminology-mismatch'
+                ? '这段把“标准正交”与“正交”混淆了。请对照原文后重试。'
+                : error?.message === 'reading-invalid-output'
+                  ? '这一段的译文不完整，请重试。' : classifyError(error, configuration.settings.activeBackend);
             }
             report();
           }
