@@ -333,6 +333,61 @@ async function recognizeCrop(model, image, signal, deadline) {
   return { latex, confidence };
 }
 
+function regularizerTerms(latex) {
+  const pattern = /\\frac\s*\{\s*\\lambda\s*_\s*\{\s*([A-Za-z])\s*\}\s*\}\s*\{\s*2\s*\}\s*\\sum[^+]{0,120}?\\parallel\s*([A-Za-z])\s*_/gu;
+  return [...latex.matchAll(pattern)].map((match) => ({ coefficient: match[1], variable: match[2],
+    structure: match[0].replace(/\s+/gu, '').replace(/\\lambda_\{[A-Za-z]\}/u, '\\lambda_{?}') }));
+}
+
+function interlineGap(image) {
+  const { width, height } = image.getSize();
+  if (height < 50) return null;
+  const pixels = image.toBitmap();
+  const first = Math.floor(height * .3), last = Math.ceil(height * .7);
+  const minimum = Math.max(5, Math.floor(height * .035));
+  let start = null, best = null;
+  for (let y = first; y <= last; y++) {
+    let dark = 0;
+    if (y < last) for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4;
+      if (Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) < 160) dark++;
+    }
+    if (y < last && dark <= Math.max(2, Math.floor(width * .002))) {
+      if (start === null) start = y;
+    } else if (start !== null) {
+      const length = y - start;
+      if (length >= minimum && (!best || length > best.length)) best = { start, length };
+      start = null;
+    }
+  }
+  return best?.start ?? null;
+}
+
+async function recheckMultilineRegularizer(model, crop, latex, confidence, signal, deadline) {
+  const original = regularizerTerms(latex);
+  if (!latex.includes('\\\\') || original.length < 2
+    || original.filter((term) => term.coefficient !== term.variable).length !== 1) return { latex, rechecked: false };
+  const split = interlineGap(crop);
+  if (split === null) return { latex, rechecked: false };
+  const { width, height } = crop.getSize();
+  const lower = trimFormulaCrop(crop.crop({ x: 0, y: split, width, height: height - split }));
+  const focused = await recognizeCrop(model, lower, signal, deadline);
+  if (focused.confidence < Math.max(.75, confidence + .15)) return { latex, rechecked: false };
+  const closer = regularizerTerms(focused.latex);
+  if (closer.length !== original.length || closer.some((term, i) => term.variable !== original[i].variable
+    || term.structure !== original[i].structure || term.coefficient !== term.variable)) return { latex, rechecked: false };
+  let index = 0;
+  const corrected = latex.replace(/\\frac\s*\{\s*\\lambda\s*_\s*\{\s*([A-Za-z])\s*\}\s*\}\s*\{\s*2\s*\}\s*\\sum[^+]{0,120}?\\parallel\s*([A-Za-z])\s*_/gu,
+    (match) => {
+      const term = original[index], replacement = closer[index];
+      index++;
+      if (term.coefficient === replacement.coefficient) return match;
+      return match.replace(/(\\lambda\s*_\s*\{\s*)[A-Za-z](\s*\})/u,
+        (_, before, after) => `${before}${replacement.coefficient}${after}`);
+    });
+  return { latex: corrected, rechecked: corrected !== latex };
+}
+
 // Decode the published ByteLevel tokenizer without importing a language-model
 // framework. IDs 0–3 are its special tokens; regular tokens include UTF-8 bytes.
 function tokenDecoder(json) {
@@ -460,6 +515,8 @@ function createLocalFormulaOcr(modelDir) {
         const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
         const trimmed = trimFormulaCrop(crop);
         let { latex, confidence } = await recognizeCrop(model, trimmed, signal, deadline);
+        const regularizer = await recheckMultilineRegularizer(model, crop, latex, confidence, signal, deadline);
+        latex = regularizer.latex;
         let agreedStyledAtom = false;
         // Tight isolated glyphs can look like another font or letter when
         // stretched to the model input. Recheck only uncertain styled atoms;
@@ -527,7 +584,7 @@ function createLocalFormulaOcr(modelDir) {
           continue;
         }
         formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score), reviewAccent,
-          reviewEdge: touchingBottom });
+          reviewSymbol: regularizer.rechecked, reviewEdge: touchingBottom });
       }
       // Mask only recognized regions; Vision will read the remaining prose.
       const masked = maskFormulaRegions(image, formulas, size);
