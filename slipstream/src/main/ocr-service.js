@@ -408,6 +408,8 @@ async function performReadingOCR(imagePath, { signal } = {}) {
         clippedBottom,
         uncertain: document.uncertainFormulaCount,
         uncertainStarts: document.uncertainFormulaStarts,
+        caseDelimiterRepairs: document.caseDelimiterRepairs,
+        unrenderable: document.unrenderableFormulaCount,
         milliseconds: recognized.milliseconds } };
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 }

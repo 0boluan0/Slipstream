@@ -603,6 +603,28 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(dense)).formulaNotice, /先点击标出的公式与截图逐一对照.*若字形难辨.*重框/);
   assert.equal(providerCalls, beforeDense);
   manager.clear();
+  ocrOverride = 'The vectors satisfy $$\\unknownmathsymbol$$.';
+  formulaOcrOverride = { status: 'done', count: 1, uncertain: 1,
+    uncertainStarts: [ocrOverride.indexOf('$$')], unrenderable: 1, caseDelimiterRepairs: 0 };
+  const beforeUnrenderable = providerCalls;
+  await manager.capture();
+  const unrenderableCard = cards()[0];
+  await until(phaseIs(unrenderableCard, 'review'), 'malformed math must pause before translation');
+  assert.match((await stateOf(unrenderableCard)).notice, /公式暂时无法排版.*校正 LaTeX/u);
+  assert.match((await stateOf(unrenderableCard)).formulaNotice, /无法排版.*保留了 LaTeX 原文/u);
+  assert.equal(providerCalls, beforeUnrenderable);
+  manager.clear();
+  ocrOverride = 'The vectors satisfy $$a_i^Ta_j=1$$.';
+  formulaOcrOverride = { status: 'done', count: 1, uncertain: 1,
+    uncertainStarts: [ocrOverride.indexOf('$$')], unrenderable: 0, caseDelimiterRepairs: 1 };
+  const beforeCaseRepair = providerCalls;
+  await manager.capture();
+  const caseRepairCard = cards()[0];
+  await until(phaseIs(caseRepairCard, 'review'), 'repaired invisible math delimiter must pause before translation');
+  assert.match((await stateOf(caseRepairCard)).notice, /已补上不可见定界符.*核对/u);
+  assert.match((await stateOf(caseRepairCard)).formulaNotice, /仅用于排版的不可见右定界符/u);
+  assert.equal(providerCalls, beforeCaseRepair);
+  manager.clear();
   formulaOcrOverride = null;
   ocrOverride = 'Two tosses give outcomes where "h" denotes "heads" and "" denotes "tails".';
   const beforeMissingQuote = providerCalls;

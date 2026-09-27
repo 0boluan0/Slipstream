@@ -880,14 +880,16 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const uncertainStarts = Array.isArray(localFormula?.uncertainStarts) ? localFormula.uncertainStarts : [];
         const markedUncertain = localFormula?.uncertain && uncertainStarts.length === localFormula.uncertain;
         const denseFormula = localFormula?.count >= 8 && localFormula?.uncertain >= 4;
+        const unrenderableFormula = localFormula?.unrenderable > 0;
+        const repairedCaseDelimiter = localFormula?.caseDelimiterRepairs > 0;
         const formulaNotice = localFormula?.count
-          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${denseFormula ? '这一框公式较密集。先点击标出的公式与截图逐一对照；若字形难辨，再缩小到一两条公式重框。' : '请对照原图核对。'}`
+          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${unrenderableFormula ? `其中 ${localFormula.unrenderable} 处无法排版，保留了 LaTeX 原文；请校正后再翻译。` : ''}${repairedCaseDelimiter ? `已为 ${localFormula.caseDelimiterRepairs} 处分段公式补上仅用于排版的不可见右定界符，请与截图核对。` : ''}${denseFormula ? '这一框公式较密集。先点击标出的公式与截图逐一对照；若字形难辨，再缩小到一两条公式重框。' : '请对照原图核对。'}`
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? `选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。${spellingHint}`
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
@@ -905,6 +907,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
             : spellingConflict ? `两次本地识别对“${spellingConflict.source}”与“${spellingConflict.alternative}”有分歧。请对照截图核对拼写，确认前不会发送文字。`
             : symbolConflict ? `字形“${symbolConflict.source}”与“${symbolConflict.alternative}”的识别有分歧，已按同一位置的其他读数改为“${symbolConflict.alternative}”。请对照截图核对，确认前不会发送文字。`
+            : unrenderableFormula ? `有 ${localFormula.unrenderable} 处公式暂时无法排版。请对照截图校正 LaTeX，确认前不会发送文字。`
+            : repairedCaseDelimiter ? '分段公式缺少排版用的右定界符，已补上不可见定界符。请对照截图核对后再翻译。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
             : document.interiorUnresolved ? '两次本地识别对段落中间的文字有分歧，局部复读仍无法确认。请对照截图补齐文字，或重新框选这一段。'

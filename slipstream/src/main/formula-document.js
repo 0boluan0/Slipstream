@@ -29,6 +29,24 @@ function repairUnpairedEvaluationBars(latex) {
   }).join('');
 }
 
+function repairMissingCaseDelimiter(latex) {
+  // A cases-style array has only a visible left brace in the source. If the
+  // decoder emits a bare trailing \right, add KaTeX's invisible delimiter;
+  // no mathematical symbol or branch is inferred from this repair.
+  if (!/\\left\s*\\\{/u.test(latex) || !/\\begin\{array\}/u.test(latex)) return latex;
+  return latex.replace(/(\\end\{array\}\s*\\right)\s*$/u, '$1.');
+}
+
+let mathRenderer;
+function canRenderMath(latex, displayMode) {
+  try {
+    mathRenderer ||= require('katex');
+    mathRenderer.renderToString(latex, { displayMode, throwOnError: true,
+      trust: false, strict: 'ignore', maxExpand: 500, maxSize: 10, output: 'htmlAndMathml' });
+    return true;
+  } catch { return false; }
+}
+
 // Keep the original prose as the reading-order anchor. Masking can make Vision
 // merge adjacent lines or hallucinate fragments; replace a doubtful source row
 // only when the masked and padded layouts independently agree at its location.
@@ -323,6 +341,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   }
   const latinVectorInSelection = formulas.some(({ latex }) =>
     /\\vec\{?(?:\\(?:boldsymbol|mathbf|mathrm)\{?)?[vw]\b/u.test(latex.replace(/\s+/gu, '')));
+  let caseDelimiterRepairs = 0, unrenderableFormulaCount = 0;
   for (const formula of formulas) {
     let latex = repairUnpairedEvaluationBars(formula.latex.trim()), punctuation = '';
     const repairedEvaluationBar = latex !== formula.latex.trim();
@@ -336,7 +355,9 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       // masked Vision also reads that same glyph just outside the math box.
       punctuation = ':';
       latex = latex.slice(0, encodedColon.index).trim();
-    } else if (/[,.;:!?]$/.test(latex)) { punctuation = latex.at(-1); latex = latex.slice(0, -1).trim(); }
+    } else if (/[,.;:!?]$/.test(latex) && !/\\right\s*\.$/u.test(latex)) {
+      punctuation = latex.at(-1); latex = latex.slice(0, -1).trim();
+    }
     else {
       const last = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x).at(-1);
       if (last && /[,.;:!?]$/.test(last.text)) {
@@ -393,6 +414,9 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
         latex = abbreviation[1].trim();
       }
     }
+    const caseDelimited = repairMissingCaseDelimiter(latex);
+    const repairedCaseDelimiter = caseDelimited !== latex;
+    if (repairedCaseDelimiter) { latex = caseDelimited; caseDelimiterRepairs += 1; }
     // A detector can enclose two expressions and the English word between
     // them. Only move that word out of TeX when Vision independently reads it
     // in the same source region; otherwise leave the recognizer's math intact.
@@ -401,13 +425,17 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       ? latex.match(/^([\s\S]+?)\s*\\(?:quad|qquad)\s*\\(?:mathrm|text)\s*\{\s*a\s*n\s*d\s*\}\s*\\(?:quad|qquad)\s*([\s\S]+)$/iu)
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
+    const formulaText = prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
+        : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
+          : formula.display && !separatedWhere ? `$$${latex}$$` : `$${latex}$`) + punctuation;
+    const unrenderable = mathRanges(formulaText).filter((range) => !canRenderMath(range.tex, range.display)).length;
+    unrenderableFormulaCount += unrenderable;
     items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
-      reviewRecognition: repairedEvaluationBar || correctedIota || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
+      reviewRecognition: repairedEvaluationBar || repairedCaseDelimiter || unrenderable || correctedIota
+        || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
         || separatedWhere && !sourceWhere,
-      text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
-        : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
-          : formula.display && !separatedWhere ? `$$${latex}$$` : `$${latex}$`) + punctuation });
+      text: formulaText });
   }
   for (const word of words(masked)) {
     if (formulas.some((f) => intersects(f, word)) || items.some((item) => intersects(item, word))) continue;
@@ -458,6 +486,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     [...(original?.spellJoinCandidates || []), ...(edgeProse?.spellJoinCandidates || [])]);
   return { text: joinedProse.text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
     interiorRecovered: verifiedInterior.length, rowRecovered, proseSpellingConflicts, proseSymbolConflicts,
+    caseDelimiterRepairs, unrenderableFormulaCount,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE || item.reviewRecognition)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),

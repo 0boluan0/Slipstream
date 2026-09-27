@@ -270,6 +270,35 @@ async function main() {
     'formula OCR repair reaches the text actually shown to the reader');
   assert.equal(repairedDocument.uncertainFormulaCount, 1,
     'a syntactically repaired formula remains marked for human source comparison');
+  const missingCaseDelimiter = String.raw`a _ { i } ^ { T } a _ { j } = \left\{ \begin{array} { l l } { 1 } & { i = j } \\ { 0 } & { i \neq j. } \\ \end{array} \right`;
+  const caseDocument = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
+    latex: missingCaseDelimiter, confidence: .99 }], size);
+  assert.match(caseDocument.text, /\\end\{array\}\s*\\right\.\$\$/u,
+    'an OCR case brace missing its invisible right delimiter must render as mathematics');
+  assert.doesNotThrow(() => require('katex').renderToString(mathRanges(caseDocument.text)[0].tex,
+    { throwOnError: true, displayMode: true }),
+  'the case equation shown to the reader must parse as display mathematics');
+  assert.equal(caseDocument.uncertainFormulaCount, 1,
+    'a repaired case delimiter still needs comparison to the original image');
+  assert.equal(caseDocument.caseDelimiterRepairs, 1);
+  assert.equal(caseDocument.unrenderableFormulaCount, 0);
+  const completeCase = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
+    latex: `${missingCaseDelimiter}.`, confidence: .99 }], size);
+  assert.equal(completeCase.uncertainFormulaCount, 0,
+    'a valid left-only case brace must not receive a false review marker');
+  assert.equal(completeCase.caseDelimiterRepairs, 0,
+    'the invisible delimiter period must not be mistaken for sentence punctuation');
+  assert.match(completeCase.text, /\\end\{array\}\s*\\right\.\$\$$/u);
+  const punctuatedCase = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
+    latex: `${missingCaseDelimiter}..`, confidence: .99 }], size);
+  assert.match(punctuatedCase.text, /\\right\.\$\$\.$/u,
+    'sentence punctuation after an invisible delimiter stays outside the formula');
+  assert.equal(punctuatedCase.caseDelimiterRepairs, 0);
+  const unrenderable = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
+    latex: String.raw`\frac{a}{`, confidence: .99 }], size);
+  assert.equal(unrenderable.uncertainFormulaCount, 1,
+    'an unrepaired malformed formula must never appear as confident, unreviewed source');
+  assert.equal(unrenderable.unrenderableFormulaCount, 1);
   const edgeSize = { width: 1000, height: 100 };
   const edgeWord = (text, x, w) => ({ ...word(text, x / 10, w / 10),
     characters: [...text].map((char) => ({ text: char, boundingBox: { x: x / 1000, y: .7, w: w / 1000, h: .2 } })) });
