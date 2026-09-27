@@ -403,6 +403,20 @@ app.whenReady().then(async () => {
   ocrOverride = null;
   ocrPrimeConflicts = null;
   ocrDocumentOverride = null;
+  ocrOverride = "Hoeffding's inequality bounds a fixed pair.";
+  ocrDocumentOverride = { text: ocrOverride,
+    hyphenationReview: [{ source: "Hoeffd-ing's", alternative: "Hoeffding's" }] };
+  const callsBeforeEponym = providerCalls;
+  await manager.capture();
+  const eponymCard = cards().find((window) => window !== second);
+  await until(phaseIs(eponymCard, 'review'), 'source-review eponym join');
+  assert.equal(providerCalls, callsBeforeEponym, 'inferred surname joins wait for reader confirmation');
+  assert.match((await stateOf(eponymCard)).notice, /Hoeffd-ing's.*Hoeffding's/u);
+  assert.match((await stateOf(eponymCard)).sourceText, /Hoeffding's inequality/u);
+  void action(eponymCard, 'close').catch(() => {});
+  await until(() => eponymCard.isDestroyed(), 'close eponym card');
+  ocrOverride = null;
+  ocrDocumentOverride = null;
   ocrOverride = 'The standard Transformer receives a YD sequence of embeddings. See Figure I for the model.';
   ocrReferenceConflicts = [{ source: 'Figure I', alternative: 'Figure 1' }];
   const callsBeforeReference = providerCalls;

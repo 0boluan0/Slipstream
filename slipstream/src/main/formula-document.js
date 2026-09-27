@@ -55,6 +55,28 @@ function canRenderMath(latex, displayMode) {
   } catch { return false; }
 }
 
+function repairSpuriousBracketAccents(latex, plainBracketsInSource) {
+  if (!plainBracketsInSource) return latex;
+  const accent = /\\widetilde\s*\{/u.exec(latex);
+  if (!accent) return latex;
+  const first = accent.index + accent[0].length;
+  let depth = 1, last = first;
+  for (; last < latex.length && depth; last++) {
+    if (latex[last] === '{') depth++;
+    if (latex[last] === '}') depth--;
+  }
+  if (depth) return latex;
+  const inside = latex.slice(first, last - 1), suffix = latex.slice(last);
+  // The recognizer sometimes puts an accent on each half of one probability
+  // bracket. The independent source OCR must see the plain bracket pair.
+  if (!/^\s*\[\s*\|/u.test(inside) || !/\|\s*$/u.test(inside) || inside.includes(']')) return latex;
+  const closing = /\\widehat\s*\{\s*\]\s*\}/u.exec(suffix);
+  if (!closing || !/\\geq|\\ge\b/u.test(suffix.slice(0, closing.index))) return latex;
+  const fixed = latex.slice(0, accent.index) + inside + suffix.slice(0, closing.index)
+    + ']' + suffix.slice(closing.index + closing[0].length);
+  return canRenderMath(fixed, false) ? fixed : latex;
+}
+
 // Keep the original prose as the reading-order anchor. Masking can make Vision
 // merge adjacent lines or hallucinate fragments; replace a doubtful source row
 // only when the masked and padded layouts independently agree at its location.
@@ -552,6 +574,12 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const fontCommandRepaired = repairBareFontCommands(latex);
     const repairedFontCommand = fontCommandRepaired !== latex;
     if (repairedFontCommand) latex = fontCommandRepaired;
+    const sourceBrackets = sourceBlocks.some((block) => block.confidence >= .9 && block.boundingBox
+      && intersects(formula, pixelBox(block.boundingBox))
+      && /\[\s*\|/u.test(block.text) && /\]\s*[≤<]/u.test(block.text));
+    const bracketAccents = repairSpuriousBracketAccents(latex, sourceBrackets);
+    const repairedBracketAccents = bracketAccents !== latex;
+    if (repairedBracketAccents) latex = bracketAccents;
     // Vision can see the visible sentence mark at the end of the last case
     // branch while the math decoder has already included it inside that row.
     if (punctuation && punctuation === finalCaseRowPunctuation(latex)) punctuation = '';
@@ -570,7 +598,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     unrenderableFormulaCount += unrenderable;
     items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
       equationLabel: equationLabel?.label,
-      reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || repairedFontCommand || unrenderable || correctedIota
+      reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || repairedFontCommand
+        || repairedBracketAccents || unrenderable || correctedIota
         || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
         || separatedWhere && !sourceWhere,
@@ -699,6 +728,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   const joinedProse = joinVisualHyphenation(text,
     [...(original?.spellJoinCandidates || []), ...(edgeProse?.spellJoinCandidates || [])]);
   return { text: joinedProse.text, layoutReview, wrappedFormulaRepairs,
+    hyphenationReview: joinedProse.reviewedJoins,
     edgeRecovered: recoveredLeading.length > 0,
     interiorRecovered: verifiedInterior.length, rowRecovered, proseSpellingConflicts, proseSymbolConflicts,
     caseDelimiterRepairs, unrenderableFormulaCount,

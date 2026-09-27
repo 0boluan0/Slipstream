@@ -49,13 +49,26 @@ function joinVisualHyphenation(text, candidates = [], isWord = knownEnglishWord)
     .filter((word) => typeof word === 'string').map((word) => word.toLowerCase()));
   const math = mathRanges(text);
   const removedAt = [];
+  const reviewedJoins = [];
   const joined = text.replace(/\b([A-Za-z]{2,})-\n([a-z]{2,})(?![A-Za-z])/gu, (match, first, second, at) => {
-    if (math.some((range) => at < range.end && at + match.length > range.start)
-      || !shouldJoinSplitWord(first, second, isWord, spellJoinCandidates)) return match;
+    if (math.some((range) => at < range.end && at + match.length > range.start)) return match;
+    const knownJoin = shouldJoinSplitWord(first, second, isWord, spellJoinCandidates);
+    const following = text.slice(at + match.length);
+    // Academic surnames may be absent from both local dictionaries. A capitalized
+    // unknown stem followed by possessive -s and a named result is a likely
+    // printed line wrap; expose the inference for source review.
+    const possessive = /^(['’]s)\s+(?:inequality|theorem|lemma|bound|law|identity|method|test|algorithm|estimator|distribution)\b/iu.exec(following);
+    const eponymJoin = !knownJoin && /^[A-Z][a-z]{3,}$/u.test(first)
+      && !isWord(first.toLowerCase(), true) && Boolean(possessive);
+    if (!knownJoin && !eponymJoin) return match;
+    if (eponymJoin) reviewedJoins.push({
+      source: first + '-' + second + possessive[1],
+      alternative: first + second + possessive[1],
+    });
     removedAt.push(at + first.length);
     return first + second;
   });
-  return { text: joined, removedAt };
+  return { text: joined, removedAt, reviewedJoins };
 }
 
 // Vision emits visual lines. Join wrapped prose while retaining paragraph gaps;

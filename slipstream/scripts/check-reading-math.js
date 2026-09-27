@@ -119,6 +119,17 @@ async function main() {
     (term) => new Set(['end', 'to']).has(term));
   assert.equal(specialistJoin.text, 'A quantile sketch and an end-\nto-end method.',
     'the formula path must accept spelling corroboration while retaining a real compound');
+  const eponymJoin = joinVisualHyphenation("Hoeffd-\ning's inequality is useful.");
+  assert.equal(eponymJoin.text, "Hoeffding's inequality is useful.");
+  assert.deepEqual(eponymJoin.reviewedJoins,
+    [{ source: "Hoeffd-ing's", alternative: "Hoeffding's" }],
+    'an unknown surname split before a named result is joined but flagged for source review');
+  assert.equal(joinVisualHyphenation("Upper-\nbound's theorem is different.").text,
+    "Upper-\nbound's theorem is different.",
+  'a known first half of a hyphenated term is not silently converted to a surname');
+  assert.equal(joinVisualHyphenation("Hoeffd-\ning's argument is here.").text,
+    "Hoeffd-\ning's argument is here.",
+  'an unknown possessive without a named result is left intact');
   const spellingBlock = (text) => ({ ...placedWord(text, 10, 10, 80, 10),
     boundingBox: { x: .1, y: .8, w: .8, h: .1 } });
   const spellingSource = { blocks: [spellingBlock('Each tree has leat weights here')] };
@@ -315,6 +326,22 @@ async function main() {
   assert.deepEqual(mergeFormulaDocument({ blocks: [] }, [barred], size, { blocks: [] },
     { blocks: [{ ...paddedPlain.blocks[0], text: 'z̄i = g(hi)' }] }).uncertainFormulaStarts, [],
   'an OCR pass that also sees an accent does not create a new review marker');
+  const splitBracketAccent = { x: 10, y: 10, w: 80, h: 20, display: false, confidence: .9,
+    latex: String.raw`\operatorname* { P r } \widetilde { [ | \mathbf z ( \mathbf x ) - k ( \mathbf x ) | } \geq \epsilon \widehat { ] } \leq 2` };
+  const plainBracketSource = { blocks: [{
+    ...placedWord('Pr [|z(x)-k(x)| ≥ e] ≤ 2', 10, 10, 80, 20),
+    boundingBox: { x: .1, y: .7, w: .8, h: .2 },
+  }] };
+  const bracketRepair = mergeFormulaDocument({ blocks: [] }, [splitBracketAccent], size, plainBracketSource);
+  assert.match(bracketRepair.text, /\[\s*\|[^\n]+\|\s+\\geq\s+\\epsilon\s+\]\s+\\leq\s+2/u,
+    'independently visible plain probability brackets replace split spurious accents');
+  assert(!/\\(?:widetilde|widehat)/u.test(bracketRepair.text));
+  assert.equal(bracketRepair.uncertainFormulaCount, 1, 'the bracket repair still requires image review');
+  assert.match(mergeFormulaDocument({ blocks: [] }, [splitBracketAccent], size, { blocks: [] }).text,
+    /\\widetilde/u, 'without source corroboration, the recognizer expression must remain unchanged');
+  assert.match(mergeFormulaDocument({ blocks: [] }, [{
+    ...splitBracketAccent, latex: String.raw`\widetilde{[A]} \leq 2` }], size, plainBracketSource).text,
+  /\\widetilde/u, 'an accent over an entire complete bracketed object is not the split-bracket error');
   const indexed = { ...formula, x: 10, y: 10, w: 18, h: 20, latex: 'x_i' };
   const footnoteMerged = mergeFormulaDocument({ blocks: [] }, [{ ...formula,
     latex: String.raw`\langle \vec\beta_1,\ldots\rangle. ^{*}`, confidence: .99 }], size);
