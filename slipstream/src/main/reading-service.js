@@ -160,7 +160,7 @@ function focusedReferencePassages(source) {
   const sentences = [...new Intl.Segmenter('en', { granularity: 'sentence' }).segment(flat)]
     .map(({ index, segment }) => source.slice(index, index + segment.length).trim()).filter(Boolean);
   if (sentences.length < 2) return [];
-  const definingLanguage = /\b(?:where|let|define[ds]?|denote[ds]?|means?|refers?\s+to|called|stands?\s+for|serves?\s+as)\b|:=|\\coloneqq\b|\\gets\b|←/iu;
+  const definingLanguage = /\b(?:where|let|defin(?:e[ds]?|ing)|denote[ds]?|means?|refers?\s+to|called|stands?\s+for|serves?\s+as)\b|:=|\\coloneqq\b|\\gets\b|←/iu;
   return sentences.filter((passage) => passage !== source.trim() && definingLanguage.test(passage));
 }
 

@@ -162,14 +162,24 @@ function explicitEquationDefinitions(source) {
   for (const range of mathRanges(source)) {
     if (!/(?:=|:=|\\coloneqq\b)/u.test(range.tex)) continue;
     const symbol = referenceSymbol(`$${range.tex}$`);
-    if (!isNotation(symbol)) continue;
+    const precedingDefinition = source.slice(0, range.start).match(/\b(?:defining|define|let)\s*$/iu);
+    const leftHandSide = range.tex.match(/^(.+?)\s*(?::=|\\coloneqq\b|=)/u)?.[1]?.trim();
+    const functionHead = leftHandSide?.match(/^(.+?)\s*\(/u)?.[1]?.trim();
+    const definedSymbol = precedingDefinition && functionHead && isNotation(functionHead) ? functionHead
+      : precedingDefinition && leftHandSide && isNotation(leftHandSide) ? leftHandSide : symbol;
+    if (!isNotation(definedSymbol)) continue;
     const tail = source.slice(range.end);
+    if (precedingDefinition) {
+      const evidence = source.slice(range.start - precedingDefinition[0].length, range.end).trim();
+      if (!result.some((entry) => referenceKey(entry.symbol) === referenceKey(definedSymbol))) result.push({ symbol: definedSymbol, evidence });
+      continue;
+    }
     if (!/^\s*(?:(?:is|are)\s+(?:the|an?|our)\b|denotes?\b|means?\b|represents?\b|serves?\s+as\b)/iu.test(tail)) continue;
     const flat = tail.replace(/[\r\n]/gu, ' ');
     const sentence = [...new Intl.Segmenter('en', { granularity: 'sentence' }).segment(flat)][0]?.segment;
     if (!sentence || sentence.length > 600) continue;
     const evidence = source.slice(range.start, range.end + sentence.length).trim();
-    if (!result.some((entry) => referenceKey(entry.symbol) === referenceKey(symbol))) result.push({ symbol, evidence });
+    if (!result.some((entry) => referenceKey(entry.symbol) === referenceKey(definedSymbol))) result.push({ symbol: definedSymbol, evidence });
   }
   return result;
 }

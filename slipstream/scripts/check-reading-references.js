@@ -143,6 +143,24 @@ $\lambda _ { W } ~ = ~ 0. 0 0 1$.`;
     'an equation without following defining words is not a symbol definition');
   assert.deepEqual(explicitEquationDefinitions('The patch count is $N=HW/P^2$ is the resulting number of patches.')
     .map((entry) => entry.symbol), ['N'], 'the syntax scan must handle compact LaTeX assignments too');
+  const bochnerEvidence = String.raw`Defining $\zeta _ { \omega } ( { \bf x } ) = e ^ { j \omega ^ { \prime } \, { \bf x } }$`;
+  const bochnerSource = String.raw`The Fourier transform $p ( \omega )$ is a probability distribution. ${bochnerEvidence}, we have
+
+$$k ( { \bf x } - { \bf y } ) = E _ { \omega } [ \zeta _ { \omega } ( { \bf x } ) \zeta _ { \omega } ( { \bf y } ) ^ { * } ] \tag{2}$$`;
+  assert.deepEqual(explicitEquationDefinitions(bochnerSource), [{ symbol: String.raw`\zeta _ { \omega }`, evidence: bochnerEvidence }],
+    'a preposed Defining clause identifies the named function, while the following identity is merely its use');
+  assert.deepEqual(explicitEquationDefinitions(String.raw`We compute $z(x)=x^2$ and use it for regression.`), [],
+    'an ordinary equation with no defining clause cannot become a paper-wide definition');
+  let bochnerFocused = false;
+  const bochnerProcessor = createReadingProcessor(async (_settings, _backend, _model, _prompt, message) => {
+    const request = JSON.parse(message);
+    if (request.excerpt?.startsWith('Defining ')) bochnerFocused = true;
+    return JSON.stringify({ references: request.candidateSymbol === String.raw`\zeta _ { \omega }`
+      ? [{ symbol: request.candidateSymbol, meaning: '由该复指数式定义的随机特征函数。', evidence: bochnerEvidence }] : [] });
+  });
+  assert.deepEqual((await bochnerProcessor({ text: bochnerSource, kind: 'references', settingsSnapshot: settings }))
+    .references.map((entry) => entry.symbol), [String.raw`\zeta _ { \omega }`]);
+  assert(bochnerFocused, 'a Defining sentence should receive a focused retry after an empty broad extraction');
   const domainSource = 'Let $x_i \\in \\mathbb{R}^d$ denote the feature vector.';
   const domainProcessor = createReadingProcessor(async () => JSON.stringify({ references: [{ symbol: '$x_i \\in \\mathbb{R}^d$', meaning: 'd 维特征向量。', evidence: domainSource }] }));
   const domain = await domainProcessor({ text: domainSource, kind: 'references', settingsSnapshot: settings });

@@ -326,13 +326,18 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     proseSymbolConflicts.push({ source: source.text, alternative: padded[0].text });
   }
   for (const source of originalWords) {
-    if (source.confidence < .9 || !/^[A-Za-z]{3,}$/u.test(source.text)
+    const digitLookalike = /^[a-z1]{2,}$/u.test(source.text) && source.text.includes('1');
+    if (source.confidence < .9 || (!/^[A-Za-z]{3,}$/u.test(source.text) && !digitLookalike)
       || formulas.some((formula) => intersects(formula, source))) continue;
     const alternative = (candidates) => candidates.filter((candidate) => candidate.confidence >= .9
-      && /^[A-Za-z]{3,}$/u.test(candidate.text) && candidate.text.length === source.text.length
+      && (digitLookalike ? /^[a-z]{2,}$/u : /^[A-Za-z]{3,}$/u).test(candidate.text)
+      && candidate.text.length === source.text.length
       && candidate.text.toLowerCase() !== source.text.toLowerCase()
-      && [...source.text.toLowerCase()].filter((letter, index) =>
-        letter !== candidate.text[index].toLowerCase()).length === 1
+      && [...source.text.toLowerCase()].filter((letter, index) => letter !== candidate.text[index].toLowerCase()).length === 1
+      && (!digitLookalike || [...source.text].some((letter, index) => letter === '1'
+        && /^[il]$/u.test(candidate.text[index])
+        && source.text.slice(0, index) === candidate.text.slice(0, index)
+        && source.text.slice(index + 1) === candidate.text.slice(index + 1)))
       && sameGlyph(source, candidate));
     const padded = alternative(edgeWords), maskedMatch = alternative(maskedWords);
     if (padded.length !== 1 || maskedMatch.length !== 1 || padded[0].text !== maskedMatch[0].text) continue;

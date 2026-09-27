@@ -213,6 +213,21 @@ async function main() {
     'a pixel-confirmed O/0 correction must pause for reader review');
   assert.deepEqual(correctedDigit.proseSymbolConflicts, [{ source: 'O', alternative: '0' }],
     'the printed O/0 disagreement must reach the review card');
+  const digitProse = symbolLine('This 1s often unacceptable for large datasets.');
+  const letterProse = symbolLine('This is often unacceptable for large datasets.');
+  const correctedProse = mergeFormulaDocument({ blocks: [letterProse] }, [], size,
+    { blocks: [digitProse] }, { blocks: [letterProse] });
+  assert.match(correctedProse.text, /This is often unacceptable/u,
+    'two aligned readings of the same printed word may repair an isolated 1/i confusion');
+  assert.equal(correctedProse.rowRecovered, 1, 'a repaired prose digit must still require reader review');
+  assert.match(mergeFormulaDocument({ blocks: [digitProse] }, [], size,
+    { blocks: [digitProse] }, { blocks: [letterProse] }).text, /This 1s often/u,
+  'one alternative reading cannot silently rewrite a numeric-looking word');
+  const actualDimension = symbolLine('The 1D model uses fewer parameters.');
+  const mistakenDimension = symbolLine('The ID model uses fewer parameters.');
+  assert.match(mergeFormulaDocument({ blocks: [mistakenDimension] }, [], size,
+    { blocks: [actualDimension] }, { blocks: [mistakenDimension] }).text, /The 1D model/u,
+  'a numeric dimension must not turn into a prose acronym');
   const unconfirmedSymbol = mergeFormulaDocument({ blocks: [matrixI] }, [], size,
     { blocks: [matrixI] }, { blocks: [matrixL] });
   assert.match(unconfirmedSymbol.text, /The matrix I satisfies/u,
