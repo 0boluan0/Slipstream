@@ -338,6 +338,30 @@ function createLocalFormulaOcr(modelDir) {
       const detected = await model.detector.run(detectorInput(image, model.ort));
       cancelled(signal, deadline);
       const boxes = detectBoxes(detected.fetch_name_0, size);
+      // A wide, shallow crop of a numbered algorithm can make the layout
+      // model classify every equation as prose. Revisit overlapping 1000px
+      // strips at a readable scale, and discard regions cut by an inner seam.
+      if (!boxes.some((box) => box.score >= .3)
+        && size.width >= 1200 && size.width > size.height * 2) {
+        const width = 1000;
+        const last = size.width - width;
+        const count = Math.min(6, Math.ceil(last / (width * .6)) + 1);
+        for (let index = 0; index < count; index++) {
+          cancelled(signal, deadline);
+          const x = Math.round(last * index / (count - 1));
+          const tile = image.crop({ x, y: 0, width, height: size.height });
+          const inferred = await model.detector.run(detectorInput(tile, model.ort));
+          for (const candidate of detectBoxes(inferred.fetch_name_0, tile.getSize())) {
+            if (candidate.score < .3 || (x > 0 && candidate.x <= 2)
+              || (x + width < size.width && candidate.x + candidate.w >= width - 2)) continue;
+            const box = { ...candidate, x: candidate.x + x };
+            const duplicate = boxes.findIndex((existing) => overlap(existing, box) > .65);
+            if (duplicate < 0) boxes.push(box);
+            else if (box.score > boxes[duplicate].score) boxes[duplicate] = box;
+          }
+        }
+        boxes.sort((a, b) => a.y - b.y || a.x - b.x);
+      }
       // Wide excerpts shrink an isolated accent to a few detector pixels.
       // Inspect overlapping halves at higher effective resolution, but admit
       // only small candidates whose accent survives three math-model crops.
