@@ -25,6 +25,10 @@ assert.equal(looksLikeClippedProse({ blocks: [{ text: '(4)',
 assert.equal(looksLikeClippedProse({ blocks: [{ text: 'as',
   boundingBox: { x: .08, y: .019, w: .1, h: .05 } }] }, 'the final vector as'), 'bottom',
 'a short unfinished prose line near the bottom must still pause the reader');
+assert.equal(looksLikeClippedProse({ blocks: [{ text: 'simultaneously:',
+  boundingBox: { x: .08, y: .019, w: .8, h: .05 } }] },
+'A stronger assertion holds for every pair simultaneously:'), null,
+'a complete lead-in ending with a colon must not masquerade as a cut sentence');
 assert.equal(suspiciousDimensionToken('The model receives a YD sequence of embeddings.'), 'YD');
 assert.equal(suspiciousDimensionToken('The model receives a 1D sequence of embeddings.'), null);
 assert.equal(suspiciousDimensionToken('The model receives HD images.'), null);
@@ -672,6 +676,15 @@ app.whenReady().then(async () => {
   await until(phaseIs(bottom, 'review'), 'bottom-edge cropped prose review');
   assert.match((await stateOf(bottom)).notice, /底部可能截断/);
   assert.equal(providerCalls, beforeBottom, 'bottom-edge cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrBottomClipped = true;
+  ocrOverride = 'The bound holds for one fixed pair. A stronger assertion can be proven simultaneously:';
+  const beforeColonLeadIn = providerCalls;
+  await manager.capture();
+  const colonLeadIn = cards()[0];
+  await until(phaseIs(colonLeadIn, 'done'), 'complete colon lead-in near a clear bottom edge');
+  assert.equal(providerCalls, beforeColonLeadIn + 1,
+    'a complete lead-in with a clear edge must continue to translation');
   manager.clear();
   ocrBottomClipped = false;
   ocrBottomShortBlock = true;
