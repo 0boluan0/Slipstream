@@ -266,11 +266,11 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     else {
       const last = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x).at(-1);
       if (last && /[,.;:!?]$/.test(last.text)) {
-        // Vision can read the subscript of x_i as a semicolon inside the
-        // formula's own box. A real separator should extend past the math
-        // region when the formula recognizer did not include it.
+        // Vision can read a subscript as a semicolon or a raised exponent as
+        // a question mark inside the formula's own box. A real separator
+        // should extend past the math region when MFR did not include it.
         const mark = last.text.at(-1);
-        if (!/[;:]/u.test(mark) || last.x + last.w > formula.x + formula.w + 2) punctuation = mark;
+        if (!/[;:?]/u.test(mark) || last.x + last.w > formula.x + formula.w + 2) punctuation = mark;
       }
     }
     // MFR often puts sentence punctuation inside the last row of an aligned
@@ -298,6 +298,14 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const annotated = proseAnnotations.get(formula);
     const equationLabel = equationLabels.get(formula);
     let prosePrefix = '';
+    // MFR sometimes encloses the prose connector "where" with the equation
+    // beneath it. Restore the word only when the independent original-image
+    // text pass reads it at the start of that same printed region.
+    const wherePrefix = latex.match(/^\\(?:mathrm|text)\s*\{\s*w\s*h\s*e\s*r\s*e\s*\}\s*(?:\\(?:[,;]|\s)\s*)?([\s\S]+)$/iu);
+    const sourceWhere = wherePrefix && sourceBlocks.some((block) => block.confidence >= .9
+      && /^\s*where\b/iu.test(block.text) && block.boundingBox
+      && intersects(formula, pixelBox(block.boundingBox)));
+    if (sourceWhere) { prosePrefix = 'where '; latex = wherePrefix[1].trim(); }
     if (!formula.display && !annotated) {
       const abbreviation = latex.match(/^i\s*\.\s*e\s*\.\s*,\s*(?:\\[,;]\s*)?([\s\S]+)$/iu);
       const observed = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x)
@@ -315,12 +323,12 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       ? latex.match(/^([\s\S]+?)\s*\\(?:quad|qquad)\s*\\(?:mathrm|text)\s*\{\s*a\s*n\s*d\s*\}\s*\\(?:quad|qquad)\s*([\s\S]+)$/iu)
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
-    items.push({ ...formula, math: !ordinal, punctuation,
+    items.push({ ...formula, display: sourceWhere ? false : formula.display, math: !ordinal, punctuation,
       reviewRecognition: repairedEvaluationBar || correctedIota || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
-          : formula.display ? `$$${latex}$$` : `$${latex}$`) + punctuation });
+          : formula.display && !sourceWhere ? `$$${latex}$$` : `$${latex}$`) + punctuation });
   }
   for (const word of words(masked)) {
     if (formulas.some((f) => intersects(f, word)) || items.some((item) => intersects(item, word))) continue;

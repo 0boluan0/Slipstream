@@ -100,6 +100,13 @@ async function main() {
   assert.equal(mergeFormulaDocument({ blocks: [] }, [indexed], size,
     { blocks: [word('x_i;', 10, 24)] }).text, '$x_i$;',
   'a separately visible semicolon beyond the math region is preserved');
+  const power = { ...formula, latex: 'x^{2}' };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [power], size,
+    { blocks: [word('x?', 10, 18)] }).text, '$x^{2}$',
+  'an exponent misread as a question mark inside its math box is not appended');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [power], size,
+    { blocks: [word('x?', 10, 24)] }).text, '$x^{2}$?',
+  'a visible question mark beyond the formula remains prose punctuation');
   const periodSource = { blocks: [word('x.', 10, 24), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument({ blocks: [word('•', 29, 5)] }, [formula], size, periodSource).text, '$x$. label',
     'masked OCR may call the same source period a bullet; preserve the original punctuation once');
@@ -124,6 +131,20 @@ async function main() {
     'both expressions in a low-confidence region remain independently reviewable');
   assert.match(mergeFormulaDocument({ blocks: [] }, [pairedNormal], size).text, /\\mathrm.*a n d/,
     'without source confirmation the recognizer must not restructure a mathematical region');
+  const regularizer = { x: 10, y: 10, w: 80, h: 20, display: true, confidence: .95,
+    latex: String.raw`\mathrm { w h e r e } \ \Omega ( f ) = \gamma T + \frac { 1 } { 2 } \lambda { \| w \| } ^ { 2 }` };
+  const whereSource = { blocks: [{ text: 'where Ω(f) = γT + ½λ||w||²', confidence: 1,
+    boundingBox: { x: .1, y: .7, w: .8, h: .2 } }] };
+  const whereDocument = mergeFormulaDocument({ blocks: [] }, [regularizer], size, whereSource);
+  assert.equal(whereDocument.text,
+    String.raw`where $\Omega ( f ) = \gamma T + \frac { 1 } { 2 } \lambda { \| w \| } ^ { 2 }$`,
+    'a source-confirmed where stays prose while the regularizer remains an intact math span');
+  assert.equal(whereDocument.formulaCount, 1);
+  assert.match(mergeFormulaDocument({ blocks: [] }, [regularizer], size).text, /\\mathrm.*w h e r e/u,
+    'without source confirmation even a likely connector is not moved out of math');
+  assert.match(mergeFormulaDocument({ blocks: [] }, [regularizer], size,
+    { blocks: [{ ...whereSource.blocks[0], text: 'somewhere Ω(f) = γT', confidence: 1 }] }).text,
+  /\\mathrm.*w h e r e/u, 'a different source word cannot confirm a prose connector');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [formula], size,
     { blocks: [word('x.', 10, 24), word('•', 36, 5), word('label', 45, 30)] }).text, '$x$. • label',
   'a separate source bullet must survive punctuation deduplication');
