@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
-const { createReadingPins } = require('../src/main/reading-pins');
+const { createReadingPins, looksLikeClippedProse } = require('../src/main/reading-pins');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
 
@@ -18,6 +18,12 @@ const screenshotPath = screenshotIndex >= 0 ? path.resolve(process.argv[screensh
 if (!preview) setTimeout(() => { console.error('Reading card runtime check exceeded 90 seconds.'); app.exit(1); }, 90000).unref();
 const english = 'Correlation does not imply causation.\nAn observed association between two variables may be explained by a common cause.\nThe estimate is conditional on the observed data.';
 const chinese = '相关关系并不意味着因果关系。两个变量之间观察到的关联，可能由一个共同原因来解释。这个估计是在给定已观测数据的条件下得到的。';
+assert.equal(looksLikeClippedProse({ blocks: [{ text: '(4)',
+  boundingBox: { x: .94, y: .07, w: .03, h: .06 } }] }, 'The rule is defined by $$A=B\\tag{4}$$'), null,
+'an intact equation number near the bottom must not be treated as unfinished prose');
+assert.equal(looksLikeClippedProse({ blocks: [{ text: 'as',
+  boundingBox: { x: .08, y: .019, w: .1, h: .05 } }] }, 'the final vector as'), 'bottom',
+'a short unfinished prose line near the bottom must still pause the reader');
 const cards = () => BrowserWindow.getAllWindows().filter((window) => window.getTitle() === 'Slipstream · 阅读卡片');
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate, label, timeout = 30000) {

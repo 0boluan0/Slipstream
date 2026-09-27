@@ -42,6 +42,7 @@ function looksLikeClippedProse(ocr, text = ocr?.text || '') {
   // Vision coordinates start at the bottom. A final, unfinished line pressed
   // against the lower edge means the reader may miss the rest of that sentence.
   if (blocks.some((block) => block?.text?.trim().length > 0
+    && !/^\([A-Za-z]?\d+(?:[.-]\d+)*[a-z]?\)$/u.test(block.text.trim())
     && Number.isFinite(block.boundingBox?.y) && block.boundingBox.y <= 0.08)
     && !/[.!?。！？]$/u.test(text.trim())) return 'bottom';
   return null;
@@ -859,9 +860,13 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const ownUiCapture = looksLikeOwnReadingUi(document.text);
         const edgeInk = captureEdgeInk(file);
         const geometry = looksLikeClippedProse(ocr, document.text);
-        const pixelEdge = ['top', 'right', 'left', 'bottom'].find((edge) => edgeInk[edge] === true);
+        const pixelEdges = ['top', 'right', 'left', 'bottom'].filter((edge) => edgeInk[edge] === true);
+        const pixelEdge = pixelEdges[0];
         const clippedProse = pixelEdge || (geometry !== 'bottom'
           && edgeInk[geometry] === false ? null : geometry);
+        const otherClippedEdges = pixelEdges.filter((edge) => edge !== clippedProse);
+        const edgeNames = { top: '顶部', right: '右侧', left: '左侧', bottom: '底部' };
+        const otherEdgeHint = otherClippedEdges.map((edge) => `选区${edgeNames[edge]}也可能截断正文。`).join(' ');
         const leadingTail = looksLikeLeadingSentenceTail(document.text);
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
@@ -900,10 +905,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
             : ambiguousAiAl ? '同一选区出现 AI 和 Al；大写 I 与小写 l 可能被识错。请对照截图核对后再翻译。'
             : nameConflict ? `同一选区出现 ${nameConflict[0]} 和 ${nameConflict[1]} 两种近似专名。请对照截图核对拼写，确认前不会发送文字。`
-            : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${brokenGroupHint}${spellingHint}`
-            : clippedProse === 'left' ? `选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。${brokenGroupHint}${spellingHint}`
-            : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${brokenGroupHint}${spellingHint}`
-            : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'left' ? `选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
             : leadingTail ? '这段原文似乎从上一句的尾部开始。请对照截图核对开头，必要时从完整句子重新框选。'
             : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
             : brokenMathBraces ? '花括号可能漏识别，集合或公式的含义可能失真。请对照截图校正。'
@@ -1098,4 +1103,4 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   };
 }
 
-module.exports = { createReadingPins, cardBounds, readingDestination };
+module.exports = { createReadingPins, cardBounds, readingDestination, looksLikeClippedProse };

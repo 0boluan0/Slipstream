@@ -171,6 +171,32 @@ function inlineCallCandidate(chars, characters, index, size) {
     boundingBox: { x, y, w: right - x, h: top - y } };
 }
 
+function parameterTupleCandidate(chars, characters, index) {
+  if (chars[index] !== '4' || chars[index - 1] !== '(') return null;
+  const before = chars.slice(Math.max(0, index - 80), index).join('');
+  // Vision can read a printed Delta as 4 inside an inline parameter list.
+  // Recheck the entire printed tuple: Vision gives "(4," one shared glyph
+  // rectangle, so a crop of just the apparent digit also contains punctuation.
+  if (!/\bparameters?\s*\(\s*$/iu.test(before)) return null;
+  const match = chars.slice(index - 1, index + 35).join('').match(/^\(4\s*,\s*([A-Z])\s*,\s*([A-Z])\s*,\s*([A-Z])\s*\)/u);
+  if (!match) return null;
+  const boxes = characters.slice(index - 1, index - 1 + match[0].length)
+    .map((char) => char?.boundingBox).filter((box) => box?.w > 0 && box?.h > 0);
+  if (!boxes.length) return null;
+  const x = Math.min(...boxes.map((box) => box.x)), y = Math.min(...boxes.map((box) => box.y));
+  const right = Math.max(...boxes.map((box) => box.x + box.w));
+  const top = Math.max(...boxes.map((box) => box.y + box.h));
+  return { length: match[0].length, letters: match.slice(1),
+    boundingBox: { x, y, w: right - x, h: top - y } };
+}
+
+function matchingParameterTupleAtom(latex, letters) {
+  const compact = latex.replace(/\s+/gu, '')
+    .replace(/\\(?:boldsymbol|mathbf|mathit)\{([A-Z])\}/gu, '$1')
+    .replace(/,$/u, '');
+  return compact === `(\\Delta,${letters.join(',')})` ? latex : null;
+}
+
 function characterCandidates(ocr, size, formulas) {
   const candidates = [];
   for (const block of ocr?.blocks || []) {
@@ -185,6 +211,8 @@ function characterCandidates(ocr, size, formulas) {
       // of treating its P/f and A/x as unrelated single-letter candidates.
       const call = inlineCallCandidate(chars, block.characters, i, size);
       if (call) skipThrough = i + call.length - 1;
+      const tuple = parameterTupleCandidate(chars, block.characters, i);
+      if (tuple) skipThrough = i + tuple.length - 2;
       // Vision can split one printed mathematical glyph into two text
       // characters (observed Ω -> S2) while giving both the same pixel box.
       // An ordinary S2 has two separate boxes and stays untouched.
@@ -200,10 +228,10 @@ function characterCandidates(ocr, size, formulas) {
       if (chars[i] === 'a' && nextWord
         && !/^(?:is|was|has|can|may|will|denotes?|represents?|equals?|satisfies|belongs?|varies|lies|means|follows|maps|contains|forms|spans|yields|produces|converges|divides|multiplies)$/u.test(nextWord)) continue;
       // Vision can render an isolated Ω as S, &, or $ across macOS versions.
-      if (!call && !splitGlyph && (!/^[A-Za-z€&$]$/u.test(chars[i])
+      if (!call && !splitGlyph && !tuple && (!/^[A-Za-z€&$]$/u.test(chars[i])
         || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
         || /[\p{L}\p{N}]/u.test(chars[i + 1] || ''))) continue;
-      const source = call ? call.boundingBox : first;
+      const source = tuple?.boundingBox || call?.boundingBox || first;
       if (!source || source.w <= 0 || source.h <= 0) continue;
       const x = Math.max(0, Math.floor(source.x * size.width));
       const y = Math.max(0, Math.floor((1 - source.y - source.h) * size.height));
@@ -223,15 +251,15 @@ function characterCandidates(ocr, size, formulas) {
       // by just under the area threshold. Its center still identifies it as
       // the same printed glyph, so avoid emitting the formula twice.
       const centerX = box.x + box.w / 2, centerY = box.y + box.h / 2;
-      if (box.w < 8 || box.h < 10 || box.w > box.h * (call ? 3.5 : 2) || box.h > size.height * .15
+      if (box.w < 8 || box.h < 10 || box.w > box.h * (tuple ? 7 : call ? 3.5 : 2) || box.h > size.height * .15
         || formulas.some((formula) => overlap(formula, box) > .65
           || (centerX >= formula.x && centerX <= formula.x + formula.w
             && centerY >= formula.y && centerY <= formula.y + formula.h))) continue;
       // A currency-shaped OCR placeholder in ordinary prose is more likely
       // to hide a missed math glyph than an English article. Check its pixels
       // first so slower machines do not exhaust the bounded recheck deadline.
-      candidates.push({ ...box, sourceToken: call?.token || null,
-        priority: splitGlyph ? -2 : placeholder ? -1 : call || block.text.length <= 45 ? 0 : 1,
+      candidates.push({ ...box, sourceToken: call?.token || null, tupleLetters: tuple?.letters || null,
+        priority: splitGlyph ? -2 : placeholder || tuple ? -1 : call || block.text.length <= 45 ? 0 : 1,
         rowLength: block.text.length });
     }
   }
@@ -517,13 +545,15 @@ function createLocalFormulaOcr(modelDir) {
           continue;
         }
         const atoms = readings.map(({ latex }) => box.sourceToken
-          ? matchingCallAtom(latex, box.sourceToken) : visualAtom(latex));
-        const minimum = box.sourceToken ? .65 : .45, maximum = box.sourceToken ? .95 : .65;
+          ? matchingCallAtom(latex, box.sourceToken)
+          : box.tupleLetters ? matchingParameterTupleAtom(latex, box.tupleLetters) : visualAtom(latex));
+        const minimum = box.sourceToken || box.tupleLetters ? .65 : .45;
+        const maximum = box.sourceToken || box.tupleLetters ? .95 : .65;
         if (!atoms[0] || !atoms.every((atom) => atom === atoms[0])
           || Math.min(...readings.map(({ confidence }) => confidence)) < minimum
           || Math.max(...readings.map(({ confidence }) => confidence)) < maximum) continue;
         supplements.push({ ...box, latex: atoms[0], confidence: Math.min(...readings.map(({ confidence }) => confidence)),
-          score: .7, display: false });
+          score: .7, display: false, reviewSymbol: Boolean(box.tupleLetters) });
       }
       if (!supplements.length) return { ...detected, formulas: baseline };
       const formulas = [...baseline, ...supplements].sort((a, b) => a.y - b.y || a.x - b.x);
