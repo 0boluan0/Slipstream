@@ -69,6 +69,17 @@ app.whenReady().then(async () => {
   const rightCutFixture = edgeFixture('right');
   const leftCutFixture = edgeFixture('left');
   const bottomCutFixture = edgeFixture('bottom');
+  const sparseBottomBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let y = 97; y < 100; y++) for (let x = 30; x < 34; x++) {
+    const offset = (y * 300 + x) * 4;
+    sparseBottomBitmap.fill(0, offset, offset + 3);
+  }
+  const sparseBottomFixture = path.join(work, 'sparse-bottom-cut.png');
+  fs.writeFileSync(sparseBottomFixture, nativeImage.createFromBitmap(sparseBottomBitmap, { width: 300, height: 100 }).toPNG());
+  const singleStripBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let x = 30; x < 34; x++) singleStripBitmap.fill(0, (99 * 300 + x) * 4, (99 * 300 + x) * 4 + 3);
+  const singleStripFixture = path.join(work, 'single-strip-bottom.png');
+  fs.writeFileSync(singleStripFixture, nativeImage.createFromBitmap(singleStripBitmap, { width: 300, height: 100 }).toPNG());
   const mainWindow = new BrowserWindow({ width: 400, height: 300, show: false,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   await mainWindow.loadURL('about:blank');
@@ -100,6 +111,8 @@ app.whenReady().then(async () => {
   let imageTopCut = false;
   let imageDenseTopCut = false;
   let imageBottomCut = false;
+  let imageSparseBottomCut = false;
+  let imageSingleBottomSpot = false;
   let ocrLeftPadded = false;
   let ocrRightPadded = false;
   let ocrBottomClipped = false;
@@ -149,6 +162,7 @@ app.whenReady().then(async () => {
       if (cancel) { const error = new Error('cancel'); error.isCancellation = true; throw error; }
       const file = path.join(work, `capture-${++selectionCount}.png`);
       fs.copyFileSync(imageDenseTopCut ? denseTopFixture : imageTopCut ? cutFixture : imageBottomCut ? bottomCutFixture
+        : imageSparseBottomCut ? sparseBottomFixture : imageSingleBottomSpot ? singleStripFixture
         : ocrClipped ? rightCutFixture : ocrLeftClipped ? leftCutFixture : fixture, file);
       return file;
     },
@@ -502,6 +516,25 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforePixelBottom, 'bottom-edge source ink must pause before translation');
   manager.clear();
   imageBottomCut = false;
+  imageSparseBottomCut = true;
+  ocrOverride = 'A thin mathematical subscript touches the lower edge although OCR sees a complete equation.';
+  const beforeSparseBottom = providerCalls;
+  await manager.capture();
+  const sparseBottom = cards()[0];
+  await until(phaseIs(sparseBottom, 'review'), 'four dark glyph pixels crossing the bottom edge', 5000);
+  assert.match((await stateOf(sparseBottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforeSparseBottom, 'a thin clipped subscript must stay local until reviewed');
+  manager.clear();
+  imageSparseBottomCut = false;
+  imageSingleBottomSpot = true;
+  ocrOverride = 'A complete source line has only one stray dark strip at the selection boundary.';
+  const beforeSingleStrip = providerCalls;
+  await manager.capture();
+  const singleStrip = cards()[0];
+  await until(phaseIs(singleStrip, 'done'), 'a one-row border artifact must not block reading');
+  assert.equal(providerCalls, beforeSingleStrip + 1, 'one dark bottom strip is insufficient to pause translation');
+  manager.clear();
+  imageSingleBottomSpot = false;
   ocrBottomClipped = true;
   ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
   const beforeBottom = providerCalls;

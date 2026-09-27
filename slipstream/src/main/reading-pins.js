@@ -63,7 +63,10 @@ function captureEdgeInk(imagePath) {
     for (const edge of Object.keys(edges)) {
       const horizontal = edge === 'top' || edge === 'bottom';
       const length = horizontal ? width : height;
-      const minInk = Math.max(6, Math.ceil(length * .004));
+      // A clipped formula subscript can occupy only four dark pixels per
+      // bottom row. Require agreement across two rows below, so a lone pixel
+      // artifact is not enough to pause the reader.
+      const minInk = Math.max(edge === 'bottom' ? 4 : 6, Math.ceil(length * .004));
       let lightStrips = 0, touchingStrips = 0;
       for (let strip = 0; strip < 3; strip++) {
         let light = 0, ink = 0;
