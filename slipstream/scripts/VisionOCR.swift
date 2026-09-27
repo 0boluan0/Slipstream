@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 10
+let OCR_VERSION = 11
 
 import Vision
 import AppKit
@@ -190,7 +190,7 @@ func main() {
         var allText: [String] = []
 
         for observation in observations {
-            let candidates = observation.topCandidates(3)
+            let candidates = observation.topCandidates(5)
             guard let topCandidate = candidates.first else { continue }
 
             let text = topCandidate.string

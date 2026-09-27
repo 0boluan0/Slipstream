@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
-const { createReadingPins, looksLikeClippedProse } = require('../src/main/reading-pins');
+const { createReadingPins, looksLikeClippedProse, suspiciousDimensionToken } = require('../src/main/reading-pins');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
 
@@ -24,6 +24,9 @@ assert.equal(looksLikeClippedProse({ blocks: [{ text: '(4)',
 assert.equal(looksLikeClippedProse({ blocks: [{ text: 'as',
   boundingBox: { x: .08, y: .019, w: .1, h: .05 } }] }, 'the final vector as'), 'bottom',
 'a short unfinished prose line near the bottom must still pause the reader');
+assert.equal(suspiciousDimensionToken('The model receives a YD sequence of embeddings.'), 'YD');
+assert.equal(suspiciousDimensionToken('The model receives a 1D sequence of embeddings.'), null);
+assert.equal(suspiciousDimensionToken('The model receives HD images.'), null);
 const cards = () => BrowserWindow.getAllWindows().filter((window) => window.getTitle() === 'Slipstream · 阅读卡片');
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate, label, timeout = 30000) {
@@ -110,6 +113,7 @@ app.whenReady().then(async () => {
   let ocrOverride = null;
   let ocrProseDisagreement = false;
   let ocrPrimeConflicts = null;
+  let ocrReferenceConflicts = null;
   let ocrDocumentOverride = null;
   let failMatching = '';
   let noTerms = false;
@@ -186,6 +190,7 @@ app.whenReady().then(async () => {
       }
       if (ocrOverride) return { text: ocrOverride, confidence: .99, formulaOcr: formulaOcrOverride || undefined,
         primeReviewConflicts: ocrPrimeConflicts || undefined,
+        referenceReviewConflicts: ocrReferenceConflicts || undefined,
         document: ocrDocumentOverride || undefined,
         proseComparison: ocrProseDisagreement ? { disagree: true, recovered: true } : undefined, blocks: ocrClipped
         ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
@@ -378,6 +383,20 @@ app.whenReady().then(async () => {
   ocrOverride = null;
   ocrPrimeConflicts = null;
   ocrDocumentOverride = null;
+  ocrOverride = 'The standard Transformer receives a YD sequence of embeddings. See Figure I for the model.';
+  ocrReferenceConflicts = [{ source: 'Figure I', alternative: 'Figure 1' }];
+  const callsBeforeReference = providerCalls;
+  await manager.capture();
+  const referenceCard = cards().find((window) => window !== second);
+  await until(phaseIs(referenceCard, 'review'), 'unresolved figure number and dimension review');
+  assert.equal(providerCalls, callsBeforeReference,
+    'unresolved figure number and dimension must not be sent before review');
+  assert.match((await stateOf(referenceCard)).notice, /Figure I[^\n]*Figure 1[^\n]*YD/u,
+    'the card must show the unresolved reference and dimension token');
+  void action(referenceCard, 'close').catch(() => {});
+  await until(() => referenceCard.isDestroyed(), 'close unresolved-reference card');
+  ocrOverride = null;
+  ocrReferenceConflicts = null;
   cancel = true;
   mainWindow.showInactive();
   await manager.capture();
