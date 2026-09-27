@@ -115,6 +115,7 @@ function performOCR(imagePath, { signal, characters = false, padEdges = false } 
           text: cleanOcrText(result.text || ''),
           confidence: result.confidence || 0,
           blocks: result.blocks || [],
+          spellJoinCandidates: result.spellJoinCandidates || [],
         });
       } catch (parseError) {
         finish(reject, new Error(`Failed to parse OCR output: ${parseError.message}`));

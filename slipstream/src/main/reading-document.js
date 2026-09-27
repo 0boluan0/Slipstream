@@ -20,14 +20,16 @@ function knownEnglishWord(word, exact = false) {
   return word.endsWith('s') && englishWords.has(word.slice(0, -1));
 }
 
-function joinProseLine(previous, next, isWord) {
+function joinProseLine(previous, next, isWord, spellJoinCandidates) {
   const end = /([A-Za-z]{2,})-$/u.exec(previous);
   const start = /^([a-z]{2,})(?![A-Za-z])/u.exec(next);
   if (end && start) {
+    const joined = (end[1] + start[1]).toLowerCase();
     if (!/^(?:pre|post|non|anti|self)$/iu.test(end[1])
-      && !(end[1].length >= 4 && start[1].length >= 4
-        && isWord(end[1].toLowerCase(), true) && isWord(start[1].toLowerCase(), true))
-      && isWord((end[1] + start[1]).toLowerCase())) {
+      && (spellJoinCandidates.has(joined)
+        || (!(end[1].length >= 4 && start[1].length >= 4
+          && isWord(end[1].toLowerCase(), true) && isWord(start[1].toLowerCase(), true))
+          && isWord(joined)))) {
       return previous.slice(0, -1) + next;
     }
     return previous + next;
@@ -54,6 +56,8 @@ function readingTextFromOcr(ocr, isWord = knownEnglishWord) {
   // Multiple columns and tables need a human reading-order check.
   if (layoutReview) return { text: ocr.text, layoutReview };
   const paragraphs = [];
+  const spellJoinCandidates = new Set(Array.isArray(ocr.spellJoinCandidates)
+    ? ocr.spellJoinCandidates.filter((word) => typeof word === 'string') : []);
   let paragraph = '';
   let previous;
   for (const line of lines) {
@@ -65,7 +69,7 @@ function readingTextFromOcr(ocr, isWord = knownEnglishWord) {
       || Math.abs(a.h - b.h) > Math.min(a.h, b.h) * .8
       || b.y > a.y + a.h);
     if (newParagraph && paragraph) { paragraphs.push(paragraph); paragraph = ''; }
-    paragraph = paragraph ? joinProseLine(paragraph, text, isWord) : text;
+    paragraph = paragraph ? joinProseLine(paragraph, text, isWord, spellJoinCandidates) : text;
     previous = line;
   }
   if (paragraph) paragraphs.push(paragraph);

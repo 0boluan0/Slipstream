@@ -265,6 +265,16 @@ async function main() {
   assert.equal(readingTextFromOcr({ text: wrapped.join('\n'), blocks: wrapped.map((line, index) => block(line, .1, .9 - index * .06)) }, (word) => words.has(word)).text,
     'Documentation in education reports performance by phenotypic groups and procedures. We derive a result by retraining. The closed-form and pre-trained baselines remain distinct.',
     'only verified whole words should lose a visual line-break hyphen');
+  const specialist = ['weighted quan-', 'tile sketch and an end-', 'to-end system.'];
+  const oldDictionary = new Set(['quan', 'tile', 'end', 'to']);
+  const specialistOcr = { text: specialist.join('\n'),
+    blocks: specialist.map((line, index) => block(line, .1, .9 - index * .06)) };
+  assert.equal(readingTextFromOcr(specialistOcr, (word) => oldDictionary.has(word)).text,
+    'weighted quan-tile sketch and an end-to-end system.');
+  assert.equal(readingTextFromOcr({ ...specialistOcr, spellJoinCandidates: ['quantile'] },
+    (word) => oldDictionary.has(word)).text,
+  'weighted quantile sketch and an end-to-end system.',
+  'an English spelling corroboration can recover a specialist word missing from the legacy list without flattening a real hyphen');
   assert.equal(readingTextFromOcr({ text: 'A closed-\nform method.', blocks: [block('A closed-', .1, .8), block('form method.', .1, .6)] }, (word) => words.has(word)).text,
     'A closed-\n\nform method.', 'a new paragraph must not be joined across its gap');
   assert.equal(readingTextFromOcr({ text: 'left\nright', blocks: [block('left', .05, .8, .35), block('right', .55, .8, .35)] }).layoutReview, true);

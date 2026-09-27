@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 8
+let OCR_VERSION = 9
 
 import Vision
 import AppKit
@@ -76,12 +76,14 @@ struct Output: Codable {
     let text: String?
     let confidence: Double?
     let blocks: [Block]?
+    let spellJoinCandidates: [String]?
     let error: String?
 
-    init(text: String, confidence: Double, blocks: [Block]) {
+    init(text: String, confidence: Double, blocks: [Block], spellJoinCandidates: [String]) {
         self.text = text
         self.confidence = confidence
         self.blocks = blocks
+        self.spellJoinCandidates = spellJoinCandidates
         self.error = nil
     }
 
@@ -89,8 +91,32 @@ struct Output: Codable {
         self.text = nil
         self.confidence = nil
         self.blocks = nil
+        self.spellJoinCandidates = nil
         self.error = error
     }
+}
+
+// The system word list used by the reader omits some academic words (such as
+// "quantile"). Only corroborate a printed line-break join when the English
+// spell checker knows the whole word but rejects at least one fragment.
+func spellJoinCandidates(_ blocks: [Block]) -> [String] {
+    let checker = NSSpellChecker.shared
+    func known(_ word: String) -> Bool {
+        checker.checkSpelling(of: word, startingAt: 0, language: "en_US", wrap: false,
+            inSpellDocumentWithTag: 0, wordCount: nil).location == NSNotFound
+    }
+    var candidates = Set<String>()
+    for pair in zip(blocks, blocks.dropFirst()) {
+        let previous = pair.0.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let next = pair.1.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let leftRange = previous.range(of: #"[A-Za-z]{2,}-$"#, options: .regularExpression),
+              let rightRange = next.range(of: #"^[a-z]{2,}(?![A-Za-z])"#, options: .regularExpression) else { continue }
+        let left = String(previous[leftRange].dropLast()).lowercased()
+        let right = String(next[rightRange]).lowercased()
+        let joined = left + right
+        if known(joined) && (!known(left) || !known(right)) { candidates.insert(joined) }
+    }
+    return candidates.sorted()
 }
 
 // MARK: - Entry point
@@ -198,7 +224,8 @@ func main() {
         let output = Output(
             text: allText.joined(separator: "\n"),
             confidence: avgConfidence,
-            blocks: blocks
+            blocks: blocks,
+            spellJoinCandidates: spellJoinCandidates(blocks)
         )
         print(encodeJSON(output))
     }
