@@ -545,6 +545,17 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(left)).notice, /左侧可能截断/);
   assert.equal(providerCalls, beforeLeft, 'left-cropped prose must stay local until reviewed');
   manager.clear();
+  ocrOverride = '2.0\nFigure 2.1 Linear regression model. For\n1.0- ear regression model defines a family of input/output relations';
+  ocrDocumentOverride = { text: ocrOverride, layoutReview: true };
+  const beforeFigureLayout = providerCalls;
+  await manager.capture();
+  const figureLayout = cards()[0];
+  await until(phaseIs(figureLayout, 'review'), 'clipped figure and caption layout review');
+  assert.match((await stateOf(figureLayout)).notice, /左侧可能截断.*并排的图与图注/u,
+    'a clipped figure must also surface the independent layout warning');
+  assert.equal(providerCalls, beforeFigureLayout);
+  manager.clear();
+  ocrDocumentOverride = null;
   ocrLeftClipped = false;
   ocrLeftPadded = true;
   ocrOverride = 'Both complete lines have room at the left edge.\nTheir content is fully visible.';

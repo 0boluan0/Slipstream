@@ -926,6 +926,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
         const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
+        const layoutHint = document.layoutReview
+          ? ' 截图还可能包含并排的图与图注、多栏或表格；请核对阅读顺序，必要时只框选图注或其中一栏。' : '';
         const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
         const ambiguousAiAl = looksLikeAiAlConfusion(document.text);
         const nameConflict = conflictingProperNames(document.text);
@@ -973,10 +975,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
             : ambiguousAiAl ? '同一选区出现 AI 和 Al；大写 I 与小写 l 可能被识错。请对照截图核对后再翻译。'
             : nameConflict ? `同一选区出现 ${nameConflict[0]} 和 ${nameConflict[1]} 两种近似专名。请对照截图核对拼写，确认前不会发送文字。`
-            : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
-            : clippedProse === 'left' ? `选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
-            : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
-            : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${otherEdgeHint}${layoutHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'left' ? `选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。${otherEdgeHint}${layoutHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${otherEdgeHint}${layoutHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${otherEdgeHint}${layoutHint}${brokenGroupHint}${spellingHint}`
             : leadingTail ? '这段原文似乎从上一句的尾部开始。请对照截图核对开头，必要时从完整句子重新框选。'
             : timesGlyph ? `正文里的“×”后面直接接谓语，可能把字母 x 识成乘号。请对照原图校正，确认前不会发送文字。${unfinishedTail ? '末句也可能还在截图外或下一页。' : ''}`
             : cyrillicGlyph ? `正文中的“${cyrillicGlyph.glyph}”是西里尔字母，形似英文“${cyrillicGlyph.latin}”，可能是识别错误。请对照原图校正，确认前不会发送文字。${unfinishedTail ? '末句也可能还在截图外或下一页。' : ''}`
@@ -993,7 +995,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : unrenderableFormula ? `有 ${localFormula.unrenderable} 处公式暂时无法排版。请对照截图校正 LaTeX，确认前不会发送文字。`
             : repairedCaseDelimiter ? '分段公式缺少排版用的右定界符，已补上不可见定界符。请对照截图核对后再翻译。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
-            : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
+            : document.layoutReview ? '这张截图可能包含并排的图与图注、多栏或表格。请对照截图确认阅读顺序，必要时只框选图注或其中一栏。'
             : document.interiorUnresolved ? '两次本地识别对段落中间的文字有分歧，局部复读仍无法确认。请对照截图补齐文字，或重新框选这一段。'
             : document.interiorRecovered ? '段落中间有漏识别的正文，已在原图局部复读后补齐。请对照截图核对文字和顺序。'
             : document.rowRecovered ? '正文识别有冲突，已结合原图中的独立读数修复。请对照截图核对文字和顺序。'
