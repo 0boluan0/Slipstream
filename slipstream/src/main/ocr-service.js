@@ -372,6 +372,50 @@ async function recheckAmbiguousProseZero(imagePath, original, masked, temporary,
     ? { ...original, blocks, verifiedGlyphConflicts } : original;
 }
 
+async function recheckLineInitialZ(imagePath, original, padded, temporary,
+  { signal, recognize = performOCR } = {}) {
+  const source = original?.blocks || [], alternatives = padded?.blocks || [];
+  if (!source.length || !alternatives.length) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const blocks = source.slice(), verifiedGlyphConflicts = [...(original?.verifiedGlyphConflicts || [])];
+  for (let row = 0, checked = 0; row < blocks.length && checked < 2; row++) {
+    const block = blocks[row], glyph = block.characters?.[0], box = block.boundingBox;
+    if (block.confidence < .9 || !/^7[,;]\s+[A-Za-z]{3,}/u.test(block.text)
+      || block.characters?.length !== Array.from(block.text).length
+      || !glyph?.boundingBox?.w || !glyph.boundingBox.h || !box?.h) continue;
+    const expected = `z${block.text.slice(1)}`;
+    const sameRow = alternatives.filter((candidate) => candidate.confidence >= .9
+      && candidate.text === expected && candidate.boundingBox
+      && Math.abs(candidate.boundingBox.x - box.x) < .025
+      && Math.abs(candidate.boundingBox.y + candidate.boundingBox.h / 2 - box.y - box.h / 2)
+        < Math.min(candidate.boundingBox.h, box.h) * .6);
+    if (sameRow.length !== 1) continue;
+    checked++;
+    const x = Math.max(0, Math.floor(glyph.boundingBox.x * size.width) - 12);
+    const y = Math.max(0, Math.floor((1 - box.y - box.h) * size.height) - 3);
+    const width = Math.min(size.width - x, 230);
+    const height = Math.min(size.height - y, Math.ceil(box.h * size.height) + 6);
+    if (width < 100 || height < 18) continue;
+    const crop = image.crop({ x, y, width, height }).resize({ width: width * 2, height: height * 2, quality: 'best' });
+    const cropPath = path.join(temporary, `line-initial-z-${row}.png`);
+    await fs.writeFile(cropPath, crop.toPNG(), { mode: 0o600 });
+    const local = await recognize(cropPath, { signal }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    const prefix = expected.slice(0, 12).replace(/\s+/gu, ' ').toLowerCase();
+    if (!(local?.blocks || []).some((candidate) => candidate.confidence >= .9
+      && candidate.text.replace(/\s+/gu, ' ').toLowerCase().startsWith(prefix))) continue;
+    blocks[row] = { ...block, text: expected,
+      characters: block.characters.map((char, index) => index === 0 ? { ...char, text: 'z' } : char) };
+    verifiedGlyphConflicts.push({ source: '7', alternative: 'z' });
+  }
+  return verifiedGlyphConflicts.length > (original?.verifiedGlyphConflicts?.length || 0)
+    ? { ...original, blocks, text: cleanOcrText(blocks.map((block) => block.text).join('\n')),
+      verifiedGlyphConflicts } : original;
+}
+
 function withoutClippedBottomRows(ocr, size, cutoffY) {
   if (!ocr || cutoffY === null) return ocr;
   const blocks = (ocr.blocks || []).filter((block) => {
@@ -437,12 +481,13 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
     const quoted = await recheckEmptyEdgeQuote(imagePath, corroborated, temporary, { signal });
     const zeroChecked = await recheckAmbiguousProseZero(imagePath, quoted, prose, temporary, { signal });
-    const interior = await verifyMissingInteriorRows(imagePath, zeroChecked, edges, { signal });
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, zeroChecked, edges, interior.verified);
+    const symbolChecked = await recheckLineInitialZ(imagePath, zeroChecked, edges, temporary, { signal });
+    const interior = await verifyMissingInteriorRows(imagePath, symbolChecked, edges, { signal });
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, symbolChecked, edges, interior.verified);
     document.interiorUnresolved = interior.unresolved;
     return { ...prose, text: document.text, document,
       primeReviewConflicts: findPrimeDefinitionConflicts(original, document.text),
-      referenceReviewConflicts: zeroChecked.referenceReviewConflicts || [],
+      referenceReviewConflicts: symbolChecked.referenceReviewConflicts || [],
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
         clippedBottom,
@@ -499,5 +544,6 @@ module.exports = {
   recheckRightEdgeWord,
   recheckEmptyEdgeQuote,
   recheckAmbiguousProseZero,
+  recheckLineInitialZ,
   cleanup,
 };

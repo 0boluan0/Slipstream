@@ -251,7 +251,8 @@ function characterCandidates(ocr, size, formulas) {
       // by just under the area threshold. Its center still identifies it as
       // the same printed glyph, so avoid emitting the formula twice.
       const centerX = box.x + box.w / 2, centerY = box.y + box.h / 2;
-      if (box.w < 8 || box.h < 10 || box.w > box.h * (tuple ? 7 : call ? 3.5 : 2) || box.h > size.height * .15
+      if (box.w < 8 || box.h < 10 || box.w > box.h * (tuple ? 7 : call ? 3.5 : 2)
+        || box.h > size.height * (placeholder ? .17 : .15)
         || formulas.some((formula) => overlap(formula, box) > .65
           || (centerX >= formula.x && centerX <= formula.x + formula.w
             && centerY >= formula.y && centerY <= formula.y + formula.h))) continue;
