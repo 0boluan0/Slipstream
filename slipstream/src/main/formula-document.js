@@ -115,9 +115,22 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       || tokenCoverage(block.text, padded.text) < .55 || padded.text === block.text) return null;
     return padded;
   }
+  function confirmedLossLetterRow(block) {
+    // Serif italic l can look like capital I to Vision. A padded reading of
+    // the same complete sentence and the displayed loss equation must agree
+    // before changing that one character; retain the normal row-review flag.
+    if (!block.boundingBox || block.confidence < .9
+      || !/\bHere I is a differentiable convex loss function\b/u.test(block.text)
+      || !formulas.some(({ latex }) => /(?:^|[\s=])l\s*\(/u.test(latex))) return null;
+    const corrected = block.text.replace('Here I is', 'Here l is');
+    return (edgeProse?.blocks || []).find((candidate) => samePrintedRow(block, candidate)
+      && candidate.text === corrected) || null;
+  }
   let rowRecovered = verifiedInterior.length;
   const repairedRows = new Set();
   const anchored = [...recoveredLeading, ...verifiedInterior, ...sourceBlocks].flatMap((block) => {
+    const lossLetter = confirmedLossLetterRow(block);
+    if (lossLetter) { rowRecovered++; return [lossLetter]; }
     const confirmed = confirmedSourceRow(block);
     if (confirmed) {
       rowRecovered++;
@@ -299,13 +312,17 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const equationLabel = equationLabels.get(formula);
     let prosePrefix = '';
     // MFR sometimes encloses the prose connector "where" with the equation
-    // beneath it. Restore the word only when the independent original-image
-    // text pass reads it at the start of that same printed region.
+    // beneath it. Keep its exact reading as prose. Vision may omit this whole
+    // math row; without corroboration, mark the formula for reader review.
     const wherePrefix = latex.match(/^\\(?:mathrm|text)\s*\{\s*w\s*h\s*e\s*r\s*e\s*\}\s*(?:\\(?:[,;]|\s)\s*)?([\s\S]+)$/iu);
-    const sourceWhere = wherePrefix && sourceBlocks.some((block) => block.confidence >= .9
+    const sourceWhere = wherePrefix && [...sourceBlocks, ...(edgeProse?.blocks || [])].some((block) => block.confidence >= .9
       && /^\s*where\b/iu.test(block.text) && block.boundingBox
       && intersects(formula, pixelBox(block.boundingBox)));
-    if (sourceWhere) { prosePrefix = 'where '; latex = wherePrefix[1].trim(); }
+    const contraryWhere = wherePrefix && sourceBlocks.some((block) => block.confidence >= .9
+      && /^\s*[A-Za-z]{4,}\b/u.test(block.text) && !/^\s*where\b/iu.test(block.text)
+      && block.boundingBox && intersects(formula, pixelBox(block.boundingBox)));
+    const separatedWhere = Boolean(wherePrefix && /=/u.test(wherePrefix[1]) && !contraryWhere);
+    if (separatedWhere) { prosePrefix = 'where '; latex = wherePrefix[1].trim(); }
     if (!formula.display && !annotated) {
       const abbreviation = latex.match(/^i\s*\.\s*e\s*\.\s*,\s*(?:\\[,;]\s*)?([\s\S]+)$/iu);
       const observed = removed.filter((word) => intersects(formula, word)).sort((a, b) => a.x - b.x)
@@ -323,12 +340,13 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       ? latex.match(/^([\s\S]+?)\s*\\(?:quad|qquad)\s*\\(?:mathrm|text)\s*\{\s*a\s*n\s*d\s*\}\s*\\(?:quad|qquad)\s*([\s\S]+)$/iu)
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
-    items.push({ ...formula, display: sourceWhere ? false : formula.display, math: !ordinal, punctuation,
+    items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
       reviewRecognition: repairedEvaluationBar || correctedIota || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
-        || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex),
+        || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
+        || separatedWhere && !sourceWhere,
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`
-          : formula.display && !sourceWhere ? `$$${latex}$$` : `$${latex}$`) + punctuation });
+          : formula.display && !separatedWhere ? `$$${latex}$$` : `$${latex}$`) + punctuation });
   }
   for (const word of words(masked)) {
     if (formulas.some((f) => intersects(f, word)) || items.some((item) => intersects(item, word))) continue;

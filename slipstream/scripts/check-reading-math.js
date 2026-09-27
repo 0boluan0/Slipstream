@@ -140,11 +140,27 @@ async function main() {
     String.raw`where $\Omega ( f ) = \gamma T + \frac { 1 } { 2 } \lambda { \| w \| } ^ { 2 }$`,
     'a source-confirmed where stays prose while the regularizer remains an intact math span');
   assert.equal(whereDocument.formulaCount, 1);
-  assert.match(mergeFormulaDocument({ blocks: [] }, [regularizer], size).text, /\\mathrm.*w h e r e/u,
-    'without source confirmation even a likely connector is not moved out of math');
+  const missingWhere = mergeFormulaDocument({ blocks: [] }, [regularizer], size);
+  assert.equal(missingWhere.text, whereDocument.text,
+    'an exact where before an equation remains readable when Vision omits that whole row');
+  assert.equal(missingWhere.uncertainFormulaCount, 1,
+    'a connector without independent text corroboration requires math review');
   assert.match(mergeFormulaDocument({ blocks: [] }, [regularizer], size,
     { blocks: [{ ...whereSource.blocks[0], text: 'somewhere Ω(f) = γT', confidence: 1 }] }).text,
   /\\mathrm.*w h e r e/u, 'a different source word cannot confirm a prose connector');
+  const lossContext = { x: 10, y: 40, w: 55, h: 20, display: true, confidence: .95,
+    latex: String.raw`\mathcal L=\sum_i l(\hat y_i,y_i)` };
+  const lossSentence = 'Here I is a differentiable convex loss function that measures predictions.';
+  const lossBlock = { text: lossSentence, confidence: 1,
+    boundingBox: { x: .1, y: .1, w: .8, h: .2 } };
+  const lossRestored = mergeFormulaDocument({ blocks: [] }, [lossContext], size,
+    { blocks: [lossBlock] }, { blocks: [{ ...lossBlock, text: lossSentence.replace('Here I is', 'Here l is') }] });
+  assert.match(lossRestored.text, /Here l is a differentiable convex loss function/u);
+  assert.equal(lossRestored.rowRecovered, 1,
+    'two OCR layouts and the loss equation restore an ambiguous serif l with review');
+  assert.match(mergeFormulaDocument({ blocks: [] }, [lossContext], size,
+    { blocks: [lossBlock] }).text, /Here I is a differentiable/u,
+  'one OCR reading cannot silently change a mathematical letter');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [formula], size,
     { blocks: [word('x.', 10, 24), word('•', 36, 5), word('label', 45, 30)] }).text, '$x$. • label',
   'a separate source bullet must survive punctuation deduplication');
