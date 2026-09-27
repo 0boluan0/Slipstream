@@ -251,8 +251,13 @@ function characterCandidates(ocr, size, formulas) {
       // by just under the area threshold. Its center still identifies it as
       // the same printed glyph, so avoid emitting the formula twice.
       const centerX = box.x + box.w / 2, centerY = box.y + box.h / 2;
+      // A single-line screenshot can be only 60px tall. Its printed omega
+      // occupies most of that height when Vision calls it a standalone w.
+      // Recheck this one ambiguous glyph at its pixels, with review required.
+      const maxGlyphHeight = Math.max(size.height * (placeholder ? .17 : .15),
+        chars[i] === 'w' && size.height < 120 ? 48 : 0);
       if (box.w < 8 || box.h < 10 || box.w > box.h * (tuple ? 7 : call ? 3.5 : 2)
-        || box.h > size.height * (placeholder ? .17 : .15)
+        || box.h > maxGlyphHeight
         || formulas.some((formula) => overlap(formula, box) > .65
           || (centerX >= formula.x && centerX <= formula.x + formula.w
             && centerY >= formula.y && centerY <= formula.y + formula.h))) continue;
@@ -260,6 +265,7 @@ function characterCandidates(ocr, size, formulas) {
       // to hide a missed math glyph than an English article. Check its pixels
       // first so slower machines do not exhaust the bounded recheck deadline.
       candidates.push({ ...box, sourceToken: call?.token || null, tupleLetters: tuple?.letters || null,
+        sourceGlyph: chars[i],
         priority: splitGlyph ? -2 : placeholder || tuple ? -1 : call || block.text.length <= 45 ? 0 : 1,
         rowLength: block.text.length });
     }
@@ -633,7 +639,7 @@ function createLocalFormulaOcr(modelDir) {
           || Math.min(...readings.map(({ confidence }) => confidence)) < minimum
           || Math.max(...readings.map(({ confidence }) => confidence)) < maximum) continue;
         supplements.push({ ...box, latex: atoms[0], confidence: Math.min(...readings.map(({ confidence }) => confidence)),
-          score: .7, display: false, reviewSymbol: Boolean(box.tupleLetters) });
+          score: .7, display: false, reviewSymbol: Boolean(box.tupleLetters || box.sourceGlyph === 'w') });
       }
       if (!supplements.length) return { ...detected, formulas: baseline };
       const formulas = [...baseline, ...supplements].sort((a, b) => a.y - b.y || a.x - b.x);
