@@ -72,6 +72,14 @@ async function main() {
     'a corrected mathematical subject must require reader review before translation');
   assert.deepEqual(correctedSymbol.proseSymbolConflicts,
     [{ source: 'I', alternative: 'L' }], 'the source disagreement must be explained in review');
+  const numericZero = symbolLine('The eigenvalue 0 is simple');
+  const correctedDigit = mergeFormulaDocument({ blocks: [numericZero] }, [], size,
+    { blocks: [numericZero], verifiedGlyphConflicts: [{ source: 'O', alternative: '0' }] });
+  assert.match(correctedDigit.text, /eigenvalue 0 is/u);
+  assert.equal(correctedDigit.rowRecovered, 1,
+    'a pixel-confirmed O/0 correction must pause for reader review');
+  assert.deepEqual(correctedDigit.proseSymbolConflicts, [{ source: 'O', alternative: '0' }],
+    'the printed O/0 disagreement must reach the review card');
   const unconfirmedSymbol = mergeFormulaDocument({ blocks: [matrixI] }, [], size,
     { blocks: [matrixI] }, { blocks: [matrixL] });
   assert.match(unconfirmedSymbol.text, /The matrix I satisfies/u,

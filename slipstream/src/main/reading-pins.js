@@ -904,7 +904,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               ? '两次本地识别对正文有分歧，已选较完整的候选。请对照截图核对后再翻译。'
               : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
             : spellingConflict ? `两次本地识别对“${spellingConflict.source}”与“${spellingConflict.alternative}”有分歧。请对照截图核对拼写，确认前不会发送文字。`
-            : symbolConflict ? `单字母“${symbolConflict.source}”与“${symbolConflict.alternative}”的识别有分歧，已按另外两次一致的读数改为“${symbolConflict.alternative}”。请对照截图核对，确认前不会发送文字。`
+            : symbolConflict ? `字形“${symbolConflict.source}”与“${symbolConflict.alternative}”的识别有分歧，已按同一位置的其他读数改为“${symbolConflict.alternative}”。请对照截图核对，确认前不会发送文字。`
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
             : document.interiorUnresolved ? '两次本地识别对段落中间的文字有分歧，局部复读仍无法确认。请对照截图补齐文字，或重新框选这一段。'

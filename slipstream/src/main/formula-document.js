@@ -208,7 +208,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   const sourceLetters = standaloneLetters({ blocks: anchored });
   const paddedLetters = standaloneLetters(edgeProse);
   const maskedLetters = standaloneLetters(masked);
-  const proseSymbolConflicts = [];
+  const proseSymbolConflicts = [...(original?.verifiedGlyphConflicts || [])];
   const correctedLetters = new Map();
   const sameGlyph = (source, candidate) => intersects(source, candidate)
     && Math.abs(source.x + source.w / 2 - candidate.x - candidate.w / 2) < Math.max(source.w, candidate.w) * .45
@@ -223,7 +223,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     correctedLetters.set(word, padded[0].text);
     proseSymbolConflicts.push({ source: source.text, alternative: padded[0].text });
   }
-  rowRecovered += correctedLetters.size;
+  rowRecovered += correctedLetters.size + (original?.verifiedGlyphConflicts?.length || 0);
   function corroboratedIotaAsLatin(formula, latex) {
     // The character recheck can read an italic loss variable l as Greek iota.
     // Two independently laid-out Latin readings justify l, still with review.

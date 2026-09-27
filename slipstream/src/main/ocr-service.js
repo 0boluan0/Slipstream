@@ -268,6 +268,73 @@ async function recheckEmptyEdgeQuote(imagePath, original, temporary, { signal, r
   return { ...original, blocks };
 }
 
+async function recheckAmbiguousProseZero(imagePath, original, masked, temporary,
+  { signal, recognize = performOCR } = {}) {
+  const source = original?.blocks || [], comparison = masked?.blocks || [];
+  if (!source.length || !comparison.length) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const box = (char) => ({ x: char.boundingBox.x * size.width,
+    y: (1 - char.boundingBox.y - char.boundingBox.h) * size.height,
+    w: char.boundingBox.w * size.width, h: char.boundingBox.h * size.height });
+  const sameGlyph = (a, b) => Math.abs(a.x + a.w / 2 - b.x - b.w / 2) < Math.max(a.w, b.w) * .45
+    && Math.abs(a.y + a.h / 2 - b.y - b.h / 2) < Math.max(a.h, b.h) * .35;
+  const normalize = (value) => value.replace(/\s+/gu, ' ').trim().toLowerCase();
+  const blocks = source.slice(), verifiedGlyphConflicts = [];
+  let checked = 0;
+  for (let row = 0; row < blocks.length && checked < 3; row++) {
+    const block = blocks[row], chars = block.characters || [], rowText = Array.from(block.text);
+    if (block.confidence < .9 || chars.length !== rowText.length) continue;
+    for (let index = 1; index < chars.length - 1 && checked < 3; index++) {
+      const char = chars[index];
+      if (!/^[Oo]$/u.test(char.text) || !/\W/u.test(chars[index - 1].text)
+        || !/\W/u.test(chars[index + 1].text) || !char.boundingBox?.w || !char.boundingBox?.h) continue;
+      const before = rowText.slice(Math.max(0, index - 8), index).join('');
+      const after = rowText.slice(index + 1, index + 7).join('');
+      if (before.trim().length < 5 || after.trim().length < 2) continue;
+      const printed = box(char);
+      const matches = comparison.flatMap((candidate) => {
+        const candidateText = Array.from(candidate.text);
+        if (candidate.confidence < .9 || candidate.characters?.length !== candidateText.length) return [];
+        return candidate.characters.flatMap((glyph, i) => {
+          if (glyph.text !== '0' || !glyph.boundingBox?.w || !glyph.boundingBox?.h
+            || !sameGlyph(printed, box(glyph))
+            || !normalize(candidateText.slice(Math.max(0, i - Array.from(before).length), i).join('')).endsWith(normalize(before))
+            || !normalize(candidateText.slice(i + 1, i + 1 + Array.from(after).length).join('')).startsWith(normalize(after))) return [];
+          return [glyph];
+        });
+      });
+      if (matches.length !== 1) continue;
+      checked++;
+      const expected = normalize(before + '0' + after);
+      let confirmed = true;
+      for (const [left, right] of [[260, 260], [350, 350]]) {
+        const x = Math.max(0, Math.floor(printed.x) - left);
+        const edge = Math.min(size.width, Math.ceil(printed.x + printed.w) + right);
+        const y = Math.max(0, Math.floor(printed.y) - 20);
+        const bottom = Math.min(size.height, Math.ceil(printed.y + printed.h) + 20);
+        if (edge - x < 100 || bottom - y < 20) { confirmed = false; break; }
+        const crop = path.join(temporary, `prose-zero-${row}-${index}-${left}.png`);
+        await fs.writeFile(crop, image.crop({ x, y, width: edge - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+        const result = await recognize(crop, { signal }).catch((error) => {
+          if (signal?.aborted || error?.isCancellation) throw error;
+          return null;
+        });
+        const readings = result?.blocks?.length ? result.blocks : [result];
+        if (!readings.some((entry) => entry?.confidence >= .9 && normalize(entry.text || '').includes(expected))) {
+          confirmed = false; break;
+        }
+      }
+      if (!confirmed) continue;
+      blocks[row] = { ...block, text: [...rowText.slice(0, index), '0', ...rowText.slice(index + 1)].join(''),
+        characters: chars.map((entry, i) => i === index ? { ...entry, text: '0' } : entry) };
+      verifiedGlyphConflicts.push({ source: char.text, alternative: '0' });
+      break;
+    }
+  }
+  return verifiedGlyphConflicts.length ? { ...original, blocks, verifiedGlyphConflicts } : original;
+}
+
 function withoutClippedBottomRows(ocr, size, cutoffY) {
   if (!ocr || cutoffY === null) return ocr;
   const blocks = (ocr.blocks || []).filter((block) => {
@@ -331,8 +398,9 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     const references = await recheckReferenceOne(imagePath, original, edges, temporary, { signal });
     const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
     const quoted = await recheckEmptyEdgeQuote(imagePath, corroborated, temporary, { signal });
-    const interior = await verifyMissingInteriorRows(imagePath, quoted, edges, { signal });
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, quoted, edges, interior.verified);
+    const zeroChecked = await recheckAmbiguousProseZero(imagePath, quoted, prose, temporary, { signal });
+    const interior = await verifyMissingInteriorRows(imagePath, zeroChecked, edges, { signal });
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, zeroChecked, edges, interior.verified);
     document.interiorUnresolved = interior.unresolved;
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
@@ -387,5 +455,6 @@ module.exports = {
   recheckReferenceOne,
   recheckRightEdgeWord,
   recheckEmptyEdgeQuote,
+  recheckAmbiguousProseZero,
   cleanup,
 };
