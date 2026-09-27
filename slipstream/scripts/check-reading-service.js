@@ -123,6 +123,48 @@ async function main() {
   const orthogonal = createReadingProcessor(async () => JSON.stringify({ translation: '正交向量。', terms: [] }));
   assert.equal((await orthogonal({ text: 'Orthogonal vectors.', withTerms: true,
     settingsSnapshot: settings })).translation, '正交向量。', 'orthogonal alone must remain valid');
+  const roleSource = String.raw`We predict the training outputs $\mathbf { y } _ { i }$ from the training inputs $\mathbf { x } _ { i }$.`;
+  const swappedRoles = String.raw`从训练输入 $\mathbf { y } _ { i }$ 预测训练输出 $\mathbf { x } _ { i }$。`;
+  const correctRoles = String.raw`根据训练输入 $\mathbf { x } _ { i }$ 预测训练输出 $\mathbf { y } _ { i }$。`;
+  let roleCalls = 0;
+  let earlyRoleTranslation;
+  const repairedRoles = createReadingProcessor(async (...args) => {
+    roleCalls += 1;
+    if (roleCalls === 2) {
+      assert.match(args[3], /explicit input\/output label/);
+      assert.match(args[3], /y_i","output/);
+      assert.match(args[3], /x_i","input/);
+    }
+    return JSON.stringify({ translation: roleCalls === 1 ? swappedRoles : correctRoles, terms: [] });
+  });
+  assert.equal((await repairedRoles({ text: roleSource, withTerms: true, settingsSnapshot: settings,
+    onTranslation: (value) => { earlyRoleTranslation = value.translation; } })).translation, correctRoles);
+  assert.equal(roleCalls, 2, 'a source-explicit symbol-role reversal receives one bounded repair');
+  assert.equal(earlyRoleTranslation, undefined, 'the wrong translation must not flash before repair');
+  let persistentRoleCalls = 0;
+  const persistentRoles = createReadingProcessor(async () => {
+    persistentRoleCalls += 1;
+    return JSON.stringify({ translation: swappedRoles, terms: [] });
+  });
+  await assert.rejects(persistentRoles({ text: roleSource, withTerms: true, settingsSnapshot: settings }),
+    /reading-symbol-role-mismatch/, 'a repeated reversal must never appear as a completed paragraph');
+  assert.equal(persistentRoleCalls, 2);
+  const roleFree = createReadingProcessor(async () => swappedRoles);
+  await assert.rejects(roleFree({ text: roleSource, settingsSnapshot: { activeBackend: 'free_translate' } }),
+    /reading-symbol-role-mismatch/, 'a backend without a repair path must still block an explicit reversal');
+  const rolePlain = createReadingProcessor(async (...args) => args[3].includes('previous draft') ? correctRoles : swappedRoles);
+  assert.equal((await rolePlain({ text: roleSource, settingsSnapshot: settings })).translation, correctRoles,
+    'the plain model translation path must protect source-explicit roles too');
+  const roleNeutral = createReadingProcessor(async () => JSON.stringify({
+    translation: String.raw`由 $\mathbf { x } _ { i }$ 预测 $\mathbf { y } _ { i }$。`, terms: [],
+  }));
+  assert.equal((await roleNeutral({ text: roleSource, withTerms: true,
+    settingsSnapshot: settings })).translation.includes('预测'), true,
+  'a translation that leaves labels implicit must not be rejected by guesswork');
+  const roleUnstated = createReadingProcessor(async () => JSON.stringify({ translation: swappedRoles, terms: [] }));
+  assert.equal((await roleUnstated({ text: String.raw`Compare $\mathbf { y } _ { i }$ with $\mathbf { x } _ { i }$.`,
+    withTerms: true, settingsSnapshot: settings })).translation, swappedRoles,
+  'the guard must not infer symbol roles from conventional names without explicit source labels');
   const explained = await process({ text: source, kind: 'explain', settingsSnapshot: settings });
   assert.equal(explained.explanations.terms.length, 1, 'unmatched quotations must be removed');
   assert.equal(calls.length, 2);

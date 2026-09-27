@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
-const { createReadingPins, looksLikeClippedProse, suspiciousDimensionToken, ambiguousMultiplierToken } = require('../src/main/reading-pins');
+const { createReadingPins, looksLikeClippedProse, looksLikeUnfinishedTail, suspiciousTimesGlyph, suspiciousCyrillicGlyph,
+  suspiciousDimensionToken, ambiguousMultiplierToken } = require('../src/main/reading-pins');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
 
@@ -32,6 +33,20 @@ assert.equal(ambiguousMultiplierToken('A 3x speedup was observed.'), '3x');
 assert.equal(ambiguousMultiplierToken('The kernel is up to 3× faster on A100 GPUs.'), null);
 assert.equal(ambiguousMultiplierToken('The 3X model uses a different kernel.'), null);
 assert.equal(ambiguousMultiplierToken('We multiply the 3X3 matrix.'), null);
+assert.equal(looksLikeUnfinishedTail('For example, if we wanted to predict the 3D position and orientation y'), false,
+  'a short standalone fragment alone is not enough to force review');
+assert.equal(looksLikeUnfinishedTail('The generative model uses prior knowledge about how the data were created. For example, if we wanted to predict the 3D position and orientation y'), true,
+  'a long capture ending in an unfinished symbol-led sentence needs a boundary check');
+assert.equal(looksLikeUnfinishedTail('The generative model uses prior knowledge about how the data were created.'), false);
+assert.equal(suspiciousTimesGlyph('The real-world measurements × are computed as a function of y.'), true,
+  'a multiplication sign with no right operand before a verb needs review');
+assert.equal(suspiciousTimesGlyph('The kernel is 3× faster than before.'), false);
+assert.equal(suspiciousTimesGlyph('The matrix A × B is multiplied by C.'), false);
+assert.deepEqual(suspiciousCyrillicGlyph('The real-world measurements x are computed as a function of the output у.'),
+  { glyph: 'у', latin: 'y' }, 'a visually confusable variable in English prose needs review');
+assert.equal(suspiciousCyrillicGlyph('The formula $у=x$ is quoted verbatim.'), null,
+  'a character inside an explicit math span is handled by math review');
+assert.equal(suspiciousCyrillicGlyph('We discuss Russian text in Cyrillic.'), null);
 const cards = () => BrowserWindow.getAllWindows().filter((window) => window.getTitle() === 'Slipstream · 阅读卡片');
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate, label, timeout = 30000) {
@@ -644,6 +659,30 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeShortBottom);
   manager.clear();
   ocrBottomShortBlock = false;
+  ocrOverride = 'The generative model uses prior knowledge about how the data were created. For example, if we wanted to predict the 3D position and orientation y';
+  const beforeUnfinishedTail = providerCalls;
+  await manager.capture();
+  const unfinishedTail = cards()[0];
+  await until(phaseIs(unfinishedTail, 'review'), 'unfinished sentence away from the image edge');
+  assert.match((await stateOf(unfinishedTail)).notice, /末句.*下一页/);
+  assert.equal(providerCalls, beforeUnfinishedTail);
+  manager.clear();
+  ocrOverride = 'The real-world measurements × are computed as a function of the output y.';
+  const beforeTimesGlyph = providerCalls;
+  await manager.capture();
+  const timesGlyph = cards()[0];
+  await until(phaseIs(timesGlyph, 'review'), 'multiplication glyph in prose');
+  assert.match((await stateOf(timesGlyph)).notice, /字母 x 识成乘号/);
+  assert.equal(providerCalls, beforeTimesGlyph);
+  manager.clear();
+  ocrOverride = 'The real-world measurements x are computed as a function of the output у.';
+  const beforeCyrillicGlyph = providerCalls;
+  await manager.capture();
+  const cyrillicCard = cards()[0];
+  await until(phaseIs(cyrillicCard, 'review'), 'Cyrillic lookalike in an English variable role');
+  assert.match((await stateOf(cyrillicCard)).notice, /“у”是西里尔字母.*“y”/);
+  assert.equal(providerCalls, beforeCyrillicGlyph);
+  manager.clear();
   ocrOverride = 'The first token is [CLS]. The separator is [SEP 1 in the OCR text.';
   const beforeBrokenBrackets = providerCalls;
   await manager.capture();

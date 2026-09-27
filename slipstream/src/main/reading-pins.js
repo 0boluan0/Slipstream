@@ -5,7 +5,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { assessOcrReview } = require('./ocr-review');
 const { mathAssetUrls } = require('./reading-math-assets');
-const { needsMathReview, isMathOnly, firstBareFontCommand } = require('../shared/reading-math.cjs');
+const { mathRanges, needsMathReview, isMathOnly, firstBareFontCommand } = require('../shared/reading-math.cjs');
 const { formulaRecognitionAvailable } = require('./formula-recognition');
 const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
@@ -54,6 +54,33 @@ function looksLikeLeadingSentenceTail(text) {
   // as the start of a new paragraph; keep this cue narrow to prose followed
   // by a distinct sentence, not formulas or lower-case abbreviations.
   return /^[a-z]{2,}\b[^.!?\n]{0,150}[.!?]\s+[A-Z]/u.test(text.trimStart());
+}
+
+function looksLikeUnfinishedTail(text) {
+  const value = text.trim();
+  return value.length > 80 && !/[.!?。！？]$/u.test(value)
+    && /\b(?:[A-Za-z]|and|or|of|to|for|with|from|the|an|a)$/iu.test(value);
+}
+
+function suspiciousTimesGlyph(text) {
+  let prose = text;
+  for (const range of mathRanges(text).reverse()) {
+    prose = prose.slice(0, range.start) + ' '.repeat(range.end - range.start) + prose.slice(range.end);
+  }
+  return /\b[A-Za-z]{3,}\s+×\s+(?=(?:are|is|was|were|be|has|have|can|will|should|would|denotes?|represents?|refers?|means?)\b)/iu.test(prose);
+}
+
+function suspiciousCyrillicGlyph(text) {
+  const latinLookalikes = new Map([['а', 'a'], ['е', 'e'], ['о', 'o'], ['р', 'p'],
+    ['с', 'c'], ['у', 'y'], ['х', 'x'], ['і', 'i'], ['ј', 'j'],
+    ['А', 'A'], ['В', 'B'], ['Е', 'E'], ['К', 'K'], ['М', 'M'], ['Н', 'H'],
+    ['О', 'O'], ['Р', 'P'], ['С', 'C'], ['Т', 'T'], ['Х', 'X']]);
+  let prose = text;
+  for (const range of mathRanges(text).reverse()) {
+    prose = prose.slice(0, range.start) + ' '.repeat(range.end - range.start) + prose.slice(range.end);
+  }
+  const match = /(?:^|[\s([{])([аеорсухіјАВЕКМНОРСТХ])(?=$|[\s.,;:!?)}\]])/u.exec(prose);
+  return match ? { glyph: match[1], latin: latinLookalikes.get(match[1]) } : null;
 }
 
 function captureEdgeInk(imagePath) {
@@ -643,6 +670,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               segment.status = 'error';
               segment.error = error?.message === 'reading-terminology-mismatch'
                 ? '这段把“标准正交”与“正交”混淆了。请对照原文后重试。'
+                : error?.message === 'reading-symbol-role-mismatch'
+                  ? '这段译文把输入、输出与公式符号的对应关系弄反了。请对照原文后重试。'
                 : error?.message === 'reading-invalid-output'
                   ? '这一段的译文不完整，请重试。' : classifyError(error, configuration.settings.activeBackend);
             }
@@ -891,6 +920,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const edgeNames = { top: '顶部', right: '右侧', left: '左侧', bottom: '底部' };
         const otherEdgeHint = otherClippedEdges.map((edge) => `选区${edgeNames[edge]}也可能截断正文。`).join(' ');
         const leadingTail = looksLikeLeadingSentenceTail(document.text);
+        const unfinishedTail = looksLikeUnfinishedTail(document.text);
+        const timesGlyph = suspiciousTimesGlyph(document.text);
+        const cyrillicGlyph = suspiciousCyrillicGlyph(document.text);
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
         const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
@@ -935,7 +967,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           formulaNotice: `${formulaNotice}${referenceHint}${dimensionHint}${primeHint}${spellingHint}${multiplierHint}`.trim(),
           formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || primeConflict || referenceConflict || dimensionToken || multiplierToken || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || primeConflict || referenceConflict || dimensionToken || multiplierToken || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? `选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。${spellingHint}`
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
@@ -946,6 +978,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
             : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${otherEdgeHint}${brokenGroupHint}${spellingHint}`
             : leadingTail ? '这段原文似乎从上一句的尾部开始。请对照截图核对开头，必要时从完整句子重新框选。'
+            : timesGlyph ? `正文里的“×”后面直接接谓语，可能把字母 x 识成乘号。请对照原图校正，确认前不会发送文字。${unfinishedTail ? '末句也可能还在截图外或下一页。' : ''}`
+            : cyrillicGlyph ? `正文中的“${cyrillicGlyph.glyph}”是西里尔字母，形似英文“${cyrillicGlyph.latin}”，可能是识别错误。请对照原图校正，确认前不会发送文字。${unfinishedTail ? '末句也可能还在截图外或下一页。' : ''}`
+            : unfinishedTail ? '末句停在一个词或符号后，可能还在截图外或下一页。请对照截图核对，必要时续截。'
             : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
             : brokenMathBraces ? '花括号可能漏识别，集合或公式的含义可能失真。请对照截图校正。'
             : referenceConflict || dimensionToken || primeConflict || spellingConflict
@@ -1141,4 +1176,6 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   };
 }
 
-module.exports = { createReadingPins, cardBounds, readingDestination, looksLikeClippedProse, suspiciousDimensionToken, ambiguousMultiplierToken };
+module.exports = { createReadingPins, cardBounds, readingDestination, looksLikeClippedProse,
+  looksLikeUnfinishedTail, suspiciousTimesGlyph, suspiciousCyrillicGlyph,
+  suspiciousDimensionToken, ambiguousMultiplierToken };

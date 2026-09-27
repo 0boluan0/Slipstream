@@ -25,6 +25,51 @@ function losesOrthonormalDistinction(source, value) {
     && !ORTHONORMAL_CHINESE.test(term.label || ''));
 }
 
+function roleSymbol(tex) {
+  const atom = tex.replace(/\s+/gu, '')
+    .replace(/\\(?:mathbf|boldsymbol|mathrm|mathit|mathsf|vec)\{([^{}]+)\}/gu, '$1')
+    .replace(/[{}]/gu, '');
+  return /^(?:[A-Za-z]|\\[A-Za-z]+)(?:[_^](?:[A-Za-z0-9]|\\[A-Za-z]+))*$/u.test(atom) ? atom : '';
+}
+
+function symbolRoleMentions(text, language) {
+  const mentions = [];
+  for (const range of mathRanges(text)) {
+    const symbol = roleSymbol(range.tex);
+    if (!symbol) continue;
+    const prefix = text.slice(Math.max(0, range.start - 72), range.start);
+    const match = language === 'en'
+      ? /\b(?:training\s+)?(inputs?|outputs?)(?:\s+(?:variables?|values?))?\s*$/iu.exec(prefix)
+      : /(?:训练)?(输入|输出)(?:值|变量|样本|数据)?\s*$/u.exec(prefix);
+    if (!match) continue;
+    const role = /^(?:inputs?|输入)$/iu.test(match[1]) ? 'input' : 'output';
+    mentions.push([symbol, role]);
+  }
+  return mentions;
+}
+
+function explicitSymbolRoles(text, language) {
+  const roles = new Map();
+  for (const [symbol, role] of symbolRoleMentions(text, language)) {
+    if (roles.has(symbol) && roles.get(symbol) !== role) roles.set(symbol, null);
+    else if (!roles.has(symbol)) roles.set(symbol, role);
+  }
+  return roles;
+}
+
+function reversesExplicitSymbolRoles(source, translation) {
+  const sourceRoles = explicitSymbolRoles(source, 'en');
+  if (!sourceRoles.size) return false;
+  return symbolRoleMentions(translation, 'zh').some(([symbol, role]) =>
+    sourceRoles.get(symbol) && sourceRoles.get(symbol) !== role);
+}
+
+const SYMBOL_ROLE_REPAIR = 'The previous draft reversed an explicit input/output label attached to a mathematical symbol. Re-read the excerpt and keep each source symbol with its stated role, regardless of Chinese word order. Do not infer roles from conventional x/y names. Return the complete translation again.';
+
+function symbolRoleRepairPrompt(source) {
+  return `${SYMBOL_ROLE_REPAIR} Source roles: ${JSON.stringify([...explicitSymbolRoles(source, 'en')].filter(([, role]) => role))}.`;
+}
+
 const FREE_TRANSLATION_NOTICE = '\n\n---\n免费翻译仅提供翻译；配置 LLM API Key 后可获得术语解释。';
 
 function termStart(source, quote) {
@@ -264,6 +309,19 @@ function createReadingProcessor(processBackend) {
           || value.translation.length > 40000 || !Array.isArray(value.terms)) throw new Error('reading-invalid-output');
         if (losesOrthonormalDistinction(text, value)) throw new Error('reading-terminology-mismatch');
       }
+      if (reversesExplicitSymbolRoles(text, value.translation)) {
+        const repaired = await processBackend(settings, backend, settings.activeModel,
+          `${messages.systemPrompt} ${symbolRoleRepairPrompt(text)}`, messages.userMessage,
+          'en', text, signal, true, { maxTokens: 8192, retries: 1 });
+        if (signal?.aborted) throw new Error('reading-cancelled');
+        if (typeof repaired !== 'string' || repaired.length > 45000) throw new Error('reading-invalid-output');
+        value = parseReadingJson(repaired);
+        if (!value || typeof value.translation !== 'string' || !value.translation.trim()
+          || /[\b\f\r\t\v]/u.test(value.translation)
+          || value.translation.length > 40000 || !Array.isArray(value.terms)) throw new Error('reading-invalid-output');
+        if (reversesExplicitSymbolRoles(text, value.translation)) throw new Error('reading-symbol-role-mismatch');
+        if (losesOrthonormalDistinction(text, value)) throw new Error('reading-terminology-mismatch');
+      }
       const seen = new Set();
       const terms = value.terms.slice(0, 6).flatMap((term) => {
         if (!term || term.role !== 'core' || typeof term.quote !== 'string' || !term.quote.trim() || term.quote.length > 180
@@ -313,11 +371,21 @@ function createReadingProcessor(processBackend) {
         return { lookup: parseLookup(repaired, selection, text) };
       }
     }
-    const translation = typeof raw === 'string'
+    let translation = typeof raw === 'string'
       ? (backend === 'free_translate' && raw.endsWith(FREE_TRANSLATION_NOTICE)
         ? raw.slice(0, -FREE_TRANSLATION_NOTICE.length) : raw).trim() : '';
     if (!translation || translation.length > 40000) throw new Error('reading-invalid-output');
     if (kind === 'lookup') return { lookup: { quote: selection, meaning: translation, note: '', contextual: false } };
+    if (kind === 'translate' && reversesExplicitSymbolRoles(text, translation)) {
+      if (backend === 'free_translate') throw new Error('reading-symbol-role-mismatch');
+      const repaired = await processBackend(settings, backend, settings.activeModel,
+        `${messages.systemPrompt} ${symbolRoleRepairPrompt(text)}`, messages.userMessage,
+        'en', text, signal, false, { maxTokens: 8192, retries: 1 });
+      if (signal?.aborted) throw new Error('reading-cancelled');
+      if (typeof repaired !== 'string' || !repaired.trim() || repaired.length > 40000) throw new Error('reading-invalid-output');
+      translation = repaired.trim();
+      if (reversesExplicitSymbolRoles(text, translation)) throw new Error('reading-symbol-role-mismatch');
+    }
     const scopeNotice = studyPercentageScopeNotice(text, translation);
     return { translation, ...(scopeNotice ? { scopeNotice } : {}) };
   };
