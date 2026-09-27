@@ -153,6 +153,18 @@ app.whenReady().then(async () => {
   assert.equal(await js('document.querySelectorAll("#lookup-note .katex").length'), 1,
     'a one-digit coefficient and Latin variable must render as mathematics in the actual reading card');
   assert.equal(await js('document.querySelectorAll("#lookup-note .math-fallback").length'), 0);
+  const longTagged = String.raw`$$\mathbf z_0=[\mathbf x_{class};\mathbf x_p^1\mathbf E;\mathbf x_p^2\mathbf E;\cdots;\mathbf x_p^N\mathbf E]+\mathbf E_{pos},\quad \mathbf E\in\mathbb R^{(P^2C)\times D},\quad \mathbf E_{pos}\in\mathbb R^{(N+1)\times D}\tag{1}$$`;
+  await js(`window.renderReadingMath(document.getElementById('lookup-note'), ${JSON.stringify(longTagged)})`);
+  const taggedLayout = await js(`(() => { const root=document.getElementById('lookup-note');
+    const scroller=root.querySelector('.math-scroll'), tag=root.querySelector('.math-tag');
+    return { tagged:Boolean(tag), scrollable:Boolean(scroller && scroller.scrollWidth>scroller.clientWidth),
+      separated:Boolean(scroller && tag && scroller.getBoundingClientRect().right<=tag.getBoundingClientRect().left) };
+  })()`);
+  assert.deepEqual(taggedLayout, { tagged: true, scrollable: true, separated: true },
+    'a long numbered formula must scroll beside its equation number without overlapping it');
+  assert.equal(await js(`(() => { const root=document.getElementById('lookup-note'), range=document.createRange();
+    range.selectNodeContents(root); return window.readingMathSelection(root,range)?.text; })()`), longTagged,
+  'a separated equation number must still copy with the original LaTeX');
   // Malformed LaTeX remains readable; arbitrary markup stays inert.
   const unsafe = String.raw`<img src="https://example.com" onerror="alert(1)"> $\notARealCommand{x}$ $\href{https://example.com}{link}$`;
   await js(`window.renderReadingMath(document.getElementById('lookup-note'), ${JSON.stringify(unsafe)})`);

@@ -157,6 +157,23 @@ function sourceEvidence(source, quoted) {
   return null;
 }
 
+function explicitEquationDefinitions(source) {
+  const result = [];
+  for (const range of mathRanges(source)) {
+    if (!/(?:=|:=|\\coloneqq\b)/u.test(range.tex)) continue;
+    const symbol = referenceSymbol(`$${range.tex}$`);
+    if (!isNotation(symbol)) continue;
+    const tail = source.slice(range.end);
+    if (!/^\s*(?:(?:is|are)\s+(?:the|an?|our)\b|denotes?\b|means?\b|represents?\b|serves?\s+as\b)/iu.test(tail)) continue;
+    const flat = tail.replace(/[\r\n]/gu, ' ');
+    const sentence = [...new Intl.Segmenter('en', { granularity: 'sentence' }).segment(flat)][0]?.segment;
+    if (!sentence || sentence.length > 600) continue;
+    const evidence = source.slice(range.start, range.end + sentence.length).trim();
+    if (!result.some((entry) => referenceKey(entry.symbol) === referenceKey(symbol))) result.push({ symbol, evidence });
+  }
+  return result;
+}
+
 function exampleValueCandidate(symbol, meaning, evidence) {
   // Model output can turn parameters of one worked example into definitions
   // reused for the entire paper. Numeric assignments in an explicitly local
@@ -187,4 +204,4 @@ function parseReferenceCandidates(items, source) {
 
 module.exports = { referenceKey, referenceCandidateKey, referenceCandidateCovered, evidenceDefinesSymbol,
   preferExplicitReferenceCandidates,
-  referenceOccurrences, referenceSymbol, isNotation, parseReferenceCandidates };
+  referenceOccurrences, referenceSymbol, isNotation, parseReferenceCandidates, sourceEvidence, explicitEquationDefinitions };

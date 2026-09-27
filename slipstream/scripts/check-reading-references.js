@@ -6,7 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { createReadingReferenceStore } = require('../src/main/reading-reference-store');
 const { referenceKey, referenceCandidateKey, referenceCandidateCovered, evidenceDefinesSymbol,
-  preferExplicitReferenceCandidates, referenceOccurrences, isNotation, parseReferenceCandidates } = require('../src/main/reading-references');
+  preferExplicitReferenceCandidates, referenceOccurrences, isNotation, parseReferenceCandidates,
+  explicitEquationDefinitions } = require('../src/main/reading-references');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { matchesReferenceSearch } = require('../src/shared/reading-notation.cjs');
 const { captureSource, paperForCapture, titleForCapture } = require('../src/main/reading-capture-source');
@@ -75,6 +76,38 @@ async function main() {
   assert.equal(calls, 1, 'definitions share the translation request');
   assert.deepEqual(translated.references, [definition], 'unanchored or duplicate definitions cannot become suggestions');
   assert.equal((await processor({ text: source, kind: 'references', settingsSnapshot: settings })).references.length, 1);
+  const vitSource = 'where (H, W) is the resolution of the original image, C is the number of channels, '
+    + '(P, P) is the resolution of each image patch, and $N = H W / P ^ { 2 }$ is the resulting number '
+    + 'of patches, which also serves as the effective input sequence length for the Transformer. '
+    + 'We use standard learnable 1D position embeddings.';
+  let vitCalls = 0;
+  const vitProcessor = createReadingProcessor(async (_settings, _backend, _model, _prompt, message) => {
+    vitCalls += 1;
+    const excerpt = JSON.parse(message).excerpt;
+    return JSON.stringify({ references: excerpt.includes('We use standard') ? [] : [{ symbol: 'N',
+      meaning: '图像块数量，也是 Transformer 的有效输入序列长度。',
+      evidence: '$N = H W / P ^ { 2 }$ is the resulting number of patches' }] });
+  });
+  const vitDefinitions = await vitProcessor({ text: vitSource, kind: 'references', settingsSnapshot: settings });
+  assert.deepEqual(vitDefinitions.references.map((entry) => entry.symbol), ['N'],
+    'a later non-defining sentence must not erase an explicit paper-local symbol definition');
+  assert(vitCalls >= 2, 'an empty model verdict needs a focused second pass when the source explicitly defines notation');
+  let hintedCalls = 0;
+  const hintedProcessor = createReadingProcessor(async (_settings, _backend, _model, _prompt, message) => {
+    const request = JSON.parse(message);
+    if (request.candidateSymbol !== 'N') return '{"references":[]}';
+    hintedCalls += 1;
+    return JSON.stringify({ references: [{ symbol: 'N', meaning: '图像块数量，也是输入序列长度。',
+      evidence: '$N = H W / P ^ { 2 }$ is the resulting number of patches' }] });
+  });
+  assert.deepEqual((await hintedProcessor({ text: vitSource, kind: 'references', settingsSnapshot: settings }))
+    .references.map((entry) => entry.symbol), ['N'],
+  'an exact equation followed by a verbal definition should receive a candidate-specific check when broad extraction stays empty');
+  assert.equal(hintedCalls, 1);
+  assert.deepEqual(explicitEquationDefinitions('We minimize $$L(\\theta)=\\sum_i \\ell_i$$. Then optimize it.'), [],
+    'an equation without following defining words is not a symbol definition');
+  assert.deepEqual(explicitEquationDefinitions('The patch count is $N=HW/P^2$ is the resulting number of patches.')
+    .map((entry) => entry.symbol), ['N'], 'the syntax scan must handle compact LaTeX assignments too');
   const domainSource = 'Let $x_i \\in \\mathbb{R}^d$ denote the feature vector.';
   const domainProcessor = createReadingProcessor(async () => JSON.stringify({ references: [{ symbol: '$x_i \\in \\mathbb{R}^d$', meaning: 'd 维特征向量。', evidence: domainSource }] }));
   const domain = await domainProcessor({ text: domainSource, kind: 'references', settingsSnapshot: settings });

@@ -1,6 +1,10 @@
 .math-block { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 4px 0; white-space: normal; }
 .math-block .katex-display { margin: .65em 0; text-align: left; }
 .math-block .katex-display > .katex { text-align: left; }
+.math-block.math-tagged { display: flex; align-items: center; gap: 12px; width: 100%; overflow: visible; }
+.math-tagged .math-scroll { display: block; flex: 1 1 auto; min-width: 0; overflow-x: auto; overflow-y: hidden; }
+.math-tagged .math-scroll .katex-display { width: max-content; min-width: 100%; }
+.math-tagged .math-tag { flex: none; white-space: nowrap; font-family: KaTeX_Main, "Times New Roman", serif; font-size: .98em; }
 .math-inline { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; vertical-align: middle; white-space: nowrap; }
 .math-fallback { white-space: pre-wrap; overflow-wrap: anywhere; font: .9em/1.65 ui-monospace, monospace; }
 .katex { font-size: 1.06em; }

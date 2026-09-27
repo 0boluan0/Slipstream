@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { mathRanges, needsMathReview, isMathOnly } = require('../src/shared/reading-math.cjs');
+const { mathRanges, needsMathReview, isMathOnly, firstBareFontCommand } = require('../src/shared/reading-math.cjs');
 const { readingSegments, joinVisualHyphenation } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
 const { characterCandidates } = require('../src/main/local-formula-ocr');
@@ -37,6 +37,15 @@ async function main() {
   const masked = { blocks: [word(':', 29, 5), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument(masked, [formula], size, original).text, '$x$: label',
     'the same punctuation recovered from an original word and masked OCR must appear once');
+  const missingFontSlash = mergeFormulaDocument({ blocks: [] }, [{ ...formula,
+    latex: '( mathbf  z  _ { L } ^ { 0 } )', confidence: .95 }], size, { blocks: [] });
+  assert.equal(missingFontSlash.text, String.raw`$( \mathbf  z  _ { L } ^ { 0 } )$`,
+    'a lost LaTeX command slash must not print the command name as mathematical letters');
+  assert.deepEqual(missingFontSlash.uncertainFormulaStarts, [0],
+    'a repaired font command must still ask the reader to check the source pixels');
+  assert.equal(firstBareFontCommand(String.raw`State $( mathbf z_L^0 )$ is used.`), 'mathbf');
+  assert.equal(firstBareFontCommand(String.raw`State $( \mathbf z_L^0 )$ is used.`), '');
+  assert.equal(firstBareFontCommand('The word mathbf is ordinary prose.'), '');
   for (const colon of [String.raw`\colon`, String.raw`\mathbf { : }`, String.raw`\mathsf { : }`]) {
     const mathColon = { ...formula, latex: String.raw`r,s\in\mathbb R` + colon };
     assert.equal(mergeFormulaDocument({ blocks: [word(':', 29, 5)] }, [mathColon], size,

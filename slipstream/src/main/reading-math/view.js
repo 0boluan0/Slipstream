@@ -20,9 +20,19 @@ window.renderReadingMath = (element, value = '') => {
     node.dataset.sourceEnd = sourceEnd;
     node.title = value.slice(range.start, sourceEnd);
     try {
-      const latex = punctuation ? `${range.tex}\\;\\text{${punctuation}}` : range.tex;
-      window.katex.render(latex, node, { displayMode: range.display, throwOnError: true,
+      const tag = range.display ? /^(.*)\\tag\s*\{([^{}]+)\}\s*$/su.exec(range.tex) : null;
+      const body = tag ? tag[1] : range.tex;
+      const latex = punctuation ? `${body}\\;\\text{${punctuation}}` : body;
+      const target = tag ? document.createElement('span') : node;
+      if (tag) { node.classList.add('math-tagged'); target.className = 'math-scroll'; }
+      window.katex.render(latex, target, { displayMode: range.display, throwOnError: true,
         trust: false, strict: 'ignore', maxExpand: 500, maxSize: 10, output: 'htmlAndMathml' });
+      if (tag) {
+        const label = document.createElement('span');
+        label.className = 'math-tag';
+        label.textContent = `(${tag[2]})`;
+        node.append(target, label);
+      }
     } catch {
       node.className += ' math-fallback';
       node.textContent = value.slice(range.start, sourceEnd);

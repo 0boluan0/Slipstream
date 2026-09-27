@@ -5,7 +5,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { assessOcrReview } = require('./ocr-review');
 const { mathAssetUrls } = require('./reading-math-assets');
-const { needsMathReview, isMathOnly } = require('../shared/reading-math.cjs');
+const { needsMathReview, isMathOnly, firstBareFontCommand } = require('../shared/reading-math.cjs');
 const { formulaRecognitionAvailable } = require('./formula-recognition');
 const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
@@ -476,7 +476,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             const result = await processReadingText({ text: pin.view.sourceText, kind: 'references', settingsSnapshot: configuration.settings, signal: controller.signal });
             if (!alive(pin) || controller.signal.aborted || pin.view.paperId !== paperId || pin.revision !== revision || generation !== requestGeneration) return false;
             pin.referenceCandidates = result.references || [];
-            pin.referenceNotice = pin.referenceCandidates.length ? '已找到定义，请对照原文后留下。' : '这段没有找到明确的符号定义。可以截取定义所在段落，或手动记一条。';
+            const saved = paperFor(pin)?.entries || [];
+            const unsaved = pin.referenceCandidates.filter((entry) => !saved.some((item) => referenceCandidateCovered(entry, item)));
+            pin.referenceNotice = unsaved.length ? '已找到定义，请对照原文后留下。'
+              : pin.referenceCandidates.length ? '识别出的定义已在本文速查，可直接点文中的符号查看。'
+                : '这段没有找到明确的符号定义。可以截取定义所在段落，或手动记一条。';
           } finally {
             if (pin.referenceController === controller) { pin.referenceController = null; pin.referenceStatus = ''; }
           }
@@ -553,6 +557,12 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const source = typeof payload.text === 'string' ? payload.text.trim() : pin.view.sourceText;
     if (!source || source.length > DEFAULTS.MAX_TEXT_LENGTH) {
       update(pin, { notice: `请保留 1–${DEFAULTS.MAX_TEXT_LENGTH} 个字符后继续。` });
+      return;
+    }
+    const bareFontCommand = kind === 'translate' ? firstBareFontCommand(source) : '';
+    if (bareFontCommand) {
+      update(pin, { sourceText: source, phase: 'review',
+        notice: `公式中的“${bareFontCommand}”缺少 LaTeX 反斜杠，排版会把它当成字母。请对照截图校正后再翻译。` });
       return;
     }
     const controller = new AbortController();

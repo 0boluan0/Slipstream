@@ -673,6 +673,21 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(unrenderableCard)).formulaNotice, /无法排版.*保留了 LaTeX 原文/u);
   assert.equal(providerCalls, beforeUnrenderable);
   manager.clear();
+  ocrOverride = 'The output $( mathbf  z  _ { L } ^ { 0 } )$ represents the image.';
+  formulaOcrOverride = { status: 'done', count: 1, uncertain: 0, uncertainStarts: [] };
+  const beforeBareCommand = providerCalls;
+  await manager.capture();
+  const bareCommandCard = cards()[0];
+  await until(phaseIs(bareCommandCard, 'review'), 'bare TeX command review');
+  await action(bareCommandCard, 'translate', { revision: (await stateOf(bareCommandCard)).revision,
+    text: ocrOverride });
+  assert.equal((await stateOf(bareCommandCard)).phase, 'review');
+  assert.match((await stateOf(bareCommandCard)).notice, /mathbf.*反斜杠/u);
+  assert.equal(providerCalls, beforeBareCommand, 'a corrupted font command cannot be sent to the model');
+  await action(bareCommandCard, 'translate', { revision: (await stateOf(bareCommandCard)).revision,
+    text: String.raw`The output $( \mathbf z _ { L } ^ { 0 } )$ represents the image.` });
+  await until(phaseIs(bareCommandCard, 'done'), 'corrected TeX translates');
+  manager.clear();
   ocrOverride = 'The vectors satisfy $$a_i^Ta_j=1$$.';
   formulaOcrOverride = { status: 'done', count: 1, uncertain: 1,
     uncertainStarts: [ocrOverride.indexOf('$$')], unrenderable: 0, caseDelimiterRepairs: 1 };

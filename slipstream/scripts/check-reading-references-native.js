@@ -108,6 +108,10 @@ app.whenReady().then(async () => {
   await until(async () => (await snapshot(reference)).references.paper.entries.length === 2, 'one-click retain definitions');
   console.log('ok - create paper, propose definitions and explicitly retain them');
   assert.equal(savedConcepts, 0, 'paper definitions do not pollute the concept library');
+  await act(definitionPin, 'reference-extract', { paperId: paperA });
+  const repeated = await snapshot(definitionPin);
+  assert.equal(repeated.references.candidates.length, 0, 'saved definitions do not return as duplicate proposals');
+  assert.match(repeated.references.notice, /已在本文速查/, 'a covered result must say it was already saved rather than promise unseen candidates');
   definitionPin.close();
   const reading = await openText(usage);
   const calls = providerCalls;

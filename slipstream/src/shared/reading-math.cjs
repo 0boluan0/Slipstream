@@ -49,7 +49,21 @@
     for (const range of ranges) { prose += text.slice(offset, range.start); offset = range.end; }
     return /^[\s.,;:，。；：]*$/u.test(prose + text.slice(offset));
   }
-  const api = { mathRanges, needsMathReview, isMathOnly };
+  function bareFontCommand(tex) {
+    return /(?<![\\A-Za-z])(boldsymbol|mathbf|mathbb|mathcal|mathscr|mathsf|mathtt|mathit|mathrm)\b(?=\s*(?:\{|[A-Za-z\\]))/u.exec(tex)?.[1] || '';
+  }
+  function firstBareFontCommand(text) {
+    for (const range of mathRanges(text)) {
+      const command = bareFontCommand(range.tex);
+      if (command) return command;
+    }
+    return '';
+  }
+  function repairBareFontCommands(tex) {
+    return tex.replace(/(?<![\\A-Za-z])(?:boldsymbol|mathbf|mathbb|mathcal|mathscr|mathsf|mathtt|mathit|mathrm)\b(?=\s*(?:\{|[A-Za-z\\]))/gu,
+      (command) => `\\${command}`);
+  }
+  const api = { mathRanges, needsMathReview, isMathOnly, firstBareFontCommand, repairBareFontCommands };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.readingMath = api;
 })(globalThis);

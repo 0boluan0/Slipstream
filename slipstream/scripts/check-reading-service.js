@@ -134,6 +134,15 @@ async function main() {
   const mathResult = await mathLookup({ text: 'root-N consistent estimation', kind: 'lookup',
     selection: badLatex.selection, settingsSnapshot: settings });
   assert.equal(mathResult.lookup.quote, badLatex.selection);
+  const wrappedSource = 'The patch embeddings are added to the\nTransformer input.';
+  const wrappedLookup = createReadingProcessor(async () => JSON.stringify({ quote: 'patch embeddings',
+    meaning: '图像块经过投影后的向量。', note: '', basis: 'contextual',
+    sourceQuote: 'patch embeddings are added to the Transformer input.' }));
+  const wrappedResult = await wrappedLookup({ text: wrappedSource, kind: 'lookup',
+    selection: 'patch embeddings', settingsSnapshot: settings });
+  assert.equal(wrappedResult.lookup.basis, 'contextual',
+    'PDF line wraps alone must not invalidate an otherwise exact source quotation');
+  assert.equal(wrappedResult.lookup.sourceQuote, 'patch embeddings are added to the\nTransformer input.');
   assert(mathRanges(mathResult.lookup.meaning).some(({ tex }) => tex === String.raw`\sqrt{N}`));
   for (const { tex } of mathRanges(mathResult.lookup.meaning + mathResult.lookup.note)) {
     katex.renderToString(tex, { throwOnError: true, trust: false });

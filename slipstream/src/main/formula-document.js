@@ -1,5 +1,5 @@
 'use strict';
-const { mathRanges } = require('../shared/reading-math.cjs');
+const { mathRanges, repairBareFontCommands } = require('../shared/reading-math.cjs');
 const { joinVisualHyphenation } = require('./reading-document');
 const FORMULA_REVIEW_CONFIDENCE = .7;
 
@@ -514,6 +514,11 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const caseDelimited = repairMissingCaseDelimiter(latex);
     const repairedCaseDelimiter = caseDelimited !== latex;
     if (repairedCaseDelimiter) { latex = caseDelimited; caseDelimiterRepairs += 1; }
+    // A missing slash makes KaTeX print the command as letters without
+    // throwing. Repair this syntax in local OCR but keep a review mark.
+    const fontCommandRepaired = repairBareFontCommands(latex);
+    const repairedFontCommand = fontCommandRepaired !== latex;
+    if (repairedFontCommand) latex = fontCommandRepaired;
     // Vision can see the visible sentence mark at the end of the last case
     // branch while the math decoder has already included it inside that row.
     if (punctuation && punctuation === finalCaseRowPunctuation(latex)) punctuation = '';
@@ -532,7 +537,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     unrenderableFormulaCount += unrenderable;
     items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
       equationLabel: equationLabel?.label,
-      reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || unrenderable || correctedIota
+      reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || repairedFontCommand || unrenderable || correctedIota
         || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
         || separatedWhere && !sourceWhere,
