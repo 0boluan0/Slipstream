@@ -187,6 +187,43 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   // when Vision read the Latin letter in the same formula rectangle.
   const independentWords = words(original);
   const edgeWords = words(edgeProse);
+  // A prose symbol can be certain but wrong in the original Vision layout.
+  // Only two agreeing, spatially matched reads may replace its printed glyph;
+  // the conflict stays visible to the reader before translation.
+  function standaloneLetters(ocr) {
+    const letters = [];
+    for (const block of ocr?.blocks || []) {
+      if (block.confidence < .9 || (block.text.match(/[A-Za-z]{4,}/gu) || []).length < 4) continue;
+      const chars = block.characters || [];
+      for (let index = 1; index < chars.length - 1; index++) {
+        const glyph = chars[index];
+        if (!/^[A-Za-z]$/u.test(glyph.text) || !/\s/u.test(chars[index - 1].text)
+          || !/\s/u.test(chars[index + 1].text) || !glyph.boundingBox) continue;
+        const letter = { ...pixelBox(glyph.boundingBox), text: glyph.text };
+        if (letter.w && letter.h && !formulas.some((formula) => intersects(formula, letter))) letters.push(letter);
+      }
+    }
+    return letters;
+  }
+  const sourceLetters = standaloneLetters({ blocks: anchored });
+  const paddedLetters = standaloneLetters(edgeProse);
+  const maskedLetters = standaloneLetters(masked);
+  const proseSymbolConflicts = [];
+  const correctedLetters = new Map();
+  const sameGlyph = (source, candidate) => intersects(source, candidate)
+    && Math.abs(source.x + source.w / 2 - candidate.x - candidate.w / 2) < Math.max(source.w, candidate.w) * .45
+    && Math.abs(source.y + source.h / 2 - candidate.y - candidate.h / 2) < Math.max(source.h, candidate.h) * .35;
+  for (const source of sourceLetters) {
+    const padded = paddedLetters.filter((candidate) => candidate.text !== source.text && sameGlyph(source, candidate));
+    const maskedMatch = maskedLetters.filter((candidate) => candidate.text !== source.text && sameGlyph(source, candidate));
+    if (padded.length !== 1 || maskedMatch.length !== 1 || padded[0].text !== maskedMatch[0].text) continue;
+    const word = originalWords.find((candidate) => candidate.text === source.text
+      && candidate.x === source.x && candidate.y === source.y && candidate.w === source.w);
+    if (!word) continue;
+    correctedLetters.set(word, padded[0].text);
+    proseSymbolConflicts.push({ source: source.text, alternative: padded[0].text });
+  }
+  rowRecovered += correctedLetters.size;
   function corroboratedIotaAsLatin(formula, latex) {
     // The character recheck can read an italic loss variable l as Greek iota.
     // Two independently laid-out Latin readings justify l, still with review.
@@ -242,6 +279,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     return true;
   });
   const sourceWords = originalWords.map((word) => {
+    if (correctedLetters.has(word)) return { ...word, text: correctedLetters.get(word) };
     if (word.x > size.width * .06 || !/^\p{L}+$/u.test(word.text)
       || formulas.some((f) => intersects(f, word))) return word;
     // Recover only missing leading letters backed by the same image region.
@@ -419,7 +457,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   const joinedProse = joinVisualHyphenation(text,
     [...(original?.spellJoinCandidates || []), ...(edgeProse?.spellJoinCandidates || [])]);
   return { text: joinedProse.text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
-    interiorRecovered: verifiedInterior.length, rowRecovered, proseSpellingConflicts,
+    interiorRecovered: verifiedInterior.length, rowRecovered, proseSpellingConflicts, proseSymbolConflicts,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE || item.reviewRecognition)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),

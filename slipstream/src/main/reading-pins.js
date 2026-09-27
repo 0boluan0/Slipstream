@@ -866,6 +866,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const nameConflict = conflictingProperNames(document.text);
         const proseDisagreement = ocr.proseComparison?.disagree === true;
         const spellingConflict = document.proseSpellingConflicts?.[0];
+        const symbolConflict = document.proseSymbolConflicts?.[0];
         const spellingHint = spellingConflict
           ? ` 两次识别对“${spellingConflict.source}”与“${spellingConflict.alternative}”有分歧，请核对拼写。` : '';
         pin.controller = null;
@@ -886,7 +887,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? `选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。${spellingHint}`
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
@@ -903,6 +904,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               ? '两次本地识别对正文有分歧，已选较完整的候选。请对照截图核对后再翻译。'
               : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
             : spellingConflict ? `两次本地识别对“${spellingConflict.source}”与“${spellingConflict.alternative}”有分歧。请对照截图核对拼写，确认前不会发送文字。`
+            : symbolConflict ? `单字母“${symbolConflict.source}”与“${symbolConflict.alternative}”的识别有分歧，已按另外两次一致的读数改为“${symbolConflict.alternative}”。请对照截图核对，确认前不会发送文字。`
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
             : document.interiorUnresolved ? '两次本地识别对段落中间的文字有分歧，局部复读仍无法确认。请对照截图补齐文字，或重新框选这一段。'

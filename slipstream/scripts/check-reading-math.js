@@ -51,6 +51,35 @@ async function main() {
     'one-letter disagreement in the same printed prose row must be shown for review');
   assert.match(spellingDocument.text, /leat weights/u,
     'two conflicting OCR readings cannot silently rewrite the source');
+  const symbolLine = (value, y = 15) => {
+    let x = 5;
+    const characters = [];
+    for (const token of value.split(/(\s+)/u)) {
+      if (!token.trim()) { characters.push({ text: token, boundingBox: { x: 0, y: 0, w: 0, h: 0 } }); x += 2; continue; }
+      const box = { x: x / 100, y: (100 - y - 10) / 100, w: (token.length * 1.4 + 1) / 100, h: .1 };
+      for (const character of token) characters.push({ text: character, boundingBox: box });
+      x += token.length * 1.4 + 3;
+    }
+    return { text: value, confidence: 1, boundingBox: { x: .05, y: (100 - y - 10) / 100, w: .9, h: .1 }, characters };
+  };
+  const matrixI = symbolLine('The matrix I satisfies the following properties');
+  const matrixL = symbolLine('The matrix L satisfies the following properties');
+  const correctedSymbol = mergeFormulaDocument({ blocks: [matrixL] }, [], size,
+    { blocks: [matrixI] }, { blocks: [matrixL] });
+  assert.match(correctedSymbol.text, /The matrix L satisfies/u,
+    'two agreeing OCR layouts at the same printed glyph must correct a one-letter mathematical subject');
+  assert.equal(correctedSymbol.rowRecovered, 1,
+    'a corrected mathematical subject must require reader review before translation');
+  assert.deepEqual(correctedSymbol.proseSymbolConflicts,
+    [{ source: 'I', alternative: 'L' }], 'the source disagreement must be explained in review');
+  const unconfirmedSymbol = mergeFormulaDocument({ blocks: [matrixI] }, [], size,
+    { blocks: [matrixI] }, { blocks: [matrixL] });
+  assert.match(unconfirmedSymbol.text, /The matrix I satisfies/u,
+    'a single alternative read cannot silently change a symbol');
+  const displacedSymbol = mergeFormulaDocument({ blocks: [symbolLine(matrixL.text, 40)] }, [], size,
+    { blocks: [matrixI] }, { blocks: [matrixL] });
+  assert.match(displacedSymbol.text, /The matrix I satisfies/u,
+    'agreement at another printed location cannot change a symbol');
   const uncertain = mergeFormulaDocument(masked, [{ ...formula, confidence: .4 }], size, original);
   assert.deepEqual(uncertain.uncertainFormulaStarts, [mathRanges(uncertain.text)[0].start],
     'a low-confidence formula identifies its actual location in the source shown for review');
