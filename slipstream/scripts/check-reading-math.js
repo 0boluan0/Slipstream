@@ -83,6 +83,30 @@ async function main() {
     }
     return { text: value, confidence: 1, boundingBox: { x: .05, y: (100 - y - 10) / 100, w: .9, h: .1 }, characters };
   };
+  const tokenBlock = (text, x, width) => {
+    const boundingBox = { x: x / 100, y: .7, w: width / 100, h: .1 };
+    return { text, confidence: 1, boundingBox,
+      characters: [...text].map((glyph) => ({ text: glyph, boundingBox })) };
+  };
+  const heading = tokenBlock('Discretization.', 5, 20);
+  const corroboratedJoin = tokenBlock('Discretization. The first stage transforms parameters.', 5, 88);
+  for (const prefix of ['_', '_ ']) {
+    const joinedSentence = tokenBlock(`${prefix}The first stage transforms parameters.`, 26, 67);
+    const repairedHeading = mergeFormulaDocument({ blocks: [] }, [], size,
+      { blocks: [heading, joinedSentence] }, { blocks: [corroboratedJoin] });
+    assert.equal(repairedHeading.text, 'Discretization. The first stage transforms parameters.',
+      'a padded OCR row must remove a spurious underscore joining a printed heading to the next sentence');
+    assert.equal(repairedHeading.rowRecovered, 1, 'the source-pixel disagreement remains visible for review');
+    assert.equal(mergeFormulaDocument({ blocks: [] }, [], size,
+      { blocks: [heading, joinedSentence] }, { blocks: [] }).text,
+    `Discretization. ${prefix}The first stage transforms parameters.`,
+    'one Vision layout alone cannot silently remove a printed underscore');
+  }
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [], size,
+    { blocks: [heading, tokenBlock('x_The first stage transforms parameters.', 26, 67)] },
+    { blocks: [corroboratedJoin] }).text,
+  'Discretization. x_The first stage transforms parameters.',
+  'a subscript-like interior underscore must remain unchanged');
   const matrixI = symbolLine('The matrix I satisfies the following properties');
   const matrixL = symbolLine('The matrix L satisfies the following properties');
   const correctedSymbol = mergeFormulaDocument({ blocks: [matrixL] }, [], size,

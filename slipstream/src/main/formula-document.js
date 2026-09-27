@@ -89,6 +89,36 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   // into complete, confident, vertically separate rows. Keep normal source
   // observations as anchors; a different spelling alone is not a replacement.
   const sourceBlocks = (original || masked)?.blocks || [];
+  function confirmedHeadingJoin(block) {
+    // Vision can read the underline beneath a short heading as an underscore
+    // attached to the next word. Remove it only when the padded read sees the
+    // complete heading and following word at the same printed location.
+    const joined = block.text.match(/^_\s*([A-Z][a-z]{2,})\b/u);
+    if (!joined || block.confidence < .9 || block.characters?.[0]?.text !== '_' || !block.boundingBox) return null;
+    const next = joined[1];
+    const row = pixelBox(block.boundingBox);
+    const heading = sourceBlocks.find((candidate) => {
+      if (candidate === block || candidate.confidence < .9 || !candidate.boundingBox
+        || !/^[A-Z][A-Za-z-]{4,}\.$/u.test(candidate.text.trim())) return false;
+      const box = pixelBox(candidate.boundingBox);
+      return Math.abs(box.y + box.h / 2 - row.y - row.h / 2) < Math.min(box.h, row.h) * .55
+        && box.x + box.w <= row.x + row.h * .3
+        && row.x - box.x - box.w < row.h * .5;
+    });
+    if (!heading) return null;
+    const headingBox = pixelBox(heading.boundingBox);
+    const prefix = `${heading.text.trim()} ${next} `;
+    const supported = (edgeProse?.blocks || []).some((candidate) => {
+      if (candidate.confidence < .9 || !candidate.boundingBox || !candidate.text.startsWith(prefix)) return false;
+      const box = pixelBox(candidate.boundingBox);
+      return box.x <= headingBox.x + row.h * .3
+        && box.x + box.w >= row.x + row.w - row.h * .3
+        && Math.abs(box.y + box.h / 2 - row.y - row.h / 2) < Math.min(box.h, row.h) * .55;
+    });
+    const prefixLength = joined[0].length - next.length;
+    return supported ? { ...block, text: block.text.slice(prefixLength),
+      characters: block.characters.slice(prefixLength) } : null;
+  }
   const firstSource = sourceBlocks.filter((block) => block.boundingBox)
     .map((block) => pixelBox(block.boundingBox))
     .sort((a, b) => a.y - b.y)[0];
@@ -178,6 +208,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   let rowRecovered = verifiedInterior.length;
   const repairedRows = new Set();
   const anchored = [...recoveredLeading, ...verifiedInterior, ...sourceBlocks].flatMap((block) => {
+    const headingJoin = confirmedHeadingJoin(block);
+    if (headingJoin) { rowRecovered++; return [headingJoin]; }
     const lossLetter = confirmedLossLetterRow(block);
     if (lossLetter) { rowRecovered++; return [lossLetter]; }
     const confirmed = confirmedSourceRow(block);
