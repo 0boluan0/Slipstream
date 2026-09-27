@@ -138,7 +138,23 @@ app.whenReady().then(async () => {
       window.renderReadingMath(paragraph, '$$' + 'x+'.repeat(100) + 'y$$');
       window.dispatchEvent(new Event('resize'));
       requestAnimationFrame(() => resolve([...document.querySelectorAll('.math-scroll-hint')]
-        .some(hint => !hint.hidden && hint.textContent.includes('左右滚动'))));
+        .some(hint => !hint.hidden && hint.textContent.includes('长公式'))));
+    })`));
+  });
+  await check('numbered long math exposes working pan buttons', async () => {
+    assert(await js(longPin, `new Promise(resolve => {
+      const paragraph = document.querySelector('.translation-paragraph');
+      window.renderReadingMath(paragraph, '$$' + 'x+'.repeat(100) + 'y\\\\tag{10}$$');
+      window.dispatchEvent(new Event('resize'));
+      requestAnimationFrame(() => {
+        const section = paragraph.closest('.segment');
+        const scroller = section.querySelector('.translation-paragraph .math-scroll');
+        const hint = section.querySelector('.math-scroll-hint');
+        const right = hint.querySelector('button[aria-label^="向右"]');
+        if (!scroller || hint.hidden || right.disabled || scroller.scrollWidth <= scroller.clientWidth) return resolve(false);
+        right.click();
+        resolve(scroller.scrollLeft > 0 && !hint.querySelector('button[aria-label^="向左"]').disabled);
+      });
     })`));
   });
   manager.openText('A collider is influenced by two variables. Conditioning can introduce selection bias.');

@@ -100,9 +100,17 @@ function createSegment(segment) {
   const scopeNotice = document.createElement('p');
   scopeNotice.className = 'scope-notice';
   scopeNotice.setAttribute('role', 'note');
-  const mathCue = document.createElement('p');
+  const mathCue = document.createElement('div');
   mathCue.className = 'muted math-scroll-hint';
-  mathCue.textContent = '长公式可在公式上左右滚动，查看完整内容。';
+  const mathLabel = document.createElement('span');
+  mathLabel.textContent = '长公式';
+  const mathLeft = document.createElement('button');
+  mathLeft.textContent = '← 左移';
+  mathLeft.setAttribute('aria-label', `向左查看第 ${segment.id + 1} 段公式`);
+  const mathRight = document.createElement('button');
+  mathRight.textContent = '右移 →';
+  mathRight.setAttribute('aria-label', `向右查看第 ${segment.id + 1} 段公式`);
+  mathCue.append(mathLabel, mathLeft, mathRight);
   mathCue.hidden = true;
   const terms = document.createElement('div');
   terms.className = 'term-list';
@@ -112,7 +120,10 @@ function createSegment(segment) {
   referenceHits.className = 'reference-hit-list';
   section.append(tools, source, translation, scopeNotice, mathCue, terms, termsNotice, referenceHits);
   byId('translation').append(section);
-  const node = { section, source, translation, scopeNotice, mathCue, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  const node = { section, source, translation, scopeNotice, mathCue, mathLeft, mathRight, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  mathLeft.onclick = () => moveMath(node, -1);
+  mathRight.onclick = () => moveMath(node, 1);
+  section.addEventListener('scroll', refreshMathCues, true);
   segmentNodes.set(segment.id, node);
   return node;
 }
@@ -205,13 +216,28 @@ function renderSegments(segments) {
   }
 }
 
+function overflowingMath(node) {
+  const paragraphs = mode === 'parallel' || !node.source.hidden
+    ? [node.source, node.translation] : [node.translation];
+  return paragraphs.flatMap((paragraph) => [...paragraph.querySelectorAll('.math-block')])
+    .map((formula) => formula.querySelector('.math-scroll') || formula)
+    .filter((scroller) => scroller.clientWidth > 0 && scroller.scrollWidth > scroller.clientWidth + 2);
+}
+
 function refreshMathCues() {
   for (const node of segmentNodes.values()) {
-    const paragraphs = mode === 'parallel' || !node.source.hidden
-      ? [node.source, node.translation] : [node.translation];
-    node.mathCue.hidden = !paragraphs.some((paragraph) => [...paragraph.querySelectorAll('.math-block')]
-      .some((formula) => formula.scrollWidth > formula.clientWidth + 2));
+    const scrollers = overflowingMath(node);
+    node.mathCue.hidden = !scrollers.length;
+    node.mathLeft.disabled = !scrollers.some((scroller) => scroller.scrollLeft > 2);
+    node.mathRight.disabled = !scrollers.some((scroller) => scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 2);
   }
+}
+
+function moveMath(node, direction) {
+  for (const scroller of overflowingMath(node)) {
+    scroller.scrollLeft += direction * Math.max(120, Math.round(scroller.clientWidth * .7));
+  }
+  refreshMathCues();
 }
 
 function render(next) {
