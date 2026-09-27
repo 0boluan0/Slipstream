@@ -54,4 +54,46 @@ const uncertain = reconcileProseOcr(result(rawLines), result(paddedLines, .5));
 assert.equal(uncertain.proseComparison?.recovered, false);
 assert.equal(uncertain.proseComparison?.disagree, true);
 
-console.log('Prose OCR disagreements pause review; only a longer, aligned and fully confident second reading supplies a reviewable candidate.');
+// Vision can combine two printed rows into one low-confidence, tall observation.
+// Padding split the same pixels into two complete rows in a native PDF capture.
+const surrounding = ['Abstract', 'The method starts from a small input space.',
+  'The output can be processed with a linear model.',
+  'We compare two feature families in experiments.',
+  'Their behavior depends on the selected kernel.',
+  'The final estimates are reported below.'];
+const sourceRows = surrounding.map((line, index) => block(line, index));
+sourceRows[3] = {
+  ...block('We compare cheat dia machine teaming al.', 3, .5),
+  boundingBox: { x: .07, y: .46, w: .86, h: .22 },
+};
+const completeRows = [
+  ...surrounding.slice(0, 3).map((line, index) => block(line, index)),
+  { ...block('We compare two feature families in experiments.', 3),
+    boundingBox: { x: .07, y: .57, w: .86, h: .09 } },
+  { ...block('We compare their accuracy across several tasks.', 4),
+    boundingBox: { x: .07, y: .48, w: .86, h: .09 } },
+  ...surrounding.slice(4).map((line, index) => block(line, index + 4)),
+];
+const fromBlocks = (blocks) => ({ text: blocks.map((entry) => entry.text).join('\n'), blocks });
+const expanded = reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(completeRows));
+assert.equal(expanded.proseComparison?.recovered, true);
+assert.match(expanded.text, /We compare two feature families in experiments\.\nWe compare their accuracy/u);
+assert.equal(expanded.blocks.length, 7);
+
+const confidentMerge = sourceRows.map((entry, index) => index === 3 ? { ...entry, confidence: 1 } : entry);
+assert.equal(reconcileProseOcr(fromBlocks(confidentMerge), fromBlocks(completeRows)).proseComparison.recovered,
+  false, 'a confident source line cannot be silently expanded');
+const movedExtra = completeRows.map((entry, index) => index === 4
+  ? { ...entry, boundingBox: { ...entry.boundingBox, y: .05 } } : entry);
+assert.equal(reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(movedExtra)).proseComparison.recovered,
+  false, 'the additional row must occupy the original merged observation');
+const changedNeighbor = completeRows.map((entry, index) => index === 1
+  ? { ...entry, text: 'Unrelated output can be processed with a linear model.' } : entry);
+assert.equal(reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(changedNeighbor)).proseComparison.recovered,
+  false, 'other lines must agree exactly');
+const uncertainExtra = completeRows.map((entry, index) => index === 4
+  ? { ...entry, confidence: .5 } : entry);
+assert.equal(reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(uncertainExtra)).proseComparison.recovered,
+  false, 'both replacement rows must be confident');
+
+console.log('Prose OCR disagreements pause review; fully supported longer rows can supply a reviewable candidate.');
