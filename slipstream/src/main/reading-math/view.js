@@ -22,7 +22,10 @@ window.renderReadingMath = (element, value = '') => {
     try {
       const tag = range.display ? /^(.*)\\tag\s*\{([^{}]+)\}\s*$/su.exec(range.tex) : null;
       const body = tag ? tag[1] : range.tex;
-      const latex = punctuation ? `${body}\\;\\text{${punctuation}}` : body;
+      const alignedEnd = punctuation ? /\\end\{aligned\}\s*$/u.exec(body) : null;
+      const latex = !punctuation ? body : alignedEnd
+        ? `${body.slice(0, alignedEnd.index).replace(/\s*\\\\\s*$/u, '')}\\;\\text{${punctuation}}${alignedEnd[0]}`
+        : `${body}\\;\\text{${punctuation}}`;
       const target = tag ? document.createElement('span') : node;
       if (tag) { node.classList.add('math-tagged'); target.className = 'math-scroll'; }
       window.katex.render(latex, target, { displayMode: range.display, throwOnError: true,

@@ -165,6 +165,14 @@ app.whenReady().then(async () => {
   assert.equal(await js(`(() => { const root=document.getElementById('lookup-note'), range=document.createRange();
     range.selectNodeContents(root); return window.readingMathSelection(root,range)?.text; })()`), longTagged,
   'a separated equation number must still copy with the original LaTeX');
+  const punctuated = String.raw`$$\begin{aligned}a&=b\\c&=d\\\end{aligned}\tag{10}$$,`;
+  await js(`window.renderReadingMath(document.getElementById('lookup-note'), ${JSON.stringify(punctuated)})`);
+  assert.match(await js('document.querySelector("#lookup-note annotation").textContent'),
+    /c&=d\\;\\text\{,\}\\end\{aligned\}/u,
+    'punctuation after a multi-line equation belongs to its last row');
+  assert.equal(await js(`(() => { const root=document.getElementById('lookup-note'), range=document.createRange();
+    range.selectNodeContents(root); return window.readingMathSelection(root,range)?.text; })()`), punctuated,
+  'moving display punctuation must retain the original LaTeX and comma when copied');
   // Malformed LaTeX remains readable; arbitrary markup stays inert.
   const unsafe = String.raw`<img src="https://example.com" onerror="alert(1)"> $\notARealCommand{x}$ $\href{https://example.com}{link}$`;
   await js(`window.renderReadingMath(document.getElementById('lookup-note'), ${JSON.stringify(unsafe)})`);
