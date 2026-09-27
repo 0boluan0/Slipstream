@@ -145,9 +145,17 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     return Math.abs(row.y + row.h / 2 - box.y - box.h / 2) < Math.min(row.h, box.h) * .55
       && row.x + row.w > box.x && row.x < box.x + box.w;
   }
+  function sharesSourceSpan(block, candidate) {
+    if (!samePrintedRow(block, candidate)) return false;
+    const source = pixelBox(block.boundingBox), proposed = pixelBox(candidate.boundingBox);
+    const overlap = Math.min(source.x + source.w, proposed.x + proposed.w) - Math.max(source.x, proposed.x);
+    // OCR may split one printed row into adjacent blocks. Their tiny fringe
+    // overlap is not evidence that the right block can replace the left one.
+    return overlap >= Math.min(source.w, proposed.w) * .2;
+  }
   // A padded read can disagree on a single prose letter even when Vision
-  // reports confidence 1 for both. Do not pick a winner; ask the reader to
-  // compare the printed word before that text is sent for translation.
+  // reports confidence 1 for both. A lone alternative only asks the reader
+  // to compare the printed word before translation.
   const proseSpellingConflicts = [];
   for (const block of sourceBlocks) {
     const sourceWords = block.text.match(/[A-Za-z]{4,}/gu) || [];
@@ -203,7 +211,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   }
   function confirmedSourceRow(block) {
     if (!block.boundingBox || block.confidence < .9 || block.text.length < 30) return null;
-    const maskedRows = (masked?.blocks || []).filter((candidate) => samePrintedRow(block, candidate)
+    const maskedRows = (masked?.blocks || []).filter((candidate) => sharesSourceSpan(block, candidate)
       && proseTokens(candidate.text).size);
     const maskedText = maskedRows.sort((a, b) => pixelBox(a.boundingBox).x - pixelBox(b.boundingBox).x)
       .map((candidate) => candidate.text).join(' ');
@@ -279,6 +287,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   // when Vision read the Latin letter in the same formula rectangle.
   const independentWords = words(original);
   const edgeWords = words(edgeProse);
+  const maskedWords = words(masked);
   // A prose symbol can be certain but wrong in the original Vision layout.
   // Only two agreeing, spatially matched reads may replace its printed glyph;
   // the conflict stays visible to the reader before translation.
@@ -302,6 +311,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   const maskedLetters = standaloneLetters(masked);
   const proseSymbolConflicts = [...(original?.verifiedGlyphConflicts || [])];
   const correctedLetters = new Map();
+  const correctedProseWords = new Map();
   const sameGlyph = (source, candidate) => intersects(source, candidate)
     && Math.abs(source.x + source.w / 2 - candidate.x - candidate.w / 2) < Math.max(source.w, candidate.w) * .45
     && Math.abs(source.y + source.h / 2 - candidate.y - candidate.h / 2) < Math.max(source.h, candidate.h) * .35;
@@ -315,7 +325,24 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     correctedLetters.set(word, padded[0].text);
     proseSymbolConflicts.push({ source: source.text, alternative: padded[0].text });
   }
-  rowRecovered += correctedLetters.size + (original?.verifiedGlyphConflicts?.length || 0);
+  for (const source of originalWords) {
+    if (source.confidence < .9 || !/^[A-Za-z]{3,}$/u.test(source.text)
+      || formulas.some((formula) => intersects(formula, source))) continue;
+    const alternative = (candidates) => candidates.filter((candidate) => candidate.confidence >= .9
+      && /^[A-Za-z]{3,}$/u.test(candidate.text) && candidate.text.length === source.text.length
+      && candidate.text.toLowerCase() !== source.text.toLowerCase()
+      && [...source.text.toLowerCase()].filter((letter, index) =>
+        letter !== candidate.text[index].toLowerCase()).length === 1
+      && sameGlyph(source, candidate));
+    const padded = alternative(edgeWords), maskedMatch = alternative(maskedWords);
+    if (padded.length !== 1 || maskedMatch.length !== 1 || padded[0].text !== maskedMatch[0].text) continue;
+    correctedProseWords.set(source, padded[0].text);
+    const key = `${source.text.toLowerCase()}/${padded[0].text.toLowerCase()}`;
+    if (!proseSpellingConflicts.some((pair) => pair.key === key)) {
+      proseSpellingConflicts.push({ key, source: source.text, alternative: padded[0].text });
+    }
+  }
+  rowRecovered += correctedLetters.size + correctedProseWords.size + (original?.verifiedGlyphConflicts?.length || 0);
   function corroboratedIotaAsLatin(formula, latex) {
     // The character recheck can read an italic loss variable l as Greek iota.
     // Two independently laid-out Latin readings justify l, still with review.
@@ -372,6 +399,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   });
   const sourceWords = originalWords.map((word) => {
     if (correctedLetters.has(word)) return { ...word, text: correctedLetters.get(word) };
+    if (correctedProseWords.has(word)) return { ...word, text: correctedProseWords.get(word) };
     if (word.x > size.width * .06 || !/^\p{L}+$/u.test(word.text)
       || formulas.some((f) => intersects(f, word))) return word;
     // Recover only missing leading letters backed by the same image region.

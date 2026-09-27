@@ -147,6 +147,35 @@ async function main() {
     return { text, confidence: 1, boundingBox,
       characters: [...text].map((glyph) => ({ text: glyph, boundingBox })) };
   };
+  const splitSourceRow = { blocks: [tokenBlock('where x denotes a vector in real space.', 1, 42),
+    tokenBlock(', which acts as the normalized alternative for layer', 42, 54)] };
+  const splitMaskedRow = { blocks: [tokenBlock('where', 1, 7),
+    tokenBlock(', which acts as the normalized alternative for layer', 42, 54)] };
+  const splitPaddedRow = { blocks: [tokenBlock(
+    'where x denotes a vector in real space, which acts as the normalized alternative for layer', 1, 95)] };
+  const splitDocument = mergeFormulaDocument(splitMaskedRow, [], size, splitSourceRow, splitPaddedRow);
+  assert.equal((splitDocument.text.match(/which acts as the normalized alternative/gu) || []).length, 1,
+    'an adjacent OCR block must not be borrowed into the left block and then repeated at its own position');
+  const ravSource = symbolLine('The statistic is estimated from rav inputs');
+  const rawPadded = symbolLine('The statistic is estimated from raw inputs');
+  const rawMasked = symbolLine('The statistic is estimated from raw inputs');
+  const splitAt = rawPadded.text.indexOf('from');
+  const ravDocument = mergeFormulaDocument({ blocks: [rawMasked] }, [], size,
+    { blocks: [ravSource] }, { blocks: [
+      { ...rawPadded, text: rawPadded.text.slice(0, splitAt), characters: rawPadded.characters.slice(0, splitAt) },
+      { ...rawPadded, text: rawPadded.text.slice(splitAt), characters: rawPadded.characters.slice(splitAt) },
+    ] });
+  assert.match(ravDocument.text, /estimated from raw inputs/u,
+    'two aligned OCR readings must repair a one-letter prose error despite different row splits');
+  assert.ok(ravDocument.proseSpellingConflicts.some((pair) => pair.key === 'rav/raw'),
+    'a consensus spelling repair must still be visible for reader review');
+  assert.ok(ravDocument.rowRecovered > 0, 'a repaired prose word must pause the translation for review');
+  const shiftedMasked = { ...rawMasked, characters: rawMasked.characters.map((glyph) => ({ ...glyph,
+    boundingBox: { ...glyph.boundingBox, x: glyph.boundingBox.x + .2 } })) };
+  const unalignedWord = mergeFormulaDocument({ blocks: [shiftedMasked] }, [], size,
+    { blocks: [ravSource] }, { blocks: [rawPadded] });
+  assert.match(unalignedWord.text, /estimated from rav inputs/u,
+    'agreement at another image position cannot silently change a source word');
   const heading = tokenBlock('Discretization.', 5, 20);
   const corroboratedJoin = tokenBlock('Discretization. The first stage transforms parameters.', 5, 88);
   for (const prefix of ['_', '_ ']) {
