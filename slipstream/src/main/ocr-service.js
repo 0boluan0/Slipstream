@@ -169,7 +169,7 @@ async function recheckReferenceOne(imagePath, original, padded, temporary, { sig
   return { ...original, blocks, verifiedGlyphConflicts };
 }
 
-function findPrimeDefinitionConflicts(original) {
+function findPrimeDefinitionConflicts(original, renderedText) {
   const conflicts = [];
   for (const block of original?.blocks || []) {
     if (block.confidence < .9 || !block.alternatives?.length) continue;
@@ -179,6 +179,7 @@ function findPrimeDefinitionConflicts(original) {
         + block.text.slice(match.index + match[0].length);
       if (!block.alternatives.includes(corrected)) continue;
       const source = `${match[1]}${match[0][1]}`;
+      if (typeof renderedText === 'string' && !renderedText.includes(`${source} is`)) continue;
       if (!conflicts.some((pair) => pair.source === source)) {
         conflicts.push({ source, alternative: match[1] });
       }
@@ -396,7 +397,7 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     });
     if (clippedBottom) padded = withoutClippedBottomRows(padded, recognized.size, recognized.clippedBottomY);
     const prose = reconcileProseOcr(original, padded);
-    return { ...prose, primeReviewConflicts: findPrimeDefinitionConflicts(original),
+    return { ...prose, primeReviewConflicts: findPrimeDefinitionConflicts(original, prose.text),
       formulaOcr: { status: 'done', count: 0, clippedBottom, milliseconds: recognized.milliseconds } };
   }
   const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
@@ -426,7 +427,7 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, zeroChecked, edges, interior.verified);
     document.interiorUnresolved = interior.unresolved;
     return { ...prose, text: document.text, document,
-      primeReviewConflicts: findPrimeDefinitionConflicts(original),
+      primeReviewConflicts: findPrimeDefinitionConflicts(original, document.text),
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
         clippedBottom,
