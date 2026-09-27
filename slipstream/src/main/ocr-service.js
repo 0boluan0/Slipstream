@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const { createOcrEnvironment } = require('./ocr-environment');
 const { createLocalFormulaOcr } = require('./local-formula-ocr');
 const { mergeFormulaDocument } = require('./formula-document');
+const { reconcileProseOcr } = require('./prose-ocr-reconciliation');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const OCR_SCRIPT = app.isPackaged
@@ -298,7 +299,13 @@ async function performReadingOCR(imagePath, { signal } = {}) {
   const clippedBottom = Number.isFinite(recognized.clippedBottomY);
   if (clippedBottom) original = withoutClippedBottomRows(original, recognized.size, recognized.clippedBottomY);
   if (!recognized.formulas.length) {
-    return { ...original, formulaOcr: { status: 'done', count: 0, clippedBottom, milliseconds: recognized.milliseconds } };
+    let padded = await performOCR(imagePath, { signal, characters: true, padEdges: true }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    if (clippedBottom) padded = withoutClippedBottomRows(padded, recognized.size, recognized.clippedBottomY);
+    const prose = reconcileProseOcr(original, padded);
+    return { ...prose, formulaOcr: { status: 'done', count: 0, clippedBottom, milliseconds: recognized.milliseconds } };
   }
   const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
   createOcrEnvironment(cacheDir);

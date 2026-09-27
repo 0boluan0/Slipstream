@@ -81,7 +81,7 @@
     "check:capture-integrity": "node scripts/check-capture-integrity.js",
     "check:ocr-environment": "node scripts/check-ocr-environment.js",
     "check:ocr-runtime": "node scripts/check-vision-ocr-runtime.js",
-    "check:ocr-review": "node scripts/check-ocr-review.mjs && node scripts/check-ocr-review-gate.mjs",
+    "check:ocr-review": "node scripts/check-ocr-review.mjs && node scripts/check-ocr-review-gate.mjs && node scripts/check-prose-ocr-reconciliation.js",
     "check:ocr-languages": "node scripts/check-ocr-languages.js",
     "check:truncation": "node scripts/check-truncation-warning.js",
     "check:progress-feedback": "node scripts/check-truthful-progress.js",

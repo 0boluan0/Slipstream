@@ -102,6 +102,7 @@ app.whenReady().then(async () => {
   let settings = { setupMode: 'full', activeBackend: 'custom', activeModel: 'fixture', customEndpointUrl: 'http://127.0.0.1:11434/v1' };
   let copied = '';
   let ocrOverride = null;
+  let ocrProseDisagreement = false;
   let failMatching = '';
   let noTerms = false;
   let ocrClipped = false;
@@ -175,7 +176,8 @@ app.whenReady().then(async () => {
           else options.signal?.addEventListener('abort', fail, { once: true });
         });
       }
-      if (ocrOverride) return { text: ocrOverride, confidence: .99, formulaOcr: formulaOcrOverride || undefined, blocks: ocrClipped
+      if (ocrOverride) return { text: ocrOverride, confidence: .99, formulaOcr: formulaOcrOverride || undefined,
+        proseComparison: ocrProseDisagreement ? { disagree: true, recovered: true } : undefined, blocks: ocrClipped
         ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
           boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
         : ocrLeftClipped ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
@@ -334,6 +336,19 @@ app.whenReady().then(async () => {
   assert(first.isDestroyed());
   assert(!second.isDestroyed());
   console.log('ok - independent cards and zero provider calls before OCR review');
+  low = false;
+  ocrOverride = english;
+  ocrProseDisagreement = true;
+  const callsBeforeDisagreement = providerCalls;
+  await manager.capture();
+  const disputed = cards().find((window) => window !== second);
+  await until(phaseIs(disputed, 'review'), 'padded OCR disagreement review');
+  assert.equal(providerCalls, callsBeforeDisagreement, 'conflicting high-confidence OCR must not silently translate');
+  assert.match((await stateOf(disputed)).notice, /两次本地识别对正文有分歧/u);
+  void action(disputed, 'close').catch(() => {});
+  await until(() => disputed.isDestroyed(), 'close disputed card');
+  ocrProseDisagreement = false;
+  ocrOverride = null;
   cancel = true;
   mainWindow.showInactive();
   await manager.capture();

@@ -864,6 +864,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
         const ambiguousAiAl = looksLikeAiAlConfusion(document.text);
         const nameConflict = conflictingProperNames(document.text);
+        const proseDisagreement = ocr.proseComparison?.disagree === true;
         pin.controller = null;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* continue through explicit review */ }
@@ -882,7 +883,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? '选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。'
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
@@ -895,6 +896,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : leadingTail ? '这段原文似乎从上一句的尾部开始。请对照截图核对开头，必要时从完整句子重新框选。'
             : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
             : brokenMathBraces ? '花括号可能漏识别，集合或公式的含义可能失真。请对照截图校正。'
+            : proseDisagreement ? ocr.proseComparison.recovered
+              ? '两次本地识别对正文有分歧，已选较完整的候选。请对照截图核对后再翻译。'
+              : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
             : document.rowRecovered ? '正文有跨行识别冲突，已按原图位置重新排好。请对照截图核对文字顺序。'
