@@ -1,5 +1,6 @@
 'use strict';
 const { mathRanges } = require('../shared/reading-math.cjs');
+const { joinVisualHyphenation } = require('./reading-document');
 const FORMULA_REVIEW_CONFIDENCE = .7;
 
 function proseSuperscript(latex) {
@@ -87,6 +88,28 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const box = pixelBox(block.boundingBox), row = pixelBox(candidate.boundingBox);
     return Math.abs(row.y + row.h / 2 - box.y - box.h / 2) < Math.min(row.h, box.h) * .55
       && row.x + row.w > box.x && row.x < box.x + box.w;
+  }
+  // A padded read can disagree on a single prose letter even when Vision
+  // reports confidence 1 for both. Do not pick a winner; ask the reader to
+  // compare the printed word before that text is sent for translation.
+  const proseSpellingConflicts = [];
+  for (const block of sourceBlocks) {
+    const sourceWords = block.text.match(/[A-Za-z]{4,}/gu) || [];
+    if (sourceWords.length < 4) continue;
+    for (const candidate of edgeProse?.blocks || []) {
+      if (!samePrintedRow(block, candidate)) continue;
+      const alternativeWords = candidate.text.match(/[A-Za-z]{4,}/gu) || [];
+      if (alternativeWords.length !== sourceWords.length) continue;
+      const differences = sourceWords.map((word, index) => [word, alternativeWords[index]])
+        .filter(([left, right]) => left.toLowerCase() !== right.toLowerCase());
+      if (differences.length !== 1) continue;
+      const [left, right] = differences[0];
+      if (left.length !== right.length || [...left.toLowerCase()].filter((letter, index) =>
+        letter !== right[index].toLowerCase()).length !== 1) continue;
+      const key = `${left.toLowerCase()}/${right.toLowerCase()}`;
+      if (!proseSpellingConflicts.some((pair) => pair.key === key)) proseSpellingConflicts.push({ key, source: left, alternative: right });
+      break;
+    }
   }
   function confirmedSourceRow(block) {
     if (!block.boundingBox || block.confidence < .9 || block.text.length < 30) return null;
@@ -393,12 +416,15 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     previous = row;
   }
   const mathematical = items.filter((item) => item.math);
-  return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
-    interiorRecovered: verifiedInterior.length, rowRecovered,
+  const joinedProse = joinVisualHyphenation(text,
+    [...(original?.spellJoinCandidates || []), ...(edgeProse?.spellJoinCandidates || [])]);
+  return { text: joinedProse.text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
+    interiorRecovered: verifiedInterior.length, rowRecovered, proseSpellingConflicts,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE || item.reviewRecognition)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),
-    uncertainFormulaStarts };
+    uncertainFormulaStarts: uncertainFormulaStarts.map((start) => start
+      - joinedProse.removedAt.filter((at) => at < start).length * 2) };
 }
 
 module.exports = { mergeFormulaDocument, proseSuperscript, repairUnpairedEvaluationBars };

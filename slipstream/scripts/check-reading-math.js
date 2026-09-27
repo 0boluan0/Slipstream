@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { mathRanges, needsMathReview, isMathOnly } = require('../src/shared/reading-math.cjs');
-const { readingSegments } = require('../src/main/reading-document');
+const { readingSegments, joinVisualHyphenation } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { mergeFormulaDocument, repairUnpairedEvaluationBars } = require('../src/main/formula-document');
@@ -29,6 +29,28 @@ async function main() {
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ x: 10, y: 28, w: 20, h: 28,
     latex: 'x', display: false }], size, adjacentRows).text, 'In prose\n$x$ follows',
   'a formula box grazing the previous text line cannot erase a source word');
+  const lineWords = { blocks: [placedWord('An ensem-', 10, 5, 60, 10),
+    placedWord('ble uses', 10, 22, 60, 10), placedWord('x', 10, 40, 10, 10)] };
+  const joinedFormulaDocument = mergeFormulaDocument({ blocks: [] },
+    [{ x: 10, y: 40, w: 10, h: 10, latex: 'x', display: false, confidence: .4 }], size, lineWords);
+  assert.equal(joinedFormulaDocument.text, 'An ensemble uses\n$x$',
+    'formula-rich OCR must join a confirmed English visual split outside TeX');
+  assert.deepEqual(joinedFormulaDocument.uncertainFormulaStarts,
+    [mathRanges(joinedFormulaDocument.text)[0].start], 'a prose join must shift the later formula review marker');
+  const specialistJoin = joinVisualHyphenation('A quan-\ntile sketch and an end-\nto-end method.', ['quantile'],
+    (term) => new Set(['end', 'to']).has(term));
+  assert.equal(specialistJoin.text, 'A quantile sketch and an end-\nto-end method.',
+    'the formula path must accept spelling corroboration while retaining a real compound');
+  const spellingBlock = (text) => ({ ...placedWord(text, 10, 10, 80, 10),
+    boundingBox: { x: .1, y: .8, w: .8, h: .1 } });
+  const spellingSource = { blocks: [spellingBlock('Each tree has leat weights here')] };
+  const spellingAlternative = { blocks: [spellingBlock('Each tree has leaf weights here')] };
+  const spellingDocument = mergeFormulaDocument({ blocks: [] }, [], size, spellingSource, spellingAlternative);
+  assert.deepEqual(spellingDocument.proseSpellingConflicts,
+    [{ key: 'leat/leaf', source: 'leat', alternative: 'leaf' }],
+    'one-letter disagreement in the same printed prose row must be shown for review');
+  assert.match(spellingDocument.text, /leat weights/u,
+    'two conflicting OCR readings cannot silently rewrite the source');
   const uncertain = mergeFormulaDocument(masked, [{ ...formula, confidence: .4 }], size, original);
   assert.deepEqual(uncertain.uncertainFormulaStarts, [mathRanges(uncertain.text)[0].start],
     'a low-confidence formula identifies its actual location in the source shown for review');

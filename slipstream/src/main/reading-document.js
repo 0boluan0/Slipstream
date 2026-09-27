@@ -20,21 +20,42 @@ function knownEnglishWord(word, exact = false) {
   return word.endsWith('s') && englishWords.has(word.slice(0, -1));
 }
 
+function shouldJoinSplitWord(first, second, isWord, spellJoinCandidates) {
+  const joined = (first + second).toLowerCase();
+  return !/^(?:pre|post|non|anti|self)$/iu.test(first)
+    && (spellJoinCandidates.has(joined)
+      || (!(first.length >= 4 && second.length >= 4
+        && isWord(first.toLowerCase(), true) && isWord(second.toLowerCase(), true))
+        && isWord(joined)));
+}
+
 function joinProseLine(previous, next, isWord, spellJoinCandidates) {
   const end = /([A-Za-z]{2,})-$/u.exec(previous);
   const start = /^([a-z]{2,})(?![A-Za-z])/u.exec(next);
   if (end && start) {
-    const joined = (end[1] + start[1]).toLowerCase();
-    if (!/^(?:pre|post|non|anti|self)$/iu.test(end[1])
-      && (spellJoinCandidates.has(joined)
-        || (!(end[1].length >= 4 && start[1].length >= 4
-          && isWord(end[1].toLowerCase(), true) && isWord(start[1].toLowerCase(), true))
-          && isWord(joined)))) {
+    if (shouldJoinSplitWord(end[1], start[1], isWord, spellJoinCandidates)) {
       return previous.slice(0, -1) + next;
     }
     return previous + next;
   }
   return `${previous} ${next}`;
+}
+
+// Formula-rich captures retain visual row breaks so their TeX stays aligned.
+// Repair only corroborated prose splits, and report removed characters so
+// formula review markers keep pointing at the same expression.
+function joinVisualHyphenation(text, candidates = [], isWord = knownEnglishWord) {
+  const spellJoinCandidates = new Set((Array.isArray(candidates) ? candidates : [])
+    .filter((word) => typeof word === 'string').map((word) => word.toLowerCase()));
+  const math = mathRanges(text);
+  const removedAt = [];
+  const joined = text.replace(/\b([A-Za-z]{2,})-\n([a-z]{2,})(?![A-Za-z])/gu, (match, first, second, at) => {
+    if (math.some((range) => at < range.end && at + match.length > range.start)
+      || !shouldJoinSplitWord(first, second, isWord, spellJoinCandidates)) return match;
+    removedAt.push(at + first.length);
+    return first + second;
+  });
+  return { text: joined, removedAt };
 }
 
 // Vision emits visual lines. Join wrapped prose while retaining paragraph gaps;
@@ -149,4 +170,4 @@ function deduplicateReadingTerms(segments) {
     }) });
 }
 
-module.exports = { readingTextFromOcr, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms };
+module.exports = { readingTextFromOcr, joinVisualHyphenation, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms };
