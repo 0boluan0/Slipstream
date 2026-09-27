@@ -61,6 +61,13 @@ async function main() {
     'a zero-vector declaration and independent zero glyph correct an omicron decode');
   assert.equal(zeroVector.uncertainFormulaCount, 1,
     'a context-corrected vector glyph still asks for image review');
+  const lossSymbol = mergeFormulaDocument({ blocks: [] }, [{ ...formula, latex: '\\iota', confidence: .95 }],
+    size, { blocks: [word('l', 10, 18)] }, { blocks: [word('l', 10, 18)] });
+  assert.equal(lossSymbol.text, '$l$', 'two image OCR layouts reading Latin l must correct an iota decode');
+  assert.equal(lossSymbol.uncertainFormulaCount, 1, 'a corrected Latin/Greek ambiguity still needs reader review');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...formula, latex: '\\iota', confidence: .95 }],
+    size, { blocks: [word('l', 10, 18)] }, { blocks: [word('ι', 10, 18)] }).text, '$\\iota$',
+  'one Latin reading cannot override a conflicting Greek reading');
   assert.equal(mergeFormulaDocument({ blocks: [] },
     [{ ...formula, latex: String.raw`\vec { \omicron } \in V`, confidence: .95 }],
     size, { blocks: [word('there is a zero vector 0∈V', 10, 25)] }).text,
@@ -264,6 +271,20 @@ async function main() {
     ({ text, confidence, boundingBox: { x, y, w, h } });
   const mergedLines = { blocks: [line('Unreadable merged row', .2, .5, .5)] };
   const separatedLines = { blocks: [line('First readable source line', .5, .2), line('Second readable source line', .2, .2)] };
+  const weakSentence = line('J reaches mınımum valıdatıon loss at iteration', .2, .2, .5);
+  const paddedSentence = line('f reaches minimum validation loss at iteration', .2, .2);
+  const maskedSentence = line('f reaches minimum validation loss at iteration', .2, .2);
+  const repairedSentence = mergeFormulaDocument({ blocks: [maskedSentence] }, [], size,
+    { blocks: [weakSentence] }, { blocks: [paddedSentence] });
+  assert.equal(repairedSentence.text, paddedSentence.text,
+    'a low-confidence row can use padded OCR when formula-masked pixels confirm its prose');
+  assert.equal(repairedSentence.rowRecovered, 1, 'a corrected source row stays visible in review');
+  assert.equal(mergeFormulaDocument({ blocks: [line('unrelated prose from the next column', .2, .2)] }, [], size,
+    { blocks: [weakSentence] }, { blocks: [paddedSentence] }).text, weakSentence.text,
+  'an uncorroborated padded sentence must not replace the source');
+  assert.equal(mergeFormulaDocument({ blocks: [maskedSentence] }, [], size,
+    { blocks: [weakSentence] }, { blocks: [line(paddedSentence.text, .05, .2)] }).text, weakSentence.text,
+  'a different printed row cannot supply a replacement');
   assert.equal(mergeFormulaDocument(separatedLines, [], size, mergedLines).text,
     'First readable source line\nSecond readable source line',
     'confident separate rows can recover a low-confidence observation that merged multiple source lines');

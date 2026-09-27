@@ -29,8 +29,8 @@ function repairUnpairedEvaluationBars(latex) {
 }
 
 // Keep the original prose as the reading-order anchor. Masking can make Vision
-// merge adjacent lines or hallucinate short fragments, so it is only a fallback
-// for a prose word that shares a bounding box with a recognized formula.
+// merge adjacent lines or hallucinate fragments; replace a doubtful source row
+// only when the masked and padded layouts independently agree at its location.
 function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   const pixelBox = (box) => ({ x: box.x * size.width, y: (1 - box.y - box.h) * size.height,
     w: box.w * size.width, h: box.h * size.height });
@@ -82,23 +82,38 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     const terms = proseTokens(a), reference = proseTokens(b);
     return terms.size ? [...terms].filter((term) => reference.has(term)).length / terms.size : 0;
   };
+  function samePrintedRow(block, candidate) {
+    if (!block.boundingBox || !candidate.boundingBox || candidate.confidence < .9) return false;
+    const box = pixelBox(block.boundingBox), row = pixelBox(candidate.boundingBox);
+    return Math.abs(row.y + row.h / 2 - box.y - box.h / 2) < Math.min(row.h, box.h) * .55
+      && row.x + row.w > box.x && row.x < box.x + box.w;
+  }
   function confirmedSourceRow(block) {
     if (!block.boundingBox || block.confidence < .9 || block.text.length < 30) return null;
-    const box = pixelBox(block.boundingBox);
-    const sameRow = (candidate) => {
-      if (!candidate.boundingBox || candidate.confidence < .9) return false;
-      const row = pixelBox(candidate.boundingBox);
-      return Math.abs(row.y + row.h / 2 - box.y - box.h / 2) < Math.min(row.h, box.h) * .55
-        && row.x + row.w > box.x && row.x < box.x + box.w;
-    };
-    const maskedRows = (masked?.blocks || []).filter((candidate) => sameRow(candidate)
+    const maskedRows = (masked?.blocks || []).filter((candidate) => samePrintedRow(block, candidate)
       && proseTokens(candidate.text).size);
     const maskedText = maskedRows.sort((a, b) => pixelBox(a.boundingBox).x - pixelBox(b.boundingBox).x)
       .map((candidate) => candidate.text).join(' ');
     if (proseTokens(maskedText).size < 4 || tokenCoverage(maskedText, block.text) >= .45) return null;
-    const confirmed = (edgeProse?.blocks || []).some((candidate) => sameRow(candidate)
+    const confirmed = (edgeProse?.blocks || []).some((candidate) => samePrintedRow(block, candidate)
       && tokenCoverage(maskedText, candidate.text) >= .7);
     return confirmed ? maskedRows : null;
+  }
+  function confirmedLowConfidenceRow(block) {
+    // A padded pass alone can corrupt mathematics. Require the formula-masked
+    // pixels to corroborate its prose before using it for a doubtful row.
+    if (!block.boundingBox || block.confidence > .5 || block.text.length < 30) return null;
+    const paddedRows = (edgeProse?.blocks || []).filter((candidate) => samePrintedRow(block, candidate)
+      && candidate.text.length >= 25);
+    if (paddedRows.length !== 1) return null;
+    const padded = paddedRows[0];
+    const maskedRows = (masked?.blocks || []).filter((candidate) => samePrintedRow(block, candidate)
+      && proseTokens(candidate.text).size);
+    const maskedText = maskedRows.sort((a, b) => pixelBox(a.boundingBox).x - pixelBox(b.boundingBox).x)
+      .map((candidate) => candidate.text).join(' ');
+    if (proseTokens(maskedText).size < 4 || tokenCoverage(maskedText, padded.text) < .8
+      || tokenCoverage(block.text, padded.text) < .55 || padded.text === block.text) return null;
+    return padded;
   }
   let rowRecovered = 0;
   const repairedRows = new Set();
@@ -113,6 +128,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     if (!(block.confidence <= .5) || !block.boundingBox) return [block];
     const box = pixelBox(block.boundingBox);
     if (formulas.some((f) => f.display && intersects(f, box))) return [block];
+    const corroborated = confirmedLowConfidenceRow(block);
+    if (corroborated) { rowRecovered++; return [corroborated]; }
     const rows = (masked?.blocks || []).filter((candidate) => {
       if (!(candidate.confidence >= .9) || !candidate.boundingBox
         || (candidate.text.match(/\p{L}{3,}/gu) || []).length < 3) return false;
@@ -133,6 +150,15 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
   // Latin v/w can look like Greek nu/upsilon; do not silently trust that swap
   // when Vision read the Latin letter in the same formula rectangle.
   const independentWords = words(original);
+  const edgeWords = words(edgeProse);
+  function corroboratedIotaAsLatin(formula, latex) {
+    // The character recheck can read an italic loss variable l as Greek iota.
+    // Two independently laid-out Latin readings justify l, still with review.
+    if (latex.replace(/\s+/gu, '') !== '\\iota') return false;
+    const observed = (candidates) => candidates.filter((word) => intersects(formula, word))
+      .sort((a, b) => a.x - b.x).map((word) => word.text).join('').trim();
+    return observed(independentWords) === 'l' && observed(edgeWords) === 'l';
+  }
   function latinGreekConflict(formula, latex) {
     if (!/\\(?:nu|upsilon|omicron)\b/u.test(latex)) return false;
     const observed = independentWords.filter((word) => intersects(formula, word))
@@ -179,7 +205,6 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     proseAnnotations.set(formula, annotated);
     return true;
   });
-  const edgeWords = words(edgeProse);
   const sourceWords = originalWords.map((word) => {
     if (word.x > size.width * .06 || !/^\p{L}+$/u.test(word.text)
       || formulas.some((f) => intersects(f, word))) return word;
@@ -229,6 +254,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     const repairedEvaluationBar = latex !== formula.latex.trim();
     const correctedZero = corroboratedZeroVector(formula, latex);
     if (correctedZero) latex = latex.replace(/\\omicron\b/u, '0');
+    const correctedIota = corroboratedIotaAsLatin(formula, latex);
+    if (correctedIota) latex = 'l';
     const encodedColon = !formula.display && latex.match(/(?:\\colon|\\(?:mathbf|mathsf|mathrm|mathtt)\s*\{\s*:\s*\})\s*$/u);
     if (encodedColon) {
       // The math decoder sometimes includes the sentence colon in TeX while
@@ -289,7 +316,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       : null;
     if (equationLabel && !/\\tag\s*\{/.test(latex)) latex += ` \\tag{${equationLabel.label}}`;
     items.push({ ...formula, math: !ordinal, punctuation,
-      reviewRecognition: repairedEvaluationBar || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
+      reviewRecognition: repairedEvaluationBar || correctedIota || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex),
       text: prosePrefix + (ordinal ? ordinal[1] + ordinal[2] : annotated ? `${annotated.text}$^{${annotated.superscript}}$`
         : joined ? `$${joined[1].trim()}$ and $${joined[2].trim()}$`

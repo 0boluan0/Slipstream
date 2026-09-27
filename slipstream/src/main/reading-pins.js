@@ -877,7 +877,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const markedUncertain = localFormula?.uncertain && uncertainStarts.length === localFormula.uncertain;
         const denseFormula = localFormula?.count >= 8 && localFormula?.uncertain >= 4;
         const formulaNotice = localFormula?.count
-          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${denseFormula ? '这一框公式较密集。先把公式滚到屏幕中部、四周留白，再重新框选一两条公式，逐一核对字母、箭头和上下标。' : '请对照原图核对。'}`
+          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${denseFormula ? '这一框公式较密集。先点击标出的公式与截图逐一对照；若字形难辨，再缩小到一两条公式重框。' : '请对照原图核对。'}`
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,
@@ -901,7 +901,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
-            : document.rowRecovered ? '正文有跨行识别冲突，已按原图位置重新排好。请对照截图核对文字顺序。'
+            : document.rowRecovered ? '正文识别有冲突，已结合原图中的独立读数修复。请对照截图核对文字和顺序。'
             : document.edgeRecovered ? '截图上边缘的正文已补读。请对照原图核对开头文字。'
             : formulaNotice || (mathReview ? '检测到数学符号。请对照原始截图核对符号、上下标和分式。'
               : changed ? '处理服务已经改变，请核对处理位置后继续。' : '') });
