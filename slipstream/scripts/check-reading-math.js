@@ -5,6 +5,7 @@ const { readingSegments } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { mergeFormulaDocument, repairUnpairedEvaluationBars } = require('../src/main/formula-document');
+const { missingInteriorRows, orderedAgreement } = require('../src/main/interior-prose-recheck');
 
 async function main() {
   const size = { width: 100, height: 100 };
@@ -193,6 +194,30 @@ async function main() {
   assert.equal(missingTop.text, 'First source line recovered at top.\nSecond source line recovered at top.\nThird source line remains authoritative.',
     'a padded pass may restore missing top rows without replacing existing source rows');
   assert(missingTop.edgeRecovered, 'a recovered edge requires explicit reader review');
+  const beforeGap = row('A full source line before the gap.', .75);
+  const missingMiddle = row('A complete middle line survives the local image recheck.', .58);
+  const afterGap = row('A full source line after the gap.', .41);
+  assert.deepEqual(missingInteriorRows({ blocks: [beforeGap, afterGap] },
+    { blocks: [beforeGap, missingMiddle, afterGap] }), [missingMiddle],
+  'only a substantial padded row missing between two source anchors needs a local recheck');
+  assert.equal(missingInteriorRows({ blocks: [beforeGap, afterGap] },
+    { blocks: [{ ...missingMiddle, confidence: .5 }] }).length, 0,
+  'a doubtful padded row is not enough to propose missing prose');
+  const otherColumn = { ...missingMiddle, boundingBox: { x: .65, y: .58, w: .3, h: .1 } };
+  const leftColumn = (text, y) => ({ ...row(text, y), boundingBox: { x: .05, y, w: .4, h: .1 } });
+  assert.equal(missingInteriorRows({ blocks: [leftColumn(beforeGap.text, .75), leftColumn(afterGap.text, .41)] },
+    { blocks: [otherColumn] }).length, 0, 'a row in another column cannot fill this column\'s gap');
+  assert(orderedAgreement('f(x;mOlo), winning tickets since the initialization lottery was won',
+    'f (x; m O lo), winning tickets since the initialization lottery was won') >= .85,
+  'local OCR can confirm prose while the formula glyphs differ');
+  assert(orderedAgreement('winning tickets since the initialization lottery was won',
+    'winning masks alter every connection before the network was trained') < .85,
+  'unrelated local OCR does not confirm a padded row');
+  const repairedInterior = mergeFormulaDocument({ blocks: [] }, [], { width: 1000, height: 200 },
+    { blocks: [beforeGap, afterGap] }, { blocks: [beforeGap, missingMiddle, afterGap] }, [missingMiddle]);
+  assert.equal(repairedInterior.text, [beforeGap, missingMiddle, afterGap].map((block) => block.text).join('\n'),
+  'a locally verified middle line is inserted in visual reading order');
+  assert.equal(repairedInterior.interiorRecovered, 1, 'middle-line recovery remains visible for review');
   const highConfidenceRow = (text, y) => ({ ...placedWord(text, 5, y, 90, 15),
     boundingBox: { x: .05, y: (100 - y - 15) / 100, w: .9, h: .15 } });
   const trueRows = [highConfidenceRow('Academic reading begins with an intact introduction.', 10),

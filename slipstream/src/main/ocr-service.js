@@ -6,6 +6,7 @@ const { createOcrEnvironment } = require('./ocr-environment');
 const { createLocalFormulaOcr } = require('./local-formula-ocr');
 const { mergeFormulaDocument } = require('./formula-document');
 const { reconcileProseOcr } = require('./prose-ocr-reconciliation');
+const { missingInteriorRows, orderedAgreement, rect } = require('./interior-prose-recheck');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const OCR_SCRIPT = app.isPackaged
@@ -329,7 +330,9 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     const references = await recheckReferenceOne(imagePath, original, edges, temporary, { signal });
     const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
     const quoted = await recheckEmptyEdgeQuote(imagePath, corroborated, temporary, { signal });
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, quoted, edges);
+    const interior = await verifyMissingInteriorRows(imagePath, quoted, edges, { signal });
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, quoted, edges, interior.verified);
+    document.interiorUnresolved = interior.unresolved;
     return { ...prose, text: document.text, document,
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
@@ -338,6 +341,34 @@ async function performReadingOCR(imagePath, { signal } = {}) {
         uncertainStarts: document.uncertainFormulaStarts,
         milliseconds: recognized.milliseconds } };
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+}
+
+async function verifyMissingInteriorRows(imagePath, original, padded, { signal } = {}) {
+  const candidates = missingInteriorRows(original, padded);
+  if (!candidates.length) return { verified: [], unresolved: 0 };
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty() || size.width < 100 || size.height < 40) {
+    return { verified: [], unresolved: candidates.length };
+  }
+  const verified = [];
+  for (const candidate of candidates.slice(0, 4)) {
+    const box = rect(candidate), margin = 8;
+    const x = Math.max(0, Math.floor(box.left * size.width) - margin);
+    const y = Math.max(0, Math.floor(box.top * size.height) - margin);
+    const right = Math.min(size.width, Math.ceil(box.right * size.width) + margin);
+    const bottom = Math.min(size.height, Math.ceil(box.bottom * size.height) + margin);
+    if (right - x < 100 || bottom - y < 12) continue;
+    const crop = path.join(await fs.mkdtemp(path.join(app.getPath('userData'), 'ocr-cache', 'line-')), 'line.png');
+    try {
+      await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+      const local = await performOCR(crop, { signal, characters: true });
+      if (local.blocks.some((row) => row.confidence >= .9
+        && orderedAgreement(candidate.text, row.text) >= .85)) verified.push(candidate);
+    } catch (error) {
+      if (signal?.aborted || error?.isCancellation) throw error;
+    } finally { await fs.rm(path.dirname(crop), { recursive: true, force: true }); }
+  }
+  return { verified, unresolved: candidates.length - verified.length };
 }
 
 /**

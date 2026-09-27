@@ -31,7 +31,7 @@ function repairUnpairedEvaluationBars(latex) {
 // Keep the original prose as the reading-order anchor. Masking can make Vision
 // merge adjacent lines or hallucinate fragments; replace a doubtful source row
 // only when the masked and padded layouts independently agree at its location.
-function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
+function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verifiedInterior = []) {
   const pixelBox = (box) => ({ x: box.x * size.width, y: (1 - box.y - box.h) * size.height,
     w: box.w * size.width, h: box.h * size.height });
   function words(ocr) {
@@ -115,9 +115,9 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
       || tokenCoverage(block.text, padded.text) < .55 || padded.text === block.text) return null;
     return padded;
   }
-  let rowRecovered = 0;
+  let rowRecovered = verifiedInterior.length;
   const repairedRows = new Set();
-  const anchored = [...recoveredLeading, ...sourceBlocks].flatMap((block) => {
+  const anchored = [...recoveredLeading, ...verifiedInterior, ...sourceBlocks].flatMap((block) => {
     const confirmed = confirmedSourceRow(block);
     if (confirmed) {
       rowRecovered++;
@@ -367,7 +367,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse) {
     previous = row;
   }
   const mathematical = items.filter((item) => item.math);
-  return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0, rowRecovered,
+  return { text, layoutReview, edgeRecovered: recoveredLeading.length > 0,
+    interiorRecovered: verifiedInterior.length, rowRecovered,
     formulaCount: mathematical.reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE || item.reviewRecognition)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),

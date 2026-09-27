@@ -883,7 +883,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || review.required || changed || document.layoutReview || document.rowRecovered || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? '选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。'
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
@@ -901,6 +901,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
+            : document.interiorUnresolved ? '两次本地识别对段落中间的文字有分歧，局部复读仍无法确认。请对照截图补齐文字，或重新框选这一段。'
+            : document.interiorRecovered ? '段落中间有漏识别的正文，已在原图局部复读后补齐。请对照截图核对文字和顺序。'
             : document.rowRecovered ? '正文识别有冲突，已结合原图中的独立读数修复。请对照截图核对文字和顺序。'
             : document.edgeRecovered ? '截图上边缘的正文已补读。请对照原图核对开头文字。'
             : formulaNotice || (mathReview ? '检测到数学符号。请对照原始截图核对符号、上下标和分式。'
