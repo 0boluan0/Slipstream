@@ -192,6 +192,13 @@ function characterCandidates(ocr, size, formulas) {
         && first && second && ['x', 'y', 'w', 'h'].every((key) => first[key] === second[key])
         && !/[\p{L}\p{N}]/u.test(chars[i - 1] || '')
         && !/[\p{L}\p{N}]/u.test(chars[i + 2] || '');
+      // A lowercase standalone article is ordinary prose even if the math
+      // recognizer confidently sees an epsilon-shaped glyph in its crop.
+      // Uppercase A can name a mathematical set, and subject verbs keep a
+      // lowercase variable eligible too.
+      const nextWord = chars.slice(i + 1).join('').match(/^\s+([A-Za-z]{3,})\b/u)?.[1]?.toLowerCase();
+      if (chars[i] === 'a' && nextWord
+        && !/^(?:is|was|has|can|may|will|denotes?|represents?|equals?|satisfies|belongs?|varies|lies|means|follows|maps|contains|forms|spans|yields|produces|converges|divides|multiplies)$/u.test(nextWord)) continue;
       // Vision can render an isolated Ω as S, &, or $ across macOS versions.
       if (!call && !splitGlyph && (!/^[A-Za-z€&$]$/u.test(chars[i])
         || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
@@ -529,4 +536,4 @@ function createLocalFormulaOcr(modelDir) {
   return { recognize, recheckCharacters, cleanup: () => { queue = queue.then(cleanup); return queue; } };
 }
 
-module.exports = { createLocalFormulaOcr, detectBoxes, tokenDecoder };
+module.exports = { createLocalFormulaOcr, detectBoxes, tokenDecoder, characterCandidates };

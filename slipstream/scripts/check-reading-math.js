@@ -3,11 +3,32 @@ const assert = require('node:assert/strict');
 const { mathRanges, needsMathReview, isMathOnly } = require('../src/shared/reading-math.cjs');
 const { readingSegments, joinVisualHyphenation } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
+const { characterCandidates } = require('../src/main/local-formula-ocr');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { mergeFormulaDocument, repairUnpairedEvaluationBars } = require('../src/main/formula-document');
 const { missingInteriorRows, orderedAgreement } = require('../src/main/interior-prose-recheck');
 
 async function main() {
+  const letterOcr = (text) => ({ blocks: [{ text, characters: Array.from(text, (glyph, index) => ({
+    text: glyph, boundingBox: { x: .02 + index * .014, y: .5,
+      w: glyph === ' ' ? 0 : .012, h: glyph === ' ' ? 0 : .12 },
+  })) }] });
+  const articleLine = 'We form the zero vector as a linear combination.';
+  const articleIndex = articleLine.indexOf('as a ') + 3;
+  assert(!characterCandidates(letterOcr(articleLine), { width: 1000, height: 200 }, [])
+    .some((candidate) => candidate.x === Math.floor((.02 + articleIndex * .014) * 1000)),
+  'a source article before a prose noun must not be sent to single-glyph formula recognition');
+  const variableLine = 'Let a denote the scale.';
+  const variableIndex = variableLine.indexOf(' a ') + 1;
+  assert(characterCandidates(letterOcr(variableLine), { width: 1000, height: 200 }, [])
+    .some((candidate) => candidate.x === Math.floor((.02 + variableIndex * .014) * 1000)),
+  'a source letter used as a mathematical subject remains eligible for formula recheck');
+  for (const [line, symbol] of [['The family A contains events.', 'A'], ['The vector a contains entries.', 'a']]) {
+    const index = line.indexOf(` ${symbol} `) + 1;
+    assert(characterCandidates(letterOcr(line), { width: 1000, height: 200 }, [])
+      .some((candidate) => candidate.x === Math.floor((.02 + index * .014) * 1000)),
+    'a mathematical object before a subject verb must remain eligible for symbol recheck');
+  }
   const size = { width: 100, height: 100 };
   const word = (text, x, w) => ({ text, characters: [...text].map((char) => ({ text: char,
     boundingBox: { x: x / 100, y: .7, w: w / 100, h: .2 } })) });
