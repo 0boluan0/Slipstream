@@ -76,6 +76,24 @@ async function main() {
   assert.equal(calls, 1, 'definitions share the translation request');
   assert.deepEqual(translated.references, [definition], 'unanchored or duplicate definitions cannot become suggestions');
   assert.equal((await processor({ text: source, kind: 'references', settingsSnapshot: settings })).references.length, 1);
+  // PMF p. 6: the installed preview proposed a source "definition" of RMSE
+  // although this sentence only uses the acronym in a result comparison.
+  const pmfResult = 'The constrained PMF model achieved a RMSE of 1.0510 on the validation set compared to a RMSE of 1.0726 for the simple movie average model.';
+  const rmseProposal = { symbol: 'RMSE', meaning: '均方根误差，用于衡量预测评分与真实评分之间差异的指标', evidence: pmfResult };
+  assert.deepEqual(parseReferenceCandidates([rmseProposal], pmfResult), [],
+    'an acronym used in a result is not a definition supplied by this excerpt');
+  const pmfProcessor = createReadingProcessor(async () => JSON.stringify({ translation: '约束 PMF 的验证误差更低。', terms: [], references: [rmseProposal] }));
+  assert.deepEqual((await pmfProcessor({ text: pmfResult, withReferences: true, settingsSnapshot: settings })).references, [],
+    'the translation path must not expose a usage-only acronym as a paper definition');
+  const pmfCaption = 'The y-axis displays RMSE (root mean squared error), and the x-axis shows the number of epochs.';
+  assert.equal(parseReferenceCandidates([{ ...rmseProposal, evidence: pmfCaption }], pmfCaption).length, 1,
+    'an explicit acronym expansion in the selected passage remains eligible');
+  const reverseExpansion = 'We report the root mean squared error (RMSE) on the validation set.';
+  assert.equal(parseReferenceCandidates([{ ...rmseProposal, evidence: reverseExpansion }], reverseExpansion).length, 1,
+    'an acronym introduced after its expansion remains eligible');
+  const rmseValue = 'RMSE is 0.9016 for this model.';
+  assert.deepEqual(parseReferenceCandidates([{ ...rmseProposal, evidence: rmseValue }], rmseValue), [],
+    'a reported numeric value is not a reusable acronym definition');
   const vitSource = 'where (H, W) is the resolution of the original image, C is the number of channels, '
     + '(P, P) is the resolution of each image patch, and $N = H W / P ^ { 2 }$ is the resulting number '
     + 'of patches, which also serves as the effective input sequence length for the Transformer. '

@@ -183,6 +183,30 @@ function exampleValueCandidate(symbol, meaning, evidence) {
     && /\b(?:example|for instance|suppose|consider|in this case|special case|standard normal distribution|with mean|with standard deviation|with variance|if|when)\b/iu.test(evidence);
 }
 
+function acronymDefinedInEvidence(symbol, evidence) {
+  if (!/^[A-Z]{2,12}$/u.test(symbol)) return true;
+  const initialsMatch = (phrase) => {
+    const words = phrase.match(/[A-Za-z]+/gu) || [];
+    // An expansion may be preceded by an article or descriptive words, but
+    // its final words must actually spell the acronym.
+    return words.some((_, start) => words.slice(start).map((word) => word[0].toUpperCase()).join('') === symbol);
+  };
+  const quoted = symbol.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  for (const match of evidence.matchAll(new RegExp(`\\b${quoted}\\b\\s*\\(([^()]{3,120})\\)`, 'gu'))) {
+    if (initialsMatch(match[1])) return true;
+  }
+  for (const match of evidence.matchAll(new RegExp(`\\(${quoted}\\)`, 'gu'))) {
+    if (initialsMatch(evidence.slice(Math.max(0, match.index - 120), match.index))) return true;
+  }
+  // Some authors define an abbreviated name in prose without parentheses.
+  if (!evidenceDefinesSymbol({ symbol, evidence, origin: 'excerpt' })) return false;
+  return referenceOccurrences(evidence, symbol).some(({ end }) => {
+    const after = evidence.slice(end).replace(/^[\s$]+/u, '');
+    // "RMSE is 0.9016" and "RMSE is lower" report results, not meanings.
+    return !/^(?:(?::?=)\s*[-+−]?(?:\d|\.\d)|(?:is|are)\s+(?:[-+−]?(?:\d|\.\d)|higher\b|lower\b|smaller\b|larger\b|better\b|worse\b))/iu.test(after);
+  });
+}
+
 function parseReferenceCandidates(items, source) {
   if (!Array.isArray(items)) return [];
   const seen = new Set();
@@ -195,6 +219,7 @@ function parseReferenceCandidates(items, source) {
     if (!evidence || !referenceOccurrences(evidence, item.symbol).length) return [];
     const symbol = referenceSymbol(item.symbol);
     if (exampleValueCandidate(symbol, item.meaning, evidence)) return [];
+    if (!acronymDefinedInEvidence(symbol, evidence)) return [];
     const key = `${referenceKey(symbol)}\n${evidence}`;
     if (seen.has(key)) return [];
     seen.add(key);

@@ -287,6 +287,26 @@ function maskFormulaRegions(image, formulas, size) {
   return formulas.length ? nativeImage.createFromBitmap(bitmap, size).toPNG() : null;
 }
 
+function stronglyCutAtBottom(image, box, size) {
+  // Detector boxes are rounded to the image edge even for a complete final
+  // line with a few descender pixels. A truly cut line has sustained ink all
+  // along that edge; count within this box rather than across unrelated text.
+  const x = Math.max(0, Math.floor(box.x));
+  const width = Math.min(size.width - x, Math.ceil(box.x + box.w) - x);
+  if (width <= 0 || size.height < 2) return false;
+  const pixels = image.crop({ x, y: size.height - 2, width, height: 2 }).toBitmap();
+  const minimum = Math.max(8, Math.ceil(width * .12));
+  for (let row = 0; row < 2; row++) {
+    let dark = 0;
+    for (let col = 0; col < width; col++) {
+      const offset = (row * width + col) * 4;
+      if (Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) < 160) dark++;
+    }
+    if (dark < minimum) return false;
+  }
+  return true;
+}
+
 async function recognizeCrop(model, image, signal, deadline) {
   cancelled(signal, deadline);
   const encoded = await model.encoder.run({ pixel_values: rgbTensor(image, 384, true, model.ort) });
@@ -428,10 +448,12 @@ function createLocalFormulaOcr(modelDir) {
       for (const box of boxes) {
         cancelled(signal, deadline);
         const touchingBottom = size.height - (box.y + box.h) <= 2;
-        // A weak region touching the lower edge can be only the top of the
-        // next line. Strong regions may still contain complete notation, so
-        // keep them for recognition and mark them for review below.
-        if (touchingBottom && box.score < .5) {
+        // A detected region touching the lower edge may contain only the top
+        // of the next line. A strong detector score is insufficient when ink
+        // runs through the crop edge: the decoder can invent a complete
+        // formula from those partial glyphs. A mostly blank edge can instead
+        // be a complete, tightly framed final line, which we retain for review.
+        if (touchingBottom && (box.score < .5 || stronglyCutAtBottom(image, box, size))) {
           clippedBottomY = clippedBottomY === null ? box.y : Math.min(clippedBottomY, box.y);
           continue;
         }
