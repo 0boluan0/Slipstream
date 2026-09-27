@@ -169,6 +169,18 @@ async function main() {
   const periodSource = { blocks: [word('x.', 10, 24), word('label', 45, 30)] };
   assert.equal(mergeFormulaDocument({ blocks: [word('•', 29, 5)] }, [formula], size, periodSource).text, '$x$. label',
     'masked OCR may call the same source period a bullet; preserve the original punctuation once');
+  const ambiguousPeriod = { ...formula, latex: 'a_{j-1}' };
+  const bulletSource = { blocks: [word('aj-1•', 10, 24), word('label', 45, 30)] };
+  const paddedPeriod = { blocks: [{ ...word('a1,...,ai-1.', 8, 30), confidence: 1 }] };
+  const recoveredPeriod = mergeFormulaDocument({ blocks: [word('•', 29, 5)] },
+    [ambiguousPeriod], size, bulletSource, paddedPeriod);
+  assert.equal(recoveredPeriod.text, '$a_{j-1}$. label',
+    'aligned padded punctuation restores a sentence period without borrowing its mistaken formula letter');
+  assert.equal(recoveredPeriod.uncertainFormulaCount, 1,
+    'a period recovered from disagreeing OCR passes still requires formula review');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [ambiguousPeriod], size, bulletSource,
+    { blocks: [{ ...word('b1,...,bi-1.', 8, 30), confidence: 1 }] }).text, '$a_{j-1}$ label',
+  'an unrelated padded formula cannot supply a sentence period');
   const numbered = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true }], size,
     { blocks: [word('(2)', 80, 15)] });
   assert.match(numbered.text, /\\tag\{2\}/, 'a right-aligned number belongs to its display equation');

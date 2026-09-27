@@ -352,6 +352,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   let caseDelimiterRepairs = 0, unrenderableFormulaCount = 0;
   for (const formula of formulas) {
     let latex = repairUnpairedEvaluationBars(formula.latex.trim()), punctuation = '';
+    let recoveredAmbiguousPeriod = false;
     const repairedEvaluationBar = latex !== formula.latex.trim();
     const correctedZero = corroboratedZeroVector(formula, latex);
     if (correctedZero) latex = latex.replace(/\\omicron\b/u, '0');
@@ -393,6 +394,28 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
         && alternative.slice(0, -1) === latex.replace(/\s+/g, '')
         && !items.some((word) => word.text.trim() === alternative.at(-1) && intersects(word, matches.at(-1)))) {
         punctuation = alternative.at(-1);
+      }
+      // At the end of a dense textbook line, Vision can read the printed
+      // period as a bullet in its original pass, while the padded pass sees
+      // a period but misreads one formula letter. Recover only that terminal
+      // mark from aligned source pixels; never borrow the alternate notation.
+      if (!punctuation) {
+        const source = removed.filter((word) => intersects(formula, word)
+          && word.text.endsWith('•')).sort((a, b) => a.x - b.x).at(-1);
+        const candidate = matches.filter((word) => word.confidence >= .9 && word.text.endsWith('.'))
+          .sort((a, b) => a.x - b.x).at(-1);
+        const sourceStem = source?.text.slice(0, -1).replace(/\s+/gu, '') || '';
+        const candidateStem = candidate?.text.slice(0, -1).replace(/\s+/gu, '') || '';
+        const aligned = source && candidate
+          && Math.abs(source.x + source.w / 2 - candidate.x - candidate.w / 2) < Math.max(source.w, candidate.w) * .4
+          && Math.abs(source.y + source.h / 2 - candidate.y - candidate.h / 2) < Math.max(source.h, candidate.h) * .4;
+        const suffix = candidateStem.slice(-sourceStem.length);
+        if (aligned && sourceStem.length >= 3 && suffix.length === sourceStem.length
+          && sourceStem[0] === suffix[0]
+          && [...sourceStem].filter((char, index) => char !== suffix[index]).length <= 1) {
+          punctuation = '.';
+          recoveredAmbiguousPeriod = true;
+        }
       }
     }
     // Superscripted prose ordinals belong to the sentence, so translation can
@@ -442,7 +465,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const unrenderable = mathRanges(formulaText).filter((range) => !canRenderMath(range.tex, range.display)).length;
     unrenderableFormulaCount += unrenderable;
     items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
-      reviewRecognition: repairedEvaluationBar || repairedCaseDelimiter || unrenderable || correctedIota
+      reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || unrenderable || correctedIota
         || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
         || separatedWhere && !sourceWhere,
