@@ -37,6 +37,14 @@ function repairMissingCaseDelimiter(latex) {
   return latex.replace(/(\\end\{array\}\s*\\right)\s*$/u, '$1.');
 }
 
+function finalCaseRowPunctuation(latex) {
+  if (!/\\right\.$/u.test(latex)) return '';
+  const end = latex.lastIndexOf('\\end{array}');
+  if (end < 0) return '';
+  const finalRow = latex.slice(0, end).replace(/\\\\\s*$/u, '').trim();
+  return finalRow.match(/([,.;:!?])\s*\}\s*$/u)?.[1] || '';
+}
+
 let mathRenderer;
 function canRenderMath(latex, displayMode) {
   try {
@@ -417,6 +425,9 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const caseDelimited = repairMissingCaseDelimiter(latex);
     const repairedCaseDelimiter = caseDelimited !== latex;
     if (repairedCaseDelimiter) { latex = caseDelimited; caseDelimiterRepairs += 1; }
+    // Vision can see the visible sentence mark at the end of the last case
+    // branch while the math decoder has already included it inside that row.
+    if (punctuation && punctuation === finalCaseRowPunctuation(latex)) punctuation = '';
     // A detector can enclose two expressions and the English word between
     // them. Only move that word out of TeX when Vision independently reads it
     // in the same source region; otherwise leave the recognizer's math intact.

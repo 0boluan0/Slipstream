@@ -594,6 +594,17 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(brokenBraces)).notice, /花括号可能漏识别/);
   assert.equal(providerCalls, beforeBrokenBraces);
   manager.clear();
+  ocrOverride = 'The cases are $$x=\\left\\{\\begin{array}{ll}1&i=j\\\\0&i\\neq j.\\end{array}\\right.$$';
+  formulaOcrOverride = { status: 'done', count: 1, uncertain: 0, uncertainStarts: [] };
+  const beforeValidCase = providerCalls;
+  await manager.capture();
+  const validCase = cards()[0];
+  await until(phaseIs(validCase, 'review'), 'a valid math excerpt should reach normal formula review');
+  assert.doesNotMatch((await stateOf(validCase)).notice, /花括号可能漏识别/u,
+    'the visible left case brace is escaped LaTeX, not an unmatched source brace');
+  assert.equal(providerCalls, beforeValidCase);
+  manager.clear();
+  formulaOcrOverride = null;
   ocrOverride = 'The axioms are $v+w$, $w+v$, $rv$, $r(w+v)$, $(r+s)v$, $r(sv)$, $0+v$, and $v+(-v)$.';
   formulaOcrOverride = { status: 'done', count: 8, uncertain: 5, uncertainStarts: [] };
   const beforeDense = providerCalls;

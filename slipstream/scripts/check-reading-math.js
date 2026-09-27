@@ -290,10 +290,20 @@ async function main() {
     'the invisible delimiter period must not be mistaken for sentence punctuation');
   assert.match(completeCase.text, /\\end\{array\}\s*\\right\.\$\$$/u);
   const punctuatedCase = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
-    latex: `${missingCaseDelimiter}..`, confidence: .99 }], size);
+    latex: `${missingCaseDelimiter.replace('j.', 'j')}..`, confidence: .99 }], size);
   assert.match(punctuatedCase.text, /\\right\.\$\$\.$/u,
     'sentence punctuation after an invisible delimiter stays outside the formula');
   assert.equal(punctuatedCase.caseDelimiterRepairs, 0);
+  const caseWithVisionPeriod = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
+    latex: `${missingCaseDelimiter}.`, confidence: .99 }], size,
+  { blocks: [word('j.', 10, 18)] });
+  assert.match(caseWithVisionPeriod.text, /\\end\{array\}\s*\\right\.\$\$$/u,
+    'Vision punctuation already inside the final case row must not appear again after the equation');
+  const caseWithoutInternalPeriod = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
+    latex: missingCaseDelimiter.replace('j.', 'j') + '.', confidence: .99 }], size,
+  { blocks: [word('j.', 10, 18)] });
+  assert.match(caseWithoutInternalPeriod.text, /\\right\.\$\$\.$/u,
+    'a source period absent from the case row must still survive outside the display');
   const unrenderable = mergeFormulaDocument({ blocks: [] }, [{ ...formula, display: true,
     latex: String.raw`\frac{a}{`, confidence: .99 }], size);
   assert.equal(unrenderable.uncertainFormulaCount, 1,

@@ -113,8 +113,11 @@ function looksLikeBrokenBrackets(text) {
 }
 
 function looksLikeBrokenMathBraces(text) {
-  let open = 0;
+  let open = 0, backslashes = 0;
   for (const char of text) {
+    if (char === '\\') { backslashes += 1; continue; }
+    if (backslashes % 2 === 1) { backslashes = 0; continue; }
+    backslashes = 0;
     if (char === '{') open += 1;
     else if (char === '}') {
       if (open === 0) return true;
