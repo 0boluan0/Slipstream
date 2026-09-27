@@ -876,9 +876,12 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const nameConflict = conflictingProperNames(document.text);
         const proseDisagreement = ocr.proseComparison?.disagree === true;
         const spellingConflict = document.proseSpellingConflicts?.[0];
+        const primeConflict = ocr.primeReviewConflicts?.[0];
         const symbolConflict = document.proseSymbolConflicts?.[0];
         const spellingHint = spellingConflict
           ? ` 两次识别对“${spellingConflict.source}”与“${spellingConflict.alternative}”有分歧，请核对拼写。` : '';
+        const primeHint = primeConflict
+          ? ` 符号“${primeConflict.source}”也可能是“${primeConflict.alternative}”，请对照原图核对撇号。` : '';
         pin.controller = null;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* continue through explicit review */ }
@@ -897,9 +900,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,
-          formulaNotice, formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
+          formulaNotice: `${formulaNotice}${primeHint}${spellingHint}`.trim(),
+          formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
+          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || primeConflict || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? `选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。${spellingHint}`
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
@@ -912,10 +916,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : leadingTail ? '这段原文似乎从上一句的尾部开始。请对照截图核对开头，必要时从完整句子重新框选。'
             : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
             : brokenMathBraces ? '花括号可能漏识别，集合或公式的含义可能失真。请对照截图校正。'
+            : primeConflict || spellingConflict ? `识别有分歧：${primeHint}${spellingHint} 请对照截图核对后再翻译。`
             : proseDisagreement ? ocr.proseComparison.recovered
               ? '两次本地识别对正文有分歧，已选较完整的候选。请对照截图核对后再翻译。'
               : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
-            : spellingConflict ? `两次本地识别对“${spellingConflict.source}”与“${spellingConflict.alternative}”有分歧。请对照截图核对拼写，确认前不会发送文字。`
             : symbolConflict ? `字形“${symbolConflict.source}”与“${symbolConflict.alternative}”的识别有分歧，已按同一位置的其他读数改为“${symbolConflict.alternative}”。请对照截图核对，确认前不会发送文字。`
             : unrenderableFormula ? `有 ${localFormula.unrenderable} 处公式暂时无法排版。请对照截图校正 LaTeX，确认前不会发送文字。`
             : repairedCaseDelimiter ? '分段公式缺少排版用的右定界符，已补上不可见定界符。请对照截图核对后再翻译。'

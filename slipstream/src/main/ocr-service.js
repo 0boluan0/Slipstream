@@ -126,14 +126,16 @@ function performOCR(imagePath, { signal, characters = false, padEdges = false } 
 
 async function recheckReferenceOne(imagePath, original, padded, temporary, { signal } = {}) {
   const source = original?.blocks || [], alternative = padded?.blocks || [];
-  if (!source.some((block) => /\b(?:Figure|Table|Equation|Algorithm) I\b/u.test(block.text))) return original;
+  const reference = /\b(?:Figure|Table|Equation|Algorithm|Eq\.) I\b/u;
+  if (!source.some((block) => reference.test(block.text))) return original;
   const image = nativeImage.createFromPath(imagePath), size = image.getSize();
   if (image.isEmpty()) return original;
   const blocks = source.slice();
   let checked = 0;
+  const verifiedGlyphConflicts = [...(original?.verifiedGlyphConflicts || [])];
   for (let row = 0; row < blocks.length && checked < 4; row++) {
     const block = blocks[row];
-    const match = /\b(?:Figure|Table|Equation|Algorithm) I\b/u.exec(block.text);
+    const match = reference.exec(block.text);
     if (!match || !block.boundingBox || !block.characters?.length
       || block.characters.length !== Array.from(block.text).length) continue;
     const corrected = block.text.slice(0, match.index) + match[0].replace(/I$/u, '1')
@@ -162,8 +164,27 @@ async function recheckReferenceOne(imagePath, original, padded, temporary, { sig
     const index = last - 1;
     blocks[row] = { ...block, text: corrected, characters: block.characters.map((char, i) =>
       i === index ? { ...char, text: '1' } : char) };
+    verifiedGlyphConflicts.push({ source: match[0], alternative: match[0].replace(/I$/u, '1') });
   }
-  return { ...original, blocks };
+  return { ...original, blocks, verifiedGlyphConflicts };
+}
+
+function findPrimeDefinitionConflicts(original) {
+  const conflicts = [];
+  for (const block of original?.blocks || []) {
+    if (block.confidence < .9 || !block.alternatives?.length) continue;
+    for (const match of block.text.matchAll(/\b([A-Za-z])['’]\s+[A-Za-z]+(?:\s+[A-Za-z]+){4}\b/gu)) {
+      const corrected = block.text.slice(0, match.index)
+        + match[0].replace(/^([A-Za-z])['’]/u, '$1')
+        + block.text.slice(match.index + match[0].length);
+      if (!block.alternatives.includes(corrected)) continue;
+      const source = `${match[1]}${match[0][1]}`;
+      if (!conflicts.some((pair) => pair.source === source)) {
+        conflicts.push({ source, alternative: match[1] });
+      }
+    }
+  }
+  return conflicts;
 }
 
 async function recheckRightEdgeWord(imagePath, original, padded, temporary, { signal, recognize = performOCR } = {}) {
@@ -280,7 +301,7 @@ async function recheckAmbiguousProseZero(imagePath, original, masked, temporary,
   const sameGlyph = (a, b) => Math.abs(a.x + a.w / 2 - b.x - b.w / 2) < Math.max(a.w, b.w) * .45
     && Math.abs(a.y + a.h / 2 - b.y - b.h / 2) < Math.max(a.h, b.h) * .35;
   const normalize = (value) => value.replace(/\s+/gu, ' ').trim().toLowerCase();
-  const blocks = source.slice(), verifiedGlyphConflicts = [];
+  const blocks = source.slice(), verifiedGlyphConflicts = [...(original?.verifiedGlyphConflicts || [])];
   let checked = 0;
   for (let row = 0; row < blocks.length && checked < 3; row++) {
     const block = blocks[row], chars = block.characters || [], rowText = Array.from(block.text);
@@ -332,7 +353,8 @@ async function recheckAmbiguousProseZero(imagePath, original, masked, temporary,
       break;
     }
   }
-  return verifiedGlyphConflicts.length ? { ...original, blocks, verifiedGlyphConflicts } : original;
+  return verifiedGlyphConflicts.length > (original?.verifiedGlyphConflicts?.length || 0)
+    ? { ...original, blocks, verifiedGlyphConflicts } : original;
 }
 
 function withoutClippedBottomRows(ocr, size, cutoffY) {
@@ -374,7 +396,8 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     });
     if (clippedBottom) padded = withoutClippedBottomRows(padded, recognized.size, recognized.clippedBottomY);
     const prose = reconcileProseOcr(original, padded);
-    return { ...prose, formulaOcr: { status: 'done', count: 0, clippedBottom, milliseconds: recognized.milliseconds } };
+    return { ...prose, primeReviewConflicts: findPrimeDefinitionConflicts(original),
+      formulaOcr: { status: 'done', count: 0, clippedBottom, milliseconds: recognized.milliseconds } };
   }
   const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
   createOcrEnvironment(cacheDir);
@@ -403,6 +426,7 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, zeroChecked, edges, interior.verified);
     document.interiorUnresolved = interior.unresolved;
     return { ...prose, text: document.text, document,
+      primeReviewConflicts: findPrimeDefinitionConflicts(original),
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
         clippedBottom,
@@ -455,6 +479,7 @@ module.exports = {
   performOCR,
   performReadingOCR,
   recheckReferenceOne,
+  findPrimeDefinitionConflicts,
   recheckRightEdgeWord,
   recheckEmptyEdgeQuote,
   recheckAmbiguousProseZero,

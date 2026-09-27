@@ -167,6 +167,40 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       break;
     }
   }
+  // Short technical acronyms can lose one letter while both Vision passes
+  // still report full confidence. Keep the source text, but surface a bounded
+  // disagreement when its printed neighbors agree on both sides.
+  const oneEdit = (left, right) => {
+    if (Math.abs(left.length - right.length) > 1) return false;
+    if (left.length === right.length) return [...left].filter((char, index) => char !== right[index]).length === 1;
+    const [longer, shorter] = left.length > right.length ? [left, right] : [right, left];
+    return [...longer].some((_, index) => longer.slice(0, index) + longer.slice(index + 1) === shorter);
+  };
+  for (const block of sourceBlocks) {
+    const candidates = [...(edgeProse?.blocks || []), ...(block.alternatives || []).map((text) => ({
+      text, confidence: block.confidence, boundingBox: block.boundingBox }))];
+    for (const match of block.text.matchAll(/\b[A-Z]{2,6}\b/gu)) {
+      const before = block.text.slice(Math.max(0, match.index - 18), match.index);
+      const after = block.text.slice(match.index + match[0].length, match.index + match[0].length + 18);
+      if (before.trim().length < 8 || after.trim().length < 8) continue;
+      if ((edgeProse?.blocks || []).some((candidate) => samePrintedRow(block, candidate)
+        && candidate.text.includes(before + match[0] + after))) continue;
+      for (const candidate of candidates) {
+        if (!samePrintedRow(block, candidate)) continue;
+        const alternative = [...candidate.text.matchAll(/\b[A-Z]{2,6}\b/gu)].find((other) =>
+          oneEdit(match[0], other[0])
+          && candidate.text.slice(Math.max(0, other.index - before.length), other.index) === before
+          && candidate.text.slice(other.index + other[0].length,
+            other.index + other[0].length + after.length) === after);
+        if (!alternative) continue;
+        const key = `${match[0].toLowerCase()}/${alternative[0].toLowerCase()}`;
+        if (!proseSpellingConflicts.some((pair) => pair.key === key)) {
+          proseSpellingConflicts.push({ key, source: match[0], alternative: alternative[0] });
+        }
+        break;
+      }
+    }
+  }
   function confirmedSourceRow(block) {
     if (!block.boundingBox || block.confidence < .9 || block.text.length < 30) return null;
     const maskedRows = (masked?.blocks || []).filter((candidate) => samePrintedRow(block, candidate)

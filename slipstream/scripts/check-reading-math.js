@@ -101,6 +101,27 @@ async function main() {
     'one-letter disagreement in the same printed prose row must be shown for review');
   assert.match(spellingDocument.text, /leat weights/u,
     'two conflicting OCR readings cannot silently rewrite the source');
+  const acronymSource = { blocks: [spellingBlock('The classification head is implemented by a MILP with one hidden layer')] };
+  const acronymAlternative = { blocks: [spellingBlock('The classification head is implemented by a MLP with one hidden layer')] };
+  const acronymDocument = mergeFormulaDocument({ blocks: [] }, [], size,
+    acronymSource, acronymAlternative);
+  assert.deepEqual(acronymDocument.proseSpellingConflicts,
+    [{ key: 'milp/mlp', source: 'MILP', alternative: 'MLP' }],
+    'a one-letter disagreement in a technical acronym must request review');
+  assert.match(acronymDocument.text, /a MILP with one hidden layer/u,
+    'a conflicting alternate acronym cannot silently rewrite the source');
+  const candidateAcronym = mergeFormulaDocument({ blocks: [] }, [], size,
+    { blocks: [{ ...acronymSource.blocks[0], alternatives: [acronymAlternative.blocks[0].text] }] });
+  assert.deepEqual(candidateAcronym.proseSpellingConflicts, acronymDocument.proseSpellingConflicts,
+    'a second Vision candidate from the same printed row must expose the acronym disagreement');
+  assert.deepEqual(mergeFormulaDocument({ blocks: [] }, [], size, acronymSource,
+    { blocks: [spellingBlock('The classification head is implemented by a MILP with one hidden layer')] })
+    .proseSpellingConflicts, [], 'matching acronym readings must not ask for review');
+  const corroboratedAcronym = mergeFormulaDocument({ blocks: [] }, [], size,
+    { blocks: [{ ...acronymSource.blocks[0], alternatives: [acronymAlternative.blocks[0].text] }] },
+    { blocks: [spellingBlock('The classification head is implemented by a MILP with one hidden layer')] });
+  assert.deepEqual(corroboratedAcronym.proseSpellingConflicts, [],
+    'a lower-ranked acronym candidate must not override two matching full-image readings');
   const symbolLine = (value, y = 15) => {
     let x = 5;
     const characters = [];

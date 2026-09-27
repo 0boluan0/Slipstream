@@ -109,6 +109,8 @@ app.whenReady().then(async () => {
   let copied = '';
   let ocrOverride = null;
   let ocrProseDisagreement = false;
+  let ocrPrimeConflicts = null;
+  let ocrDocumentOverride = null;
   let failMatching = '';
   let noTerms = false;
   let ocrClipped = false;
@@ -183,6 +185,8 @@ app.whenReady().then(async () => {
         });
       }
       if (ocrOverride) return { text: ocrOverride, confidence: .99, formulaOcr: formulaOcrOverride || undefined,
+        primeReviewConflicts: ocrPrimeConflicts || undefined,
+        document: ocrDocumentOverride || undefined,
         proseComparison: ocrProseDisagreement ? { disagree: true, recovered: true } : undefined, blocks: ocrClipped
         ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
           boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
@@ -355,6 +359,25 @@ app.whenReady().then(async () => {
   await until(() => disputed.isDestroyed(), 'close disputed card');
   ocrProseDisagreement = false;
   ocrOverride = null;
+  ocrOverride = "In this image, C' is the number of channels. The classification head uses a MILP with one hidden layer.";
+  ocrPrimeConflicts = [{ source: "C'", alternative: 'C' }];
+  ocrDocumentOverride = { text: ocrOverride,
+    proseSpellingConflicts: [{ key: 'milp/mlp', source: 'MILP', alternative: 'MLP' }] };
+  const callsBeforeSymbols = providerCalls;
+  await manager.capture();
+  const symbolCard = cards().find((window) => window !== second);
+  await until(phaseIs(symbolCard, 'review'), 'disputed technical symbols review');
+  assert.equal(providerCalls, callsBeforeSymbols, 'disputed technical symbols must not be sent before review');
+  assert.match((await stateOf(symbolCard)).notice, /C'[^\n]*C[^\n]*MILP[^\n]*MLP/u,
+    'the card must name both symbol and acronym alternatives');
+  assert.match(await symbolCard.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'),
+    /C'[^\n]*C[^\n]*MILP[^\n]*MLP/u,
+    'the OCR detail must retain both candidate conflicts');
+  void action(symbolCard, 'close').catch(() => {});
+  await until(() => symbolCard.isDestroyed(), 'close technical-symbol card');
+  ocrOverride = null;
+  ocrPrimeConflicts = null;
+  ocrDocumentOverride = null;
   cancel = true;
   mainWindow.showInactive();
   await manager.capture();

@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 9
+let OCR_VERSION = 10
 
 import Vision
 import AppKit
@@ -65,6 +65,7 @@ struct Block: Codable {
     let confidence: Double
     let boundingBox: BoundingBox
     let characters: [CharacterBox]?
+    let alternatives: [String]
 }
 
 struct CharacterBox: Codable {
@@ -189,7 +190,8 @@ func main() {
         var allText: [String] = []
 
         for observation in observations {
-            guard let topCandidate = observation.topCandidates(1).first else { continue }
+            let candidates = observation.topCandidates(3)
+            guard let topCandidate = candidates.first else { continue }
 
             let text = topCandidate.string
             let confidence = Double(topCandidate.confidence)
@@ -213,7 +215,8 @@ func main() {
                 text: text,
                 confidence: confidence,
                 boundingBox: boundingBox,
-                characters: characters
+                characters: characters,
+                alternatives: candidates.dropFirst().map { $0.string }
             ))
 
             allText.append(text)
