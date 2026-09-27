@@ -58,6 +58,35 @@ async function main() {
     'formula-rich OCR must join a confirmed English visual split outside TeX');
   assert.deepEqual(joinedFormulaDocument.uncertainFormulaStarts,
     [mathRanges(joinedFormulaDocument.text)[0].start], 'a prose join must shift the later formula review marker');
+  const gridSize = { width: 1000, height: 400 };
+  const gridFormula = (x, y, h, latex) => ({ x, y, w: 180, h, latex, display: true, confidence: .95 });
+  const gridFormulas = [
+    gridFormula(80, 130, 40, 'a_1'), gridFormula(400, 115, 60, 'a_2'),
+    gridFormula(720, 100, 80, 'a_3'), gridFormula(80, 210, 40, 'b_1'),
+    gridFormula(400, 210, 40, 'b_2'), gridFormula(720, 210, 40, 'b_3'),
+  ];
+  const gridLabels = gridFormulas.map((formula, index) => {
+    const label = '(' + (index % 3 + 1) + (index < 3 ? 'a' : 'b') + ')';
+    const box = { x: (formula.x + formula.w + 10) / gridSize.width,
+      y: 1 - (formula.y + formula.h / 2 + 10) / gridSize.height,
+      w: 45 / gridSize.width, h: 20 / gridSize.height };
+    return { text: label, confidence: 1, boundingBox: box,
+      characters: [{ text: label, boundingBox: box }] };
+  });
+  const grid = mergeFormulaDocument({ blocks: [] }, gridFormulas, gridSize, { blocks: gridLabels });
+  assert.deepEqual([...grid.text.matchAll(/\\tag\{([1-3][ab])\}/gu)].map((match) => match[1]),
+    ['1a', '1b', '2a', '2b', '3a', '3b'],
+    'side-by-side numbered equation pairs must read down each column before moving right');
+  assert.equal(grid.layoutReview, true, 'a reordered equation grid still asks the reader to compare the source layout');
+  const incompleteGrid = mergeFormulaDocument({ blocks: [] }, gridFormulas, gridSize,
+    { blocks: gridLabels.slice(0, -1) });
+  assert.deepEqual([...incompleteGrid.text.matchAll(/\\tag\{([1-3][ab])\}/gu)].map((match) => match[1]),
+    ['3a', '2a', '1a', '1b', '2b'],
+    'a grid missing one printed equation label cannot be reordered by inferred structure');
+  const unnumberedGrid = mergeFormulaDocument({ blocks: [] }, gridFormulas, gridSize, { blocks: [] });
+  assert.deepEqual([...unnumberedGrid.text.matchAll(/\$\$([ab]_[1-3])\$\$/gu)].map((match) => match[1]),
+    ['a_3', 'a_2', 'a_1', 'b_1', 'b_2', 'b_3'],
+    'without source equation labels, a visual grid must not be silently reordered');
   const specialistJoin = joinVisualHyphenation('A quan-\ntile sketch and an end-\nto-end method.', ['quantile'],
     (term) => new Set(['end', 'to']).has(term));
   assert.equal(specialistJoin.text, 'A quantile sketch and an end-\nto-end method.',

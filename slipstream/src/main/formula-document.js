@@ -497,6 +497,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const unrenderable = mathRanges(formulaText).filter((range) => !canRenderMath(range.tex, range.display)).length;
     unrenderableFormulaCount += unrenderable;
     items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
+      equationLabel: equationLabel?.label,
       reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || unrenderable || correctedIota
         || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
@@ -519,7 +520,52 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     if (row) { row.items.push(item); row.height = Math.max(row.height, item.h); }
     else rows.push({ items: [item], center: item.y + item.h / 2, height: item.h, display: item.display });
   }
-  let text = '', previous, layoutReview = false;
+  // Numbered equations can form columns rather than a single line. A tall
+  // superscript in the right column otherwise makes (3a) sort before (1a).
+  // Reorder only a complete, spatially aligned grid whose printed labels
+  // independently establish each column and row.
+  function orderedEquationGrid(run) {
+    if (run.length < 4 || run.some((row) => !row.display || row.items.length !== 1)) return null;
+    const entries = run.map((row) => {
+      const item = row.items[0], match = item.equationLabel?.match(/^(\d+)([a-z])$/u);
+      return match ? { row, item, number: Number(match[1]), letter: match[2],
+        center: item.y + item.h / 2 } : null;
+    });
+    if (entries.some((entry) => !entry)) return null;
+    const numbers = [...new Set(entries.map((entry) => entry.number))].sort((a, b) => a - b);
+    const letters = [...new Set(entries.map((entry) => entry.letter))].sort();
+    if (numbers.length < 2 || letters.length < 2 || entries.length !== numbers.length * letters.length
+      || numbers.some((number, index) => index && number !== numbers[index - 1] + 1)) return null;
+    const height = entries.map((entry) => entry.item.h).sort((a, b) => a - b)[Math.floor(entries.length / 2)];
+    const columns = numbers.map((number) => entries.filter((entry) => entry.number === number));
+    if (columns.some((column) => column.length !== letters.length
+      || new Set(column.map((entry) => entry.letter)).size !== letters.length
+      || Math.max(...column.map((entry) => entry.item.x)) - Math.min(...column.map((entry) => entry.item.x)) > height * 1.5)) return null;
+    if (columns.some((column, index) => index && Math.max(...columns[index - 1].map((entry) => entry.item.x + entry.item.w))
+      >= Math.min(...column.map((entry) => entry.item.x)))) return null;
+    const visualRows = letters.map((letter) => entries.filter((entry) => entry.letter === letter));
+    if (visualRows.some((row) => Math.max(...row.map((entry) => entry.center))
+      - Math.min(...row.map((entry) => entry.center)) > height * .7)) return null;
+    if (visualRows.some((row, index) => index && Math.max(...visualRows[index - 1].map((entry) => entry.center))
+      >= Math.min(...row.map((entry) => entry.center)) - height * .5)) return null;
+    return entries.sort((a, b) => a.number - b.number || a.letter.localeCompare(b.letter)).map((entry) => entry.row);
+  }
+  let reorderedGrid = false;
+  for (let index = 0; index < rows.length;) {
+    if (!rows[index].display || rows[index].items.length !== 1 || !rows[index].items[0].equationLabel) {
+      index++; continue;
+    }
+    let end = index + 1;
+    while (end < rows.length && rows[end].display && rows[end].items.length === 1
+      && rows[end].items[0].equationLabel) end++;
+    const group = rows.slice(index, end), ordered = orderedEquationGrid(group);
+    if (ordered && ordered.some((row, offset) => row !== group[offset])) {
+      rows.splice(index, group.length, ...ordered);
+      reorderedGrid = true;
+    }
+    index = end;
+  }
+  let text = '', previous, layoutReview = reorderedGrid;
   const uncertainFormulaStarts = [];
   for (const row of rows) {
     row.items.sort((a, b) => a.x - b.x);
