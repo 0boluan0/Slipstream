@@ -751,6 +751,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   }
   let text = '', previous, layoutReview = reorderedGrid;
   const uncertainFormulaStarts = [];
+  const formulaRegions = [];
   for (const row of rows) {
     if (!row.items.length) continue;
     row.items.sort((a, b) => a.x - b.x);
@@ -773,8 +774,13 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       if (at < 0) continue;
       // A source-confirmed footnote can be attached to prose (biased$^{2}$).
       // The marker belongs on the math delimiter, not on the English word.
-      if (fragment.item.math && (fragment.item.confidence < FORMULA_REVIEW_CONFIDENCE || fragment.item.reviewRecognition)) for (const range of mathRanges(normalized)) {
-        uncertainFormulaStarts.push(text.length + separator.length + at + range.start);
+      if (fragment.item.math) for (const range of mathRanges(normalized)) {
+        const start = text.length + separator.length + at + range.start;
+        formulaRegions.push({ start, x: fragment.item.x / size.width, y: fragment.item.y / size.height,
+          w: fragment.item.w / size.width, h: fragment.item.h / size.height });
+        if (fragment.item.confidence < FORMULA_REVIEW_CONFIDENCE || fragment.item.reviewRecognition) {
+          uncertainFormulaStarts.push(start);
+        }
       }
       cursor = at + normalized.length;
     }
@@ -793,7 +799,9 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     uncertainFormulaCount: mathematical.filter((item) => item.confidence < FORMULA_REVIEW_CONFIDENCE || item.reviewRecognition)
       .reduce((count, item) => count + mathRanges(item.text).length, 0),
     uncertainFormulaStarts: uncertainFormulaStarts.map((start) => start
-      - joinedProse.removedAt.filter((at) => at < start).length * 2) };
+      - joinedProse.removedAt.filter((at) => at < start).length * 2),
+    formulaRegions: formulaRegions.map((region) => ({ ...region,
+      start: region.start - joinedProse.removedAt.filter((at) => at < region.start).length * 2 })) };
 }
 
 module.exports = { mergeFormulaDocument, proseSuperscript, repairUnpairedEvaluationBars, canRenderMath };

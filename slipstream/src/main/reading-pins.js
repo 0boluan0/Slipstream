@@ -319,8 +319,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   function update(pin, patch) {
     if (!alive(pin)) return;
     const hadLookup = Boolean(pin.view.lookup || pin.view.lookupNotice);
-    if (Object.hasOwn(patch, 'sourceText') && patch.sourceText !== pin.view.sourceText
-      && !Object.hasOwn(patch, 'formulaUncertainStarts')) pin.view.formulaUncertainStarts = [];
+    if (Object.hasOwn(patch, 'sourceText') && patch.sourceText !== pin.view.sourceText) {
+      if (!Object.hasOwn(patch, 'formulaUncertainStarts')) pin.view.formulaUncertainStarts = [];
+      if (!Object.hasOwn(patch, 'formulaRegions')) pin.view.formulaRegions = [];
+    }
     Object.assign(pin.view, patch);
     const hasLookup = Boolean(pin.view.lookup || pin.view.lookupNotice);
     if (hadLookup !== hasLookup && !pin.manuallyResized && !pin.view.collapsed && !pin.view.referenceOnly) {
@@ -379,7 +381,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         segments: [], lookup: null, lookupStatus: '', lookupNotice: '', saveStatus: '', savedCardId: null, collapsed: false,
         notice: '', destination: '', topmost: true, explainSupported: false,
         formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-        formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], imageSent: false } };
+        formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], formulaRegions: [], imageSent: false } };
     pins.set(pin.id, pin);
     window.setAlwaysOnTop(true, 'floating');
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -1012,6 +1014,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         update(pin, { sourceText: document.text, destination,
           formulaNotice: `${formulaNotice}${referenceHint}${dimensionHint}${primeHint}${spellingHint}${hyphenationHint}${multiplierHint}${regularizerHint}`.trim(),
           formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
+          formulaRegions: Array.isArray(document.formulaRegions) ? document.formulaRegions : [],
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
           phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || hyphenatedName || primeConflict || referenceConflict || dimensionToken || multiplierToken || regularizerMismatch || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'

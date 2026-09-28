@@ -72,7 +72,8 @@ app.whenReady().then(async () => {
     requestCapturePermission: async () => ({ granted: true }),
     captureRegion: async () => { const file = path.join(work, `capture-${Date.now()}.png`); fs.copyFileSync(fixture, file); return file; },
     performOCR: async () => localReviewOcr
-      ? { text: source, document: { text: source, layoutReview: false }, confidence: .99, blocks: [],
+      ? { text: source, document: { text: source, layoutReview: false,
+        formulaRegions: [{ start: equations[0].start, x: .1, y: .2, w: .75, h: .15 }] }, confidence: .99, blocks: [],
         formulaOcr: { status: 'done', count: 2, uncertain: 1, uncertainStarts: [source.indexOf('$$')] } }
       : { text: emptyOcr ? '' : 'Conditional expectation E[Y | X] = y', confidence: .99, blocks: [] },
     processReadingText: async ({ kind, selection }) => {
@@ -203,8 +204,25 @@ app.whenReady().then(async () => {
   assert.equal(await markedPin.webContents.executeJavaScript('getComputedStyle(document.querySelector("#source-preview .math-needs-review")).outlineStyle'), 'dashed');
   assert.match(await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").getAttribute("aria-label")'), /需核对并校正公式/);
   assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'), /已在公式预览标出/);
+  markedPin.setSize(460, 720);
+  await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").click()');
+  await markedPin.webContents.executeJavaScript('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  assert.deepEqual(await markedPin.webContents.executeJavaScript(`(() => {
+    const marker = document.getElementById('formula-source-marker');
+    return { hidden: marker.hidden, left: marker.style.left, top: marker.style.top,
+      zoomed: document.getElementById('correction-image-frame').classList.contains('zoomed') };
+  })()`), { hidden: false, left: '10%', top: '20%', zoomed: true },
+  'clicking a source formula must reveal its location in the original screenshot');
+  assert(await markedPin.webContents.executeJavaScript(`(() => {
+    const frame = document.getElementById('correction-image-frame');
+    const marker = document.getElementById('formula-source-marker');
+    return marker.getBoundingClientRect().width <= frame.clientWidth * .95;
+  })()`), 'the whole highlighted formula should fit the default narrow correction frame');
+  if (output) fs.writeFileSync(path.join(output, 'reading-math-source-position.png'), (await markedPin.webContents.capturePage()).toPNG());
   await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = ${JSON.stringify(String.raw`The vectors satisfy $$\unknownmathsymbol$$.`)};
     document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), true,
+    'editing the recognized source must clear its old pixel highlight');
   assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /公式无法排版.*校正/u,
     'an unrenderable edit must explain the problem before confirmation');
   assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-fallback").length'), 1);
@@ -225,6 +243,8 @@ app.whenReady().then(async () => {
   await until(() => markedPin.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state.phase === "review")'), 'edited source review');
   assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 0,
     'reopening an edited source must not reuse the original OCR positions');
+  assert.deepEqual((await markedPin.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state)')).formulaRegions, [],
+    'source-pixel coordinates must be dropped after the source text changes');
   markedPin.close();
   localReviewOcr = false; emptyOcr = true;
   await manager.capture();

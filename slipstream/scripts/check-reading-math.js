@@ -35,8 +35,11 @@ async function main() {
   const formula = { x: 10, y: 10, w: 18, h: 20, latex: 'x', display: false };
   const original = { blocks: [word('x:', 10, 24), word('label', 45, 30)] };
   const masked = { blocks: [word(':', 29, 5), word('label', 45, 30)] };
-  assert.equal(mergeFormulaDocument(masked, [formula], size, original).text, '$x$: label',
+  const positionedFormula = mergeFormulaDocument(masked, [formula], size, original);
+  assert.equal(positionedFormula.text, '$x$: label',
     'the same punctuation recovered from an original word and masked OCR must appear once');
+  assert.deepEqual(positionedFormula.formulaRegions, [{ start: 0, x: .1, y: .1, w: .18, h: .2 }],
+    'the rendered formula keeps its source-pixel rectangle for one-click review');
   const missingFontSlash = mergeFormulaDocument({ blocks: [] }, [{ ...formula,
     latex: '( mathbf  z  _ { L } ^ { 0 } )', confidence: .95 }], size, { blocks: [] });
   assert.equal(missingFontSlash.text, String.raw`$( \mathbf  z  _ { L } ^ { 0 } )$`,

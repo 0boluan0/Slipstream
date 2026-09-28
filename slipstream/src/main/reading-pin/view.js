@@ -12,6 +12,38 @@ let copyTimer;
 const scrollPositions = { translation: 0, parallel: 0, image: 0 };
 const sourceOpen = new Set();
 const segmentNodes = new Map();
+let focusedFormulaRegion = null;
+
+function centerSourceRegion() {
+  if (!focusedFormulaRegion) return;
+  const frame = byId('correction-image-frame'), image = byId('correction-image');
+  if (!image.naturalWidth) { image.addEventListener('load', centerSourceRegion, { once: true }); return; }
+  const region = focusedFormulaRegion;
+  const content = byId('correction-image-content');
+  content.style.width = frame.classList.contains('zoomed')
+    ? `${Math.min(image.naturalWidth, Math.max(frame.clientWidth,
+      frame.clientWidth * .9 / Math.max(region.w, .02)))}px` : '';
+  frame.scrollLeft = Math.max(0, (region.x + region.w / 2) * image.clientWidth - frame.clientWidth / 2);
+  frame.scrollTop = Math.max(0, (region.y + region.h / 2) * image.clientHeight - frame.clientHeight / 2);
+}
+
+function focusSourceRegion(region) {
+  const marker = byId('formula-source-marker');
+  const valid = region && ['x', 'y', 'w', 'h'].every((key) => Number.isFinite(region[key])
+    && region[key] >= 0 && region[key] <= 1);
+  focusedFormulaRegion = valid ? region : null;
+  marker.hidden = !valid;
+  byId('correction-image-frame').classList.toggle('formula-focused', Boolean(valid));
+  if (!valid) { byId('correction-image-content').style.width = ''; return; }
+  marker.style.left = `${region.x * 100}%`;
+  marker.style.top = `${region.y * 100}%`;
+  marker.style.width = `${region.w * 100}%`;
+  marker.style.height = `${region.h * 100}%`;
+  byId('correction-image-frame').classList.add('zoomed');
+  byId('correction-zoom').setAttribute('aria-pressed', 'true');
+  byId('correction-zoom').textContent = '适应宽度';
+  requestAnimationFrame(centerSourceRegion);
+}
 
 function renderSourcePreview() {
   const text = byId('source-editor').value;
@@ -21,6 +53,7 @@ function renderSourcePreview() {
   const bareFontCommand = window.readingMath.firstBareFontCommand(text);
   const unrenderable = byId('source-preview').querySelector('.math-fallback');
   const uncertain = new Set(text === state?.sourceText ? state.formulaUncertainStarts || [] : []);
+  const canLocate = text === state?.sourceText && state.formulaRegions?.length > 0;
   if (state?.formulaNotice) byId('formula-notice').textContent = text === state.sourceText
     ? state.formulaNotice : state.formulaNotice.replace('，已在公式预览标出', '');
   const hint = byId('formula-edit-hint');
@@ -28,11 +61,14 @@ function renderSourcePreview() {
   hint.textContent = invalidDelimiter ? `公式标记“${invalidDelimiter}”未正确闭合或内容为空，请在下方校正。`
     : bareFontCommand ? `公式里的“${bareFontCommand}”缺少反斜杠，请对照截图校正。`
       : unrenderable ? '有公式无法排版，已显示 LaTeX 原文。请点击该处并对照截图校正。'
-        : '点击有误的公式可定位校正；长公式可在公式上左右滚动，查看完整内容。';
+        : canLocate ? '点击公式可定位原始截图并校正；长公式可在公式上左右滚动。'
+          : '点击有误的公式可定位校正；长公式可在公式上左右滚动，查看完整内容。';
   const nodes = [...byId('source-preview').children];
   nodes.forEach((node, index) => {
     const range = ranges[index];
     const needsReview = uncertain.has(range.start);
+    const region = text === state?.sourceText
+      ? state.formulaRegions?.find((item) => item.start === range.start) : null;
     node.classList.toggle('math-needs-review', needsReview);
     node.setAttribute('role', 'button');
     node.tabIndex = 0;
@@ -48,6 +84,7 @@ function renderSourcePreview() {
       editor.scrollTop = Math.max(0, (text.slice(0, range.start).split('\n').length - 2)
         * parseFloat(getComputedStyle(editor).lineHeight));
       byId('source-correction').scrollIntoView({ block: 'start' });
+      focusSourceRegion(region);
     };
     node.onkeydown = (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); node.click(); }
@@ -275,6 +312,7 @@ function render(next) {
   byId('tab-translation').textContent = state.phase === 'review' ? '核对' : '译文';
   byId('tab-image').hidden = !state.image;
   if (state.phase === 'review' && previousPhase !== 'review') {
+    focusSourceRegion(null);
     byId('source-editor').value = state.sourceText || '';
     renderSourcePreview();
     byId('formula-preview').open = window.readingMath.mathRanges(state.sourceText || '').length > 0
@@ -381,11 +419,15 @@ byId('collapse').onclick = () => act('collapse');
 byId('titlebar').ondblclick = (event) => { if (!event.target.closest('button')) act('collapse'); };
 byId('confirm').onclick = () => { setMode('translation'); return act('translate', { revision: state?.revision, text: byId('source-editor').value }); };
 byId('confirm-edits').onclick = byId('confirm').onclick;
-byId('source-editor').oninput = renderSourcePreview;
+byId('source-editor').oninput = () => {
+  if (byId('source-editor').value !== state?.sourceText) focusSourceRegion(null);
+  renderSourcePreview();
+};
 byId('correction-zoom').onclick = () => {
   const zoomed = byId('correction-image-frame').classList.toggle('zoomed');
   byId('correction-zoom').setAttribute('aria-pressed', String(zoomed));
   byId('correction-zoom').textContent = zoomed ? '适应宽度' : '放大';
+  requestAnimationFrame(centerSourceRegion);
 };
 byId('recognize-formulas').onclick = async () => {
   await act('recognize-formulas', { revision: state?.revision, sendImage: true,

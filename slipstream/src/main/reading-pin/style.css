@@ -59,8 +59,12 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 #correction-reference { background: var(--paper); padding-bottom: 8px; }
 #correction-reference .source-caption { margin: 0 0 7px; }
 #correction-image-frame { max-height: 170px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: white; }
+#correction-image-content { position: relative; width: 100%; }
 #correction-image { display: block; width: 100%; height: auto; }
+#formula-source-marker { position: absolute; pointer-events: none; background: #dfac4140; outline: 2px solid #a96b12; outline-offset: 2px; }
+#correction-image-frame.zoomed #correction-image-content { width: max-content; }
 #correction-image-frame.zoomed #correction-image { width: auto; max-width: none; }
+#correction-image-frame.zoomed.formula-focused #correction-image { width: 100%; }
 .primary { background: var(--accent); color: var(--paper); border-color: var(--accent); }
 .primary:hover { opacity: .9; background: var(--accent); }
 .primary img { filter: brightness(0) invert(1); }

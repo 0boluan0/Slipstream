@@ -67,7 +67,7 @@
       <details id="source-correction"><summary>校正文字与公式</summary>
         <div id="correction-reference" hidden>
           <div class="source-caption"><span>对照原始截图</span><button id="correction-zoom" aria-pressed="false">放大</button></div>
-          <div id="correction-image-frame" tabindex="0" aria-label="原始截图，可滚动核对"><img id="correction-image" alt="校正时对照的原始截图"></div>
+          <div id="correction-image-frame" tabindex="0" aria-label="原始截图，可滚动核对"><div id="correction-image-content"><img id="correction-image" alt="校正时对照的原始截图"><span id="formula-source-marker" aria-hidden="true" hidden></span></div></div>
         </div>
         <p class="muted">行内用 $...$，独立公式用 $$...$$。修改后会更新排版预览。</p><label for="source-editor" class="sr-only">识别出的英文原文</label><textarea id="source-editor" lang="en" maxlength="10000" spellcheck="false"></textarea>
         <div class="review-actions"><button id="confirm-edits" class="primary">用校正内容翻译</button></div>
