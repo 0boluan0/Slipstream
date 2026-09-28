@@ -302,6 +302,19 @@ $$P E ^ { \ast } = P _ { \mathbf { X }, Y } ( m g ( \mathbf { X }, Y ) < 0 )$$`;
     'two explicit local definitions of one symbol must remain separately reviewable');
   assert(!referenceCandidateCovered({ ...binDefinition, evidence: 'In this section, let $B_m$ be the set of incorrectly classified samples.' }, binDefinition),
     'a genuine local redefinition of the bin remains available');
+  const cnpTarget = { symbol: 'T', origin: 'excerpt', meaning: '由未标注点构成的目标集',
+    evidence: 'and another set\n$T = \\{ x_i \\}$ of unlabelled points.' };
+  assert(referenceCandidateCovered({ ...cnpTarget, meaning: '由未标记点构成的目标集',
+    evidence: 'Consider observed pairs, and another set\n\n$T = \\{ x_i \\}$ of unlabelled points. We call these targets.' }, cnpTarget),
+  'a wider repeat of the same single defining clause must not re-offer T after a rescan');
+  assert(!referenceCandidateCovered({ ...cnpTarget, meaning: '本节中的树节点',
+    evidence: `${cnpTarget.evidence} In this section let $T$ denote tree nodes.` }, cnpTarget),
+  'a later explicit rebinding remains visible even when the longer excerpt includes the old definition');
+  const cnpProcess = { symbol: 'P', origin: 'excerpt', meaning: '定义在函数 f 上的概率分布，即随机过程',
+    evidence: 'let P be a probability distribution over functions f' };
+  assert(referenceCandidateCovered({ ...cnpProcess,
+    evidence: 'let P be a probability distribution over functions f, formally known as a stochastic process' }, cnpProcess),
+  'punctuation and evidence-length changes do not repeat an unchanged paper definition');
   const fixedSetting = 'Let $\\lambda = 0.1$ denote the regularization strength throughout the study.';
   assert.equal(parseReferenceCandidates([{ symbol: String.raw`\lambda`, meaning: '全篇固定的正则化系数，取值为 0.1',
     evidence: fixedSetting }], fixedSetting).length, 1,

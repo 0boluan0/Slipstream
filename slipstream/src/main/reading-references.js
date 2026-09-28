@@ -46,6 +46,19 @@ function preferExplicitReferenceCandidates(candidates) {
 
 function referenceCandidateCovered(candidate, saved) {
   if (referenceCandidateKey(candidate) === referenceCandidateKey(saved)) return true;
+  if (candidate.origin === 'excerpt' && saved.origin === 'excerpt'
+    && referenceKey(candidate.symbol) === referenceKey(saved.symbol)) {
+    const compact = (value) => String(value || '').replace(/\s+/gu, ' ').trim();
+    const meaning = compact(candidate.meaning), savedMeaning = compact(saved.meaning);
+    // A repeated reading may quote a longer sentence or add punctuation after
+    // OCR correction. Identical meanings do not make a second paper definition.
+    if (meaning && meaning === savedMeaning) return true;
+    const excerpt = compact(candidate.evidence), prior = compact(saved.evidence);
+    const [shorter, longer] = excerpt.length < prior.length ? [excerpt, prior] : [prior, excerpt];
+    if (shorter.length >= 30 && longer.includes(shorter)
+      && referenceOccurrences(candidate.evidence, candidate.symbol).length === 1
+      && referenceOccurrences(saved.evidence, saved.symbol).length === 1) return true;
+  }
   if (candidate.origin === 'excerpt' && referenceKey(candidate.symbol) === referenceKey(saved.symbol)
     && !evidenceDefinesSymbol(candidate)) {
     // Merely using a saved symbol in another paragraph is not a new
