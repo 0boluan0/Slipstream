@@ -1002,6 +1002,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const ambiguousAiAl = looksLikeAiAlConfusion(document.text);
         const nameConflict = conflictingProperNames(document.text);
         const proseDisagreement = ocr.proseComparison?.disagree === true;
+        const proseGlyphConflict = ocr.proseGlyphConflicts?.[0];
         const spellingConflict = document.proseSpellingConflicts?.[0];
         const hyphenatedName = document.hyphenationReview?.[0];
         const primeConflict = ocr.primeReviewConflicts?.[0];
@@ -1024,6 +1025,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           ? ` “${multiplierToken}”末尾的字母可能是倍数符号“×”，请对照截图核对。` : '';
         const regularizerHint = regularizerMismatch
           ? ` 正则项中的 λ_${regularizerMismatch.coefficient} 与后面的 ${regularizerMismatch.variable} 下标不同；可能是原文写法，也可能是公式识别错误，请对照截图。` : '';
+        const proseGlyphHint = proseGlyphConflict
+          ? ` 原文符号“${proseGlyphConflict.source}”与“${proseGlyphConflict.alternative}”的本地读数有分歧；${proseGlyphConflict.verified ? '独立局部复读支持后者，已作为待核对原文。' : '局部复读未能确认，请手动核对。'}确认前不会发送文字。` : '';
         pin.controller = null;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* continue through explicit review */ }
@@ -1043,11 +1046,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,
-          formulaNotice: `${formulaNotice}${referenceHint}${dimensionHint}${primeHint}${spellingHint}${hyphenationHint}${multiplierHint}${regularizerHint}`.trim(),
+          formulaNotice: `${formulaNotice}${referenceHint}${dimensionHint}${primeHint}${spellingHint}${hyphenationHint}${multiplierHint}${regularizerHint}${proseGlyphHint}`.trim(),
           formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaRegions: Array.isArray(document.formulaRegions) ? document.formulaRegions : [],
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || codeCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || hyphenatedName || primeConflict || referenceConflict || dimensionToken || multiplierToken || regularizerMismatch || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.proseOrderUnresolved || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter || spacedOperator ? 'review' : 'waiting',
+          phase: ownUiCapture || codeCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || proseGlyphConflict || spellingConflict || hyphenatedName || primeConflict || referenceConflict || dimensionToken || multiplierToken || regularizerMismatch || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.proseOrderUnresolved || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter || spacedOperator ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? `选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。${spellingHint}`
             : codeCapture ? `这是代码式或伪代码截图。OCR 可能混淆 l/1、0/O、下划线和括号${codeIdentifier ? `；“${codeIdentifier}”不是合法的函数名，尤其需要核对` : ''}。请对照原图逐行校正后再翻译；放大原文或只框几行可能更易核对。${pixelEdges.length ? `选区${edgeNames[pixelEdge]}也可能截断内容。` : ''}`
@@ -1068,8 +1071,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               ? `识别有分歧：${referenceHint}${dimensionHint}${primeHint}${spellingHint}${multiplierHint} 请对照截图核对后再翻译。`
             : hyphenatedName ? hyphenationHint.trim()
             : multiplierToken ? `${multiplierHint.trim()} 确认前不会发送文字。`
-            : proseDisagreement ? ocr.proseComparison.recovered
-              ? '两次本地识别对正文有分歧，已选较完整的候选。请对照截图核对后再翻译。'
+            : proseDisagreement ? ocr.proseComparison.glyphRecovered
+              ? '两次本地识别对短符号有分歧，局部复读已选择有图像支持的字形。请对照截图核对后再翻译。'
+              : ocr.proseComparison.recovered
+                ? '两次本地识别对正文有分歧，已选较完整的候选。请对照截图核对后再翻译。'
               : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
             : symbolConflict ? `字形“${symbolConflict.source}”与“${symbolConflict.alternative}”的识别有分歧，已按同一位置的其他读数改为“${symbolConflict.alternative}”。请对照截图核对，确认前不会发送文字。`
             : unrenderableFormula ? `有 ${localFormula.unrenderable} 处公式暂时无法排版。请对照截图校正 LaTeX，确认前不会发送文字。`

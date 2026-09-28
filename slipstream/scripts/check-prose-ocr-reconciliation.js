@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { reconcileProseOcr } = require('../src/main/prose-ocr-reconciliation');
+const { reconcileProseOcr, isolatedGlyphDisagreements } = require('../src/main/prose-ocr-reconciliation');
 
 const rawLines = [
   'We find that a standard pruning technique naturally uncovers subnetworks whose',
@@ -95,5 +95,21 @@ const uncertainExtra = completeRows.map((entry, index) => index === 4
   ? { ...entry, confidence: .5 } : entry);
 assert.equal(reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(uncertainExtra)).proseComparison.recovered,
   false, 'both replacement rows must be confident');
+
+const glyphLine = 'where T is a temperature normally set to 1. A higher T gives softer class probabilities.';
+const confusedLine = glyphLine.replace(' T ', " I' ").replace(' T ', ' I ');
+const glyphSource = result([confusedLine, 'The next printed line stays as it is.']);
+const glyphPadded = result([glyphLine, 'The next printed line stays as it is.']);
+assert.deepEqual(isolatedGlyphDisagreements(glyphSource, glyphPadded).map(({ index, source, alternative }) =>
+  ({ index, source, alternative })), [{ index: 0, source: "I'、I", alternative: 'T' }],
+'only two repeated isolated mathematical glyphs in an otherwise identical row merit pixel rechecking');
+for (const rejected of [
+  result([glyphLine.replace('temperature', 'pressure'), 'The next printed line stays as it is.']),
+  result([glyphLine.replace('1.', '2.'), 'The next printed line stays as it is.']),
+  result([glyphLine.replace(' T ', ' B '), 'The next printed line stays as it is.']),
+  result([glyphLine, 'The next printed line stays as it is.'], .5),
+  result([glyphLine, 'The next printed line stays as it is.'], 1, .2),
+]) assert.equal(isolatedGlyphDisagreements(glyphSource, rejected).length, 0,
+  'changed prose, numbers, mismatched symbols, weak evidence or displaced rows cannot become a glyph repair');
 
 console.log('Prose OCR disagreements pause review; fully supported longer rows can supply a reviewable candidate.');

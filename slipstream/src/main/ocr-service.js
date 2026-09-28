@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const { createOcrEnvironment } = require('./ocr-environment');
 const { createLocalFormulaOcr } = require('./local-formula-ocr');
 const { mergeFormulaDocument } = require('./formula-document');
-const { reconcileProseOcr } = require('./prose-ocr-reconciliation');
+const { reconcileProseOcr, isolatedGlyphDisagreements } = require('./prose-ocr-reconciliation');
 const { missingInteriorRows, orderedAgreement, rect } = require('./interior-prose-recheck');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
@@ -510,6 +510,49 @@ async function recheckMergedProseAboveFormula(imagePath, original, padded, formu
     text: cleanOcrText(flattened.map((block) => block.text).join('\n')) }, recovered, unresolved };
 }
 
+async function recheckIsolatedProseGlyphs(imagePath, original, padded,
+  { signal, recognize = performOCR } = {}) {
+  const candidates = isolatedGlyphDisagreements(original, padded);
+  if (!candidates.length) return { ocr: original, conflicts: [], recovered: 0 };
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  const conflicts = candidates.map(({ source, alternative }) => ({ source, alternative, verified: false }));
+  if (image.isEmpty() || size.width < 100 || size.height < 40) {
+    return { ocr: original, conflicts, recovered: 0 };
+  }
+  const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
+  await fs.mkdir(cacheDir, { recursive: true, mode: 0o700 });
+  const temporary = await fs.mkdtemp(path.join(cacheDir, 'glyph-'));
+  const blocks = original.blocks.slice();
+  let recovered = 0;
+  try {
+    for (const [at, candidate] of candidates.slice(0, 2).entries()) {
+      const box = original.blocks[candidate.index].boundingBox;
+      const top = (1 - box.y - box.h) * size.height;
+      const bottom = (1 - box.y) * size.height;
+      const height = box.h * size.height;
+      const y = Math.max(0, Math.floor(top - height * .6));
+      const end = Math.min(size.height, Math.ceil(bottom + height * .15));
+      if (end - y < 24) continue;
+      const crop = path.join(temporary, `line-${at}.png`);
+      await fs.writeFile(crop, image.crop({ x: 0, y, width: size.width,
+        height: end - y }).toPNG(), { mode: 0o600 });
+      const local = await recognize(crop, { signal, characters: true }).catch((error) => {
+        if (signal?.aborted || error?.isCancellation) throw error;
+        return null;
+      });
+      const sameText = (value) => String(value || '').replace(/\s+/gu, ' ').trim();
+      if (local?.blocks?.length !== 1 || local.blocks[0].confidence < .9
+        || sameText(local.blocks[0].text) !== sameText(candidate.text)) continue;
+      blocks[candidate.index] = padded.blocks[candidate.index];
+      conflicts[at].verified = true;
+      recovered++;
+    }
+  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+  return { ocr: recovered ? { ...original, blocks,
+    text: cleanOcrText(blocks.map((block) => block.text).join('\n')) } : original,
+  conflicts, recovered };
+}
+
 async function performReadingOCR(imagePath, { signal } = {}) {
   const [textResult, formulaResult] = await Promise.allSettled([
     performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
@@ -539,7 +582,14 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     });
     if (clippedBottom) padded = withoutClippedBottomRows(padded, recognized.size, recognized.clippedBottomY);
     const prose = reconcileProseOcr(original, padded);
-    return { ...prose, primeReviewConflicts: findPrimeDefinitionConflicts(original, prose.text),
+    const glyphs = prose.proseComparison?.recovered
+      ? { ocr: prose, conflicts: [], recovered: 0 }
+      : await recheckIsolatedProseGlyphs(imagePath, original, padded, { signal });
+    const chosen = glyphs.recovered ? { ...prose, blocks: glyphs.ocr.blocks,
+      text: glyphs.ocr.text, proseComparison: { disagree: true, recovered: true,
+        glyphRecovered: true } } : prose;
+    return { ...chosen, proseGlyphConflicts: glyphs.conflicts,
+      primeReviewConflicts: findPrimeDefinitionConflicts(original, chosen.text),
       formulaOcr: { status: 'done', count: 0, clippedBottom, milliseconds: recognized.milliseconds } };
   }
   const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
@@ -628,6 +678,7 @@ module.exports = {
   frontmostDocumentWindow,
   performOCR,
   performReadingOCR,
+  recheckIsolatedProseGlyphs,
   recheckMergedProseAboveFormula,
   recheckReferenceOne,
   findPrimeDefinitionConflicts,

@@ -155,6 +155,7 @@ app.whenReady().then(async () => {
   let copied = '';
   let ocrOverride = null;
   let ocrProseDisagreement = false;
+  let ocrProseGlyphConflicts = null;
   let ocrPrimeConflicts = null;
   let ocrReferenceConflicts = null;
   let ocrDocumentOverride = null;
@@ -237,8 +238,9 @@ app.whenReady().then(async () => {
         primeReviewConflicts: ocrPrimeConflicts || undefined,
         referenceReviewConflicts: ocrReferenceConflicts || undefined,
         document: ocrDocumentOverride || undefined,
-        proseComparison: ocrProseDisagreement ? { disagree: true, recovered: true } : undefined, blocks: ocrClipped
-        ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+        proseComparison: ocrProseDisagreement ? { disagree: true, recovered: true } : undefined,
+        proseGlyphConflicts: ocrProseGlyphConflicts || undefined,
+        blocks: ocrClipped ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
           boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
         : ocrLeftClipped ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
           boundingBox: { x: .005, y: .7 - index * .1, w: .8, h: .06 } }))
@@ -408,6 +410,19 @@ app.whenReady().then(async () => {
   void action(disputed, 'close').catch(() => {});
   await until(() => disputed.isDestroyed(), 'close disputed card');
   ocrProseDisagreement = false;
+  ocrOverride = 'where T is a temperature normally set to 1. A higher T softens the outputs.';
+  ocrProseGlyphConflicts = [{ source: "I'、I", alternative: 'T', verified: true }];
+  const callsBeforeGlyph = providerCalls;
+  await manager.capture();
+  const glyphCard = cards().find((window) => window !== second);
+  await until(phaseIs(glyphCard, 'review'), 'corrected variable glyph review');
+  assert.equal(providerCalls, callsBeforeGlyph, 'a glyph correction must remain local until reader confirmation');
+  assert.match(await glyphCard.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'),
+    /I'、I[^\n]*T[^\n]*独立局部复读支持后者/u,
+    'the card must show the original glyphs and the independently supported alternative');
+  void action(glyphCard, 'close').catch(() => {});
+  await until(() => glyphCard.isDestroyed(), 'close corrected-glyph card');
+  ocrProseGlyphConflicts = null;
   ocrOverride = null;
   ocrOverride = "In this image, C' is the number of channels. The classification head uses a MILP with one hidden layer.";
   ocrPrimeConflicts = [{ source: "C'", alternative: 'C' }];

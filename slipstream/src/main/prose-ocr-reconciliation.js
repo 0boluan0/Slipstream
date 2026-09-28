@@ -45,6 +45,37 @@ function expandedLowConfidenceRow(source, alternative) {
   });
 }
 
+// A short italic variable can change between full-image and padded Vision
+// layouts even when both assign the entire sentence confidence 1. Only a
+// repeated, isolated capital glyph with otherwise identical words is eligible
+// for a local pixel recheck; this function does not choose either reading.
+function isolatedGlyphDisagreements(original, padded) {
+  const source = original?.blocks, alternative = padded?.blocks;
+  if (!Array.isArray(source) || !Array.isArray(alternative)
+    || source.length !== alternative.length) return [];
+  return source.flatMap((block, index) => {
+    const candidate = alternative[index];
+    if (block.confidence < .9 || candidate.confidence < .9 || !aligned(block, candidate)
+      || !sameNumbers(block.text, candidate.text)) return [];
+    const words = normalizedText(block.text).split(' ');
+    const replacements = normalizedText(candidate.text).split(' ');
+    if (words.length < 8 || words.length !== replacements.length) return [];
+    const differences = words.map((word, at) => word === replacements[at] ? -1 : at)
+      .filter((at) => at >= 0);
+    if (differences.length !== 2) return [];
+    const sourceGlyphs = [], targetGlyphs = [];
+    for (const at of differences) {
+      const from = /^([A-Z])(['’]?)([,.;:!?]?)$/u.exec(words[at]);
+      const to = /^([A-Z])([,.;:!?]?)$/u.exec(replacements[at]);
+      if (!from || !to || from[1] === to[1] || from[3] !== to[2]) return [];
+      sourceGlyphs.push(from[1]); targetGlyphs.push(to[1]);
+    }
+    if (new Set(sourceGlyphs).size !== 1 || new Set(targetGlyphs).size !== 1) return [];
+    return [{ index, source: differences.map((at) => words[at]).join('、'),
+      alternative: targetGlyphs[0], text: candidate.text }];
+  });
+}
+
 function reconcileProseOcr(original, padded) {
   const source = original?.blocks, alternative = padded?.blocks;
   if (!Array.isArray(source) || !Array.isArray(alternative) || !alternative.length) {
@@ -69,4 +100,4 @@ function reconcileProseOcr(original, padded) {
   return { ...chosen, proseComparison: { disagree: true, recovered: canUsePadded } };
 }
 
-module.exports = { reconcileProseOcr };
+module.exports = { reconcileProseOcr, isolatedGlyphDisagreements };
