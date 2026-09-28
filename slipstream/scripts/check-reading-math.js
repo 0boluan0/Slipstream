@@ -139,6 +139,27 @@ async function main() {
     'a photographed Python REPL example must retain commands, output and its paragraph boundary');
   assert.deepEqual(readingSegments(replExample).map((segment) => segment.code), [true, false],
     'the REPL example must display as code and bypass prose translation');
+  const paperCode = [
+    '# compute two feature representations',
+    'left = encode_left(x)',
+    'right = encode_right(y)',
+    '# normalize both before comparison',
+    'left = unit_length(left)',
+    'right = unit_length(right)',
+    'score = dot(left, right)',
+    'labels = arange(n)',
+    'loss = cross_entropy(score, labels)',
+  ].join('\n');
+  assert.equal(readingSegments(paperCode)[0].code, true,
+    'assignment-rich paper pseudocode without a loop must retain exact source instead of entering prose translation');
+  assert.equal(readingSegments(`${paperCode}\n\nThis section explains the comparison.`)[1].code, false,
+    'a following ordinary paragraph must still be translated');
+  assert.equal(readingSegments([
+    'The model uses a score for each pair.',
+    'The text defines x = an image and y = a caption.',
+    'Its objective is discussed below.',
+  ].join('\n'))[0].code, false,
+  'a prose explanation with assignments must not be hidden as code');
   const adjacentRows = { blocks: [placedWord('In', 10, 10, 20, 30), placedWord('prose', 45, 10, 40, 30),
     placedWord('x', 10, 32, 20, 25), placedWord('follows', 45, 32, 45, 25)] };
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ x: 10, y: 28, w: 20, h: 28,

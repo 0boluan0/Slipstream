@@ -202,6 +202,15 @@ function isCodeOnly(text) {
   if (lines.length && lines[0].startsWith('>>>')
     && lines.every((line, index) => /^>>>\s*\S/u.test(line)
       || index === lines.length - 1 && /^(?:[-+]?\d+(?:\.\d+)?|[A-Za-z_]\w*\s*\(.*\)|\{.*\}|\[.*\]|True|False|None)$/u.test(line))) return true;
+  // Paper pseudocode often has assignments and comments but no for/def line.
+  // Keep a mostly-code selection intact rather than asking the language model
+  // to translate identifiers and silently alter an already uncertain OCR read.
+  const assignments = lines.filter((line) => /^[A-Za-z_]\w*\s*=\s*\S/u.test(line));
+  const calls = assignments.filter((line) => /\b[A-Za-z_]\w*\s*\(/u.test(line));
+  const comments = lines.filter((line) => /^#\s*\S/u.test(line));
+  if (assignments.length >= 3 && calls.length >= 2
+    && (comments.length >= 1 || assignments.length >= 5)
+    && (assignments.length + comments.length) / lines.length >= .7) return true;
   return lines.length >= 2 && lines.some((line) => /^for\s+.+\s+in\s+.+:\s*$/u.test(line))
     && lines.every((line) => isCodeAnchor(line) || isCodeAssignment(line));
 }
