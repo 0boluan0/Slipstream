@@ -559,6 +559,29 @@ async function main() {
   assert.equal(repairedInterior.text, [beforeGap, missingMiddle, afterGap].map((block) => block.text).join('\n'),
   'a locally verified middle line is inserted in visual reading order');
   assert.equal(repairedInterior.interiorRecovered, 1, 'middle-line recovery remains visible for review');
+  const cnpSize = { width: 860, height: 494 };
+  const cnpRow = (text, x, y, w, h) => ({ text, confidence: 1,
+    boundingBox: { x: x / cnpSize.width, y: 1 - (y + h) / cnpSize.height,
+      w: w / cnpSize.width, h: h / cnpSize.height } });
+  const cnpLead = cnpRow('P defines a joint distribution over the ran-', 12, 306, 830, 35);
+  const cnpTail = cnpRow(', and therefore a conditional', 445, 345, 395, 40);
+  const cnpMissing = cnpRow('dom variables', 12, 345, 203, 30);
+  const cnpFormula = { x: 220, y: 345, w: 220, h: 45, latex: 'f(x)', display: false, confidence: .95 };
+  const cnpOriginal = { blocks: [cnpLead, cnpTail], spellJoinCandidates: ['random'] };
+  const cnpPadded = { blocks: [cnpRow('dom variables {f(x)}', 12, 345, 428, 45)] };
+  const cnpRecovered = mergeFormulaDocument({ blocks: [cnpMissing] }, [cnpFormula],
+    cnpSize, cnpOriginal, cnpPadded);
+  assert.match(cnpRecovered.text, /random variables \$f\(x\)\$, and therefore/u,
+    'two aligned OCR layouts restore prose omitted beside an inline formula');
+  assert.equal(cnpRecovered.rowRecovered, 1, 'restored prose must pause translation for source review');
+  const cnpUnconfirmed = mergeFormulaDocument({ blocks: [cnpMissing] }, [cnpFormula],
+    cnpSize, cnpOriginal, { blocks: [cnpRow('different words {f(x)}', 12, 345, 428, 45)] });
+  assert.doesNotMatch(cnpUnconfirmed.text, /dom variables/u,
+    'masked OCR alone cannot invent words that the padded image read differently');
+  const cnpAlreadyPresent = mergeFormulaDocument({ blocks: [cnpMissing] }, [cnpFormula],
+    cnpSize, { blocks: [cnpLead, cnpMissing, cnpTail], spellJoinCandidates: ['random'] }, cnpPadded);
+  assert.equal((cnpAlreadyPresent.text.match(/random variables/gu) || []).length, 1,
+    'words already present in the source layout must not be duplicated');
   const highConfidenceRow = (text, y) => ({ ...placedWord(text, 5, y, 90, 15),
     boundingBox: { x: .05, y: (100 - y - 15) / 100, w: .9, h: .15 } });
   const trueRows = [highConfidenceRow('Academic reading begins with an intact introduction.', 10),

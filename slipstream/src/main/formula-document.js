@@ -452,6 +452,28 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   }
   const labelledWords = new Set([...equationLabels.values()].map(({ word }) => word));
   const items = sourceWords.filter((word) => !removed.includes(word) && !labelledWords.has(word));
+  // An inline formula can make Vision omit the prose immediately to its left
+  // in the original layout. The masked pass isolates that prose, while the
+  // padded pass still sees it beside the formula. Admit only their shared,
+  // aligned words when the original has no observation in that rectangle.
+  for (const block of masked?.blocks || []) {
+    if (block.confidence < .9 || !block.boundingBox
+      || !/^[A-Za-z]{3,}(?:\s+[A-Za-z]{3,}){1,4}$/u.test(block.text.trim())) continue;
+    const box = pixelBox(block.boundingBox);
+    const adjacentFormula = formulas.some((formula) => !formula.display
+      && !intersects(formula, box)
+      && formula.x >= box.x + box.w - 2
+      && formula.x - box.x - box.w < Math.max(box.h * 1.5, 20)
+      && Math.abs(formula.y + formula.h / 2 - box.y - box.h / 2) < Math.min(formula.h, box.h) * .65);
+    if (!adjacentFormula || sourceWords.some((word) => intersects(word, box))) continue;
+    const confirmed = (edgeProse?.blocks || []).some((candidate) => samePrintedRow(block, candidate)
+      && candidate.text.startsWith(block.text.trim())
+      && (candidate.text.length === block.text.trim().length
+        || /[^A-Za-z]/u.test(candidate.text[block.text.trim().length])));
+    if (!confirmed) continue;
+    items.push({ ...box, text: block.text.trim(), confidence: block.confidence });
+    rowRecovered++;
+  }
   function uncorroboratedBar(formula, latex) {
     // A high-scoring formula decoder can hallucinate a tiny bar. The padded
     // text pass is not strong enough to rewrite TeX, but an unbarred leading
