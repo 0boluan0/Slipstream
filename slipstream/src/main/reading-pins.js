@@ -46,6 +46,7 @@ function looksLikeClippedProse(ocr, text = ocr?.text || '') {
   // claim; source pixels still catch an actual line cut through the bottom.
   if (blocks.some((block) => block?.text?.trim().length > 0
     && !/^\([A-Za-z]?\d+(?:[.-]\d+)*[a-z]?\)$/u.test(block.text.trim())
+    && !/^\d{1,3}$/u.test(block.text.trim())
     && Number.isFinite(block.boundingBox?.y) && block.boundingBox.y <= 0.08)
     && !/[.!?。！？:：]$/u.test(text.trim())) return 'bottom';
   return null;

@@ -22,6 +22,11 @@ const chinese = '相关关系并不意味着因果关系。两个变量之间观
 assert.equal(looksLikeClippedProse({ blocks: [{ text: '(4)',
   boundingBox: { x: .94, y: .07, w: .03, h: .06 } }] }, 'The rule is defined by $$A=B\\tag{4}$$'), null,
 'an intact equation number near the bottom must not be treated as unfinished prose');
+assert.equal(looksLikeClippedProse({ blocks: [
+  { text: '8 end', boundingBox: { x: .046, y: .0855, w: .064, h: .053 } },
+  { text: '9', boundingBox: { x: .0465, y: .0269, w: .013, h: .036 } },
+] }, '8 end\n9 $\\mathbf{z}_v\\gets\\mathbf{h}_v^K,\\forall v\\in\\mathcal{V}$'), null,
+'an isolated final algorithm line number must not imply cropped prose');
 assert.equal(looksLikeClippedProse({ blocks: [{ text: 'as',
   boundingBox: { x: .08, y: .019, w: .1, h: .05 } }] }, 'the final vector as'), 'bottom',
 'a short unfinished prose line near the bottom must still pause the reader');
