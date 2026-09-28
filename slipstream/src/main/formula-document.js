@@ -77,6 +77,24 @@ function repairSpuriousBracketAccents(latex, plainBracketsInSource) {
   return canRenderMath(fixed, false) ? fixed : latex;
 }
 
+function repairPartialParenthesisBar(latex, formula, sourceBlocks, paddedBlocks, pixelBox, intersects) {
+  // An accent on only "(y" cannot be the source's complete conditional
+  // argument. Remove it only if two independent text layouts read the same
+  // plain parenthesized conditional at the formula's printed location.
+  const partial = /\\bar\s*\{\s*\(\s*([A-Za-z])\s*\}/u.exec(latex);
+  if (!partial || !/^\s*(?:\\[,;]\s*)?\\mid\b[\s\S]*\)/u.test(latex.slice(partial.index + partial[0].length))) {
+    return latex;
+  }
+  const plain = new RegExp(`\\(\\s*${partial[1]}\\s*\\|\\s*[A-Za-z]\\s*\\)`, 'u');
+  const seesPlain = (blocks) => (blocks || []).some((block) => block.confidence >= .9
+    && block.boundingBox && intersects(formula, pixelBox(block.boundingBox))
+    && plain.test(block.text));
+  if (!seesPlain(sourceBlocks) || !seesPlain(paddedBlocks)) return latex;
+  const repaired = latex.slice(0, partial.index) + `(${partial[1]}`
+    + latex.slice(partial.index + partial[0].length);
+  return canRenderMath(repaired, false) ? repaired : latex;
+}
+
 // Keep the original prose as the reading-order anchor. Masking can make Vision
 // merge adjacent lines or hallucinate fragments; replace a doubtful source row
 // only when the masked and padded layouts independently agree at its location.
@@ -653,6 +671,11 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const bracketAccents = repairSpuriousBracketAccents(latex, sourceBrackets);
     const repairedBracketAccents = bracketAccents !== latex;
     if (repairedBracketAccents) latex = bracketAccents;
+    const partialBar = repairPartialParenthesisBar(latex, formula, sourceBlocks,
+      edgeProse?.blocks, pixelBox, intersects);
+    const repairedPartialBar = partialBar !== latex;
+    if (repairedPartialBar) latex = partialBar;
+    const unresolvedPartialBar = /\\bar\s*\{\s*\(\s*[A-Za-z]\s*\}/u.test(latex);
     // Vision can see the visible sentence mark at the end of the last case
     // branch while the math decoder has already included it inside that row.
     if (punctuation && punctuation === finalCaseRowPunctuation(latex)) punctuation = '';
@@ -672,7 +695,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
       equationLabel: equationLabel?.label,
       reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || repairedFontCommand || repairedExp || unresolvedExp
-        || repairedBracketAccents || unrenderable || correctedIota
+        || repairedBracketAccents || repairedPartialBar || unresolvedPartialBar || unrenderable || correctedIota
         || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
         || separatedWhere && !sourceWhere,

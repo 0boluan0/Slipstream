@@ -68,6 +68,24 @@ async function main() {
   assert.equal(partialExp.spacedOperatorUnresolved, 1);
   assert.equal(partialExp.uncertainFormulaCount, 1,
     'an unconfirmed spaced operator must be visibly marked for review');
+  const partialBarFormula = { x: 200, y: 20, w: 550, h: 40, display: false, confidence: .95,
+    latex: String.raw`(y_1,y_2)\sim\pi^{\mathrm{SFT}}\bar{(y}\mid x)` };
+  const plainConditional = { text: 'produce pairs of answers (y1,y2) ~ SFT (y | x).', confidence: 1,
+    boundingBox: { x: .1, y: .4, w: .8, h: .3 } };
+  const parenthesisSize = { width: 1000, height: 100 };
+  const correctedConditional = mergeFormulaDocument({ blocks: [] }, [partialBarFormula],
+    parenthesisSize, { blocks: [plainConditional] }, { blocks: [plainConditional] });
+  assert.match(correctedConditional.text, /\\pi\^\{\\mathrm\{SFT\}\}\(y\\mid x\)/u,
+    'two independent OCR layouts must remove an invented bar on a partial parenthesis');
+  assert.doesNotMatch(correctedConditional.text, /\\bar/u);
+  assert.equal(correctedConditional.uncertainFormulaCount, 1,
+    'a source-corroborated formula repair still asks for pixel review');
+  const unconfirmedConditional = mergeFormulaDocument({ blocks: [] }, [partialBarFormula],
+    parenthesisSize, { blocks: [plainConditional] }, { blocks: [] });
+  assert.match(unconfirmedConditional.text, /\\bar\{\(y\}/u,
+    'one plain-text OCR layout cannot silently rewrite mathematical notation');
+  assert.equal(unconfirmedConditional.uncertainFormulaCount, 1,
+    'an unresolved partial-parenthesis bar must be visibly marked for review');
   const namedExp = { ...expFormula,
     latex: 'q = \\frac { \\operatorname { e x p } (z/T) } { \\sum_j \\operatorname { e x p } (w/T) }' };
   const confirmedNamedExp = mergeFormulaDocument({ blocks: [] }, [namedExp], size,
