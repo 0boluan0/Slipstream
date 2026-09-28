@@ -144,6 +144,22 @@ async function main() {
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ x: 10, y: 28, w: 20, h: 28,
     latex: 'x', display: false }], size, adjacentRows).text, 'In prose\n$x$ follows',
   'a formula box grazing the previous text line cannot erase a source word');
+  const tallLineSize = { width: 1112, height: 220 };
+  const tallLines = { blocks: [
+    { text: 'First complete printed line stays first.', confidence: 1,
+      boundingBox: { x: .023, y: .718, w: .944, h: .182 } },
+    { text: 'Second complete printed line stays second.', confidence: 1,
+      boundingBox: { x: .020, y: .645, w: .926, h: .182 } },
+  ] };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [], tallLineSize, tallLines).text,
+    'First complete printed line stays first.\nSecond complete printed line stays second.',
+    'overlapping Vision boxes for different full-width lines must not interleave their text');
+  const sameLineFragments = { blocks: [
+    { text: 'A phrase', confidence: 1, boundingBox: { x: .02, y: .72, w: .2, h: .18 } },
+    { text: 'continues here.', confidence: 1, boundingBox: { x: .24, y: .68, w: .3, h: .18 } },
+  ] };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [], tallLineSize, sameLineFragments).text,
+    'A phrase continues here.', 'side-by-side observations on one printed line still join');
   const lineWords = { blocks: [placedWord('An ensem-', 10, 5, 60, 10),
     placedWord('ble uses', 10, 22, 60, 10), placedWord('x', 10, 40, 10, 10)] };
   const joinedFormulaDocument = mergeFormulaDocument({ blocks: [] },

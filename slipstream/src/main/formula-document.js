@@ -86,14 +86,16 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   function words(ocr) {
     const result = [];
     for (const line of ocr?.blocks || []) {
+      const sourceBox = line.boundingBox ? pixelBox(line.boundingBox) : null;
       let word;
       for (const char of line.characters || []) {
         const box = pixelBox(char.boundingBox);
         if (!box.w || !box.h || !char.text.trim()) { word = null; continue; }
         if (word && ['x', 'y', 'w', 'h'].every((key) => word[key] === box[key])) word.text += char.text;
-        else { word = { ...box, text: char.text, confidence: line.confidence }; result.push(word); }
+        else { word = { ...box, text: char.text, confidence: line.confidence, sourceBox }; result.push(word); }
       }
-      if (!line.characters?.length && line.boundingBox) result.push({ ...pixelBox(line.boundingBox), text: line.text, confidence: line.confidence });
+      if (!line.characters?.length && line.boundingBox) result.push({ ...sourceBox,
+        text: line.text, confidence: line.confidence, sourceBox });
     }
     return result;
   }
@@ -458,11 +460,12 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       || formulas.some((f) => intersects(f, word))) return word;
     // Recover only missing leading letters backed by the same image region.
     // Never substitute another word, shorten one, or move text across a formula.
-    return edgeWords.find((candidate) => /^\p{L}+$/u.test(candidate.text)
+    const candidate = edgeWords.find((candidate) => /^\p{L}+$/u.test(candidate.text)
       && candidate.text.length > word.text.length && candidate.text.endsWith(word.text)
       && candidate.x < word.x - 1 && intersects(candidate, word)
       && Math.abs(candidate.x + candidate.w - word.x - word.w) < Math.max(candidate.h, word.h) * .2
-      && !formulas.some((f) => intersects(f, candidate))) || word;
+      && !formulas.some((f) => intersects(f, candidate)));
+    return candidate ? { ...candidate, sourceBox: word.sourceBox } : word;
   });
   const removed = sourceWords.filter((word) => formulas.some((f) => intersects(f, word)));
   // A formula's baseline can sit above/below its right-aligned number. Keep
@@ -687,7 +690,17 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   const rows = [];
   for (const item of items.sort((a, b) => a.y + a.h / 2 - b.y - b.h / 2 || a.x - b.x)) {
     const row = !item.display && rows.findLast((r) => !r.display
-      && Math.abs(r.center - item.y - item.h / 2) < Math.min(r.height, item.h) * .6);
+      && Math.abs(r.center - item.y - item.h / 2) < Math.min(r.height, item.h) * .6
+      // Vision's boxes for two consecutive full-width lines can overlap by
+      // more than half their height. Their independent source rows still
+      // establish the printed order, even when individual word boxes mingle.
+      && !r.items.some((existing) => {
+        const a = existing.sourceBox, b = item.sourceBox;
+        if (!a || !b || a === b) return false;
+        const overlap = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
+        return overlap > Math.min(a.w, b.w) * .4
+          && Math.abs(a.y + a.h / 2 - b.y - b.h / 2) > Math.min(a.h, b.h) * .2;
+      }));
     if (row) { row.items.push(item); row.height = Math.max(row.height, item.h); }
     else rows.push({ items: [item], center: item.y + item.h / 2, height: item.h, display: item.display });
   }
