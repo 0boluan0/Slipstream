@@ -17,10 +17,18 @@ function renderSourcePreview() {
   const text = byId('source-editor').value;
   window.renderReadingMath(byId('source-preview'), text);
   const ranges = window.readingMath.mathRanges(text);
+  const invalidDelimiter = window.readingMath.firstInvalidMathDelimiter(text);
+  const bareFontCommand = window.readingMath.firstBareFontCommand(text);
+  const unrenderable = byId('source-preview').querySelector('.math-fallback');
   const uncertain = new Set(text === state?.sourceText ? state.formulaUncertainStarts || [] : []);
   if (state?.formulaNotice) byId('formula-notice').textContent = text === state.sourceText
     ? state.formulaNotice : state.formulaNotice.replace('，已在公式预览标出', '');
-  byId('formula-edit-hint').hidden = !ranges.length;
+  const hint = byId('formula-edit-hint');
+  hint.hidden = !ranges.length && !invalidDelimiter;
+  hint.textContent = invalidDelimiter ? `公式标记“${invalidDelimiter}”未正确闭合或内容为空，请在下方校正。`
+    : bareFontCommand ? `公式里的“${bareFontCommand}”缺少反斜杠，请对照截图校正。`
+      : unrenderable ? '有公式无法排版，已显示 LaTeX 原文。请点击该处并对照截图校正。'
+        : '点击有误的公式可定位校正；长公式可在公式上左右滚动，查看完整内容。';
   const nodes = [...byId('source-preview').children];
   nodes.forEach((node, index) => {
     const range = ranges[index];
@@ -269,7 +277,8 @@ function render(next) {
   if (state.phase === 'review' && previousPhase !== 'review') {
     byId('source-editor').value = state.sourceText || '';
     renderSourcePreview();
-    byId('formula-preview').open = window.readingMath.mathRanges(state.sourceText || '').length > 0;
+    byId('formula-preview').open = window.readingMath.mathRanges(state.sourceText || '').length > 0
+      || Boolean(window.readingMath.firstInvalidMathDelimiter(state.sourceText || ''));
     byId('source-correction').open = !byId('formula-preview').open;
     byId('review-title').focus({ preventScroll: true });
   }

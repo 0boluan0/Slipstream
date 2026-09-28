@@ -5,8 +5,9 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { assessOcrReview } = require('./ocr-review');
 const { mathAssetUrls } = require('./reading-math-assets');
-const { mathRanges, needsMathReview, isMathOnly, firstBareFontCommand } = require('../shared/reading-math.cjs');
+const { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, firstBareFontCommand } = require('../shared/reading-math.cjs');
 const { formulaRecognitionAvailable } = require('./formula-recognition');
+const { canRenderMath } = require('./formula-document');
 const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
 const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation');
@@ -613,6 +614,19 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     if (bareFontCommand) {
       update(pin, { sourceText: source, phase: 'review',
         notice: `公式中的“${bareFontCommand}”缺少 LaTeX 反斜杠，排版会把它当成字母。请对照截图校正后再翻译。` });
+      return;
+    }
+    const invalidDelimiter = kind === 'translate' ? firstInvalidMathDelimiter(source) : '';
+    if (invalidDelimiter) {
+      update(pin, { sourceText: source, phase: 'review',
+        notice: `公式标记“${invalidDelimiter}”未正确闭合或内容为空。请对照截图补全后再翻译。` });
+      return;
+    }
+    const unrenderableFormula = kind === 'translate'
+      ? mathRanges(source).find((range) => !canRenderMath(range.tex, range.display)) : null;
+    if (unrenderableFormula) {
+      update(pin, { sourceText: source, phase: 'review',
+        notice: '公式仍无法排版。请对照截图校正 LaTeX 后再翻译；原文已保留。' });
       return;
     }
     const controller = new AbortController();

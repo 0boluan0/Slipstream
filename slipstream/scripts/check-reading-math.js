@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { mathRanges, needsMathReview, isMathOnly, firstBareFontCommand } = require('../src/shared/reading-math.cjs');
+const { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, firstBareFontCommand } = require('../src/shared/reading-math.cjs');
 const { readingTextFromOcr, readingSegments, joinVisualHyphenation } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
 const { characterCandidates } = require('../src/main/local-formula-ocr');
@@ -46,6 +46,11 @@ async function main() {
   assert.equal(firstBareFontCommand(String.raw`State $( mathbf z_L^0 )$ is used.`), 'mathbf');
   assert.equal(firstBareFontCommand(String.raw`State $( \mathbf z_L^0 )$ is used.`), '');
   assert.equal(firstBareFontCommand('The word mathbf is ordinary prose.'), '');
+  assert.equal(firstInvalidMathDelimiter('The expression $$x=1$ ends here.'), '$$');
+  assert.equal(firstInvalidMathDelimiter(String.raw`The expression \(x=1 is incomplete.`), String.raw`\(`);
+  assert.equal(firstInvalidMathDelimiter('The expression $$ $$ is empty.'), '$$');
+  assert.equal(firstInvalidMathDelimiter('A $5 fee and `$$code` are plain text.'), '');
+  assert.equal(firstInvalidMathDelimiter(String.raw`The expression \(x=1\) is valid.`), '');
   for (const colon of [String.raw`\colon`, String.raw`\mathbf { : }`, String.raw`\mathsf { : }`]) {
     const mathColon = { ...formula, latex: String.raw`r,s\in\mathbb R` + colon };
     assert.equal(mergeFormulaDocument({ blocks: [word(':', 29, 5)] }, [mathColon], size,

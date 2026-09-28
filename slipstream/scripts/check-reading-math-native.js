@@ -203,6 +203,18 @@ app.whenReady().then(async () => {
   assert.equal(await markedPin.webContents.executeJavaScript('getComputedStyle(document.querySelector("#source-preview .math-needs-review")).outlineStyle'), 'dashed');
   assert.match(await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").getAttribute("aria-label")'), /需核对并校正公式/);
   assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'), /已在公式预览标出/);
+  await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = ${JSON.stringify(String.raw`The vectors satisfy $$\unknownmathsymbol$$.`)};
+    document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
+  assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /公式无法排版.*校正/u,
+    'an unrenderable edit must explain the problem before confirmation');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-fallback").length'), 1);
+  await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = 'The vectors satisfy $$x=1$.';
+    document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
+  assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /未正确闭合/u);
+  await markedPin.webContents.executeJavaScript(`window.readingPin.act('ready').then(({ state }) => {
+    document.getElementById('source-editor').value = state.sourceText;
+    document.getElementById('source-editor').dispatchEvent(new Event('input'));
+  })`);
   await markedPin.webContents.executeJavaScript('document.getElementById("source-editor").value += " corrected"; document.getElementById("source-editor").dispatchEvent(new Event("input"))');
   assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 0,
     'editing the source invalidates OCR offsets instead of highlighting another symbol');

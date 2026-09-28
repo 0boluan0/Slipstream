@@ -796,4 +796,4 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       - joinedProse.removedAt.filter((at) => at < start).length * 2) };
 }
 
-module.exports = { mergeFormulaDocument, proseSuperscript, repairUnpairedEvaluationBars };
+module.exports = { mergeFormulaDocument, proseSuperscript, repairUnpairedEvaluationBars, canRenderMath };

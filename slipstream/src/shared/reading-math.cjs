@@ -37,6 +37,26 @@
     }
     return ranges;
   }
+  function firstInvalidMathDelimiter(text) {
+    for (let i = 0; i < text.length; i += 1) {
+      if (escaped(text, i)) continue;
+      if (text[i] === '`') {
+        const marker = text.startsWith('```', i) ? '```' : '`';
+        const end = text.indexOf(marker, i + marker.length);
+        i = end < 0 ? text.length : end + marker.length - 1;
+        continue;
+      }
+      const pair = text.startsWith('$$', i) ? ['$$', '$$']
+        : text.startsWith('\\[', i) ? ['\\[', '\\]']
+          : text.startsWith('\\(', i) ? ['\\(', '\\)'] : null;
+      if (!pair) continue;
+      let end = text.indexOf(pair[1], i + pair[0].length);
+      while (end >= 0 && escaped(text, end)) end = text.indexOf(pair[1], end + pair[1].length);
+      if (end < 0 || !text.slice(i + pair[0].length, end).trim()) return pair[0];
+      i = end + pair[1].length - 1;
+    }
+    return '';
+  }
   function needsMathReview(text) {
     return mathRanges(text).length > 0 || /[∑∫∂∇√∞≠≤≥∈∉⊂⊆∪∩₀-₉⁰¹²³⁴⁵⁶⁷⁸⁹]/u.test(text)
       || /\b(?:E|P|Var|Cov)\s*[[(]|\b[A-Za-zα-ωΑ-Ω]\s*[_^=]|\\(?:frac|sum|int|sqrt|begin)\b/u.test(text);
@@ -63,7 +83,8 @@
     return tex.replace(/(?<![\\A-Za-z])(?:boldsymbol|mathbf|mathbb|mathcal|mathscr|mathsf|mathtt|mathit|mathrm)\b(?=\s*(?:\{|[A-Za-z\\]))/gu,
       (command) => `\\${command}`);
   }
-  const api = { mathRanges, needsMathReview, isMathOnly, firstBareFontCommand, repairBareFontCommands };
+  const api = { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly,
+    firstBareFontCommand, repairBareFontCommands };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.readingMath = api;
 })(globalThis);

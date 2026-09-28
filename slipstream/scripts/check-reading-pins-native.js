@@ -770,6 +770,29 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(unrenderableCard)).notice, /公式暂时无法排版.*校正 LaTeX/u);
   assert.match((await stateOf(unrenderableCard)).formulaNotice, /无法排版.*保留了 LaTeX 原文/u);
   assert.equal(providerCalls, beforeUnrenderable);
+  await action(unrenderableCard, 'translate', { revision: (await stateOf(unrenderableCard)).revision,
+    text: ocrOverride });
+  assert.equal((await stateOf(unrenderableCard)).phase, 'review');
+  assert.match((await stateOf(unrenderableCard)).notice, /公式仍无法排版.*校正 LaTeX/u);
+  assert.equal(providerCalls, beforeUnrenderable, 'confirming an unrenderable formula must not call the model');
+  await action(unrenderableCard, 'translate', { revision: (await stateOf(unrenderableCard)).revision,
+    text: 'The vectors satisfy $$x=1$$.' });
+  await until(phaseIs(unrenderableCard, 'done'), 'corrected formula translates');
+  manager.clear();
+  ocrOverride = 'The vectors satisfy $$x=1$.';
+  formulaOcrOverride = null;
+  const beforeOpenDelimiter = providerCalls;
+  await manager.capture();
+  const openDelimiterCard = cards()[0];
+  await until(phaseIs(openDelimiterCard, 'review'), 'unclosed math must reach review');
+  await action(openDelimiterCard, 'translate', { revision: (await stateOf(openDelimiterCard)).revision,
+    text: ocrOverride });
+  assert.equal((await stateOf(openDelimiterCard)).phase, 'review');
+  assert.match((await stateOf(openDelimiterCard)).notice, /公式标记.*未正确闭合/u);
+  assert.equal(providerCalls, beforeOpenDelimiter, 'unclosed display math must not call the model');
+  await action(openDelimiterCard, 'translate', { revision: (await stateOf(openDelimiterCard)).revision,
+    text: 'The vectors satisfy $$x=1$$.' });
+  await until(phaseIs(openDelimiterCard, 'done'), 'closed formula translates');
   manager.clear();
   ocrOverride = 'The output $( mathbf  z  _ { L } ^ { 0 } )$ represents the image.';
   formulaOcrOverride = { status: 'done', count: 1, uncertain: 0, uncertainStarts: [] };
