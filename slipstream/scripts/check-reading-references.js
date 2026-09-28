@@ -76,6 +76,27 @@ async function main() {
   assert.equal(calls, 1, 'definitions share the translation request');
   assert.deepEqual(translated.references, [definition], 'unanchored or duplicate definitions cannot become suggestions');
   assert.equal((await processor({ text: source, kind: 'references', settingsSnapshot: settings })).references.length, 1);
+  const roleSource = 'Speaker We use the term speaker to refer to the individual who produced linguistic behavior. '
+    + 'Annotator The term annotator refers to people who assign annotations to raw data. '
+    + 'Curator A third role in dataset creation, less commonly discussed, is the curator. '
+    + 'Stakeholders Stakeholders are people impacted directly or indirectly by a system.';
+  const roleDefinitions = [
+    { symbol: 'speaker', meaning: '产生语言行为的人。', evidence: 'Speaker We use the term speaker to refer to the individual who produced linguistic behavior.' },
+    { symbol: 'annotator', meaning: '为原始数据加标注的人。', evidence: 'Annotator The term annotator refers to people who assign annotations to raw data.' },
+    { symbol: 'curator', meaning: '数据集创建中的第三种角色。', evidence: 'Curator A third role in dataset creation, less commonly discussed, is the curator.' },
+    { symbol: 'Stakeholders', meaning: '直接或间接受系统影响的人。', evidence: 'Stakeholders Stakeholders are people impacted directly or indirectly by a system.' },
+  ];
+  let roleCalls = 0;
+  const roleProcessor = createReadingProcessor(async (_settings, _backend, _model, _prompt, message) => {
+    roleCalls += 1;
+    const excerpt = JSON.parse(message).excerpt;
+    return JSON.stringify({ references: excerpt === roleSource ? [roleDefinitions[0]]
+      : roleDefinitions.filter((entry) => excerpt.includes(entry.evidence)) });
+  });
+  assert.deepEqual((await roleProcessor({ text: roleSource, kind: 'references', settingsSnapshot: settings }))
+    .references.map((entry) => entry.symbol), roleDefinitions.map((entry) => entry.symbol),
+  'a partial broad extraction must not hide the remaining author-defined roles');
+  assert.equal(roleCalls, 4, 'the covered speaker definition needs no redundant model call');
   // PMF p. 6: the installed preview proposed a source "definition" of RMSE
   // although this sentence only uses the acronym in a result comparison.
   const pmfResult = 'The constrained PMF model achieved a RMSE of 1.0510 on the validation set compared to a RMSE of 1.0726 for the simple movie average model.';

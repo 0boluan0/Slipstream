@@ -99,7 +99,7 @@ function readingTextFromOcr(ocr, isWord = knownEnglishWord) {
     if (!text) continue;
     const a = previous?.boundingBox;
     const b = line.boundingBox;
-    const newParagraph = a && (a.y - (b.y + b.h) > Math.max(a.h, b.h) * 1.1
+    const newParagraph = a && (a.y - (b.y + b.h) > Math.max(a.h, b.h) * .8
       || Math.abs(a.h - b.h) > Math.min(a.h, b.h) * .8
       || b.y > a.y + a.h);
     if (newParagraph && paragraph) { paragraphs.push(paragraph); paragraph = ''; }

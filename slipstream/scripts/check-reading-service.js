@@ -354,6 +354,16 @@ async function main() {
   assert.equal(readingSegments(longText).map((segment) => segment.source).join(' '), longText, 'splitting must not lose source content');
   const block = (text, x, y, w = .8) => ({ text, boundingBox: { x, y, w, h: .04 } });
   assert.deepEqual(readingTextFromOcr({ text: 'fallback', blocks: [block('A wrapped', .1, .8), block('sentence.', .1, .74), block('New paragraph.', .1, .6)] }), { text: 'A wrapped sentence.\n\nNew paragraph.', layoutReview: false });
+  const paperRoleLines = [
+    ['Speaker We use the term', .95, .023], ['speaker for this role.', .92, .025],
+    ['Annotator The term', .812, .023], ['annotator names another role.', .781, .025],
+    ['Curator A third role', .523, .025], ['is the curator.', .495, .023],
+    ['Stakeholders are people', .297, .023], ['impacted by a system.', .266, .025],
+  ];
+  assert.equal(readingTextFromOcr({ text: paperRoleLines.map(([line]) => line).join('\n'),
+    blocks: paperRoleLines.map(([line, y, h]) => ({ text: line, boundingBox: { x: .034, y, h, w: .8 } })) }).text,
+  'Speaker We use the term speaker for this role.\n\nAnnotator The term annotator names another role.\n\nCurator A third role is the curator.\n\nStakeholders are people impacted by a system.',
+  'the gaps observed in the native paper screenshot must preserve four role paragraphs');
   const words = new Set(['education', 'performance', 'phenotypic', 'procedures', 'derive', 'retraining', 'closed', 'form', 'closedform', 'pretrained']);
   const wrapped = ['Documentation in edu-', 'cation reports perfor-', 'mance by phe-', 'notypic groups and pro-', 'cedures. We de-', 'rive a result by retrain-', 'ing. The closed-', 'form and pre-', 'trained baselines remain distinct.'];
   assert.equal(readingTextFromOcr({ text: wrapped.join('\n'), blocks: wrapped.map((line, index) => block(line, .1, .9 - index * .06)) }, (word) => words.has(word)).text,

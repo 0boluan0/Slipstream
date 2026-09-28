@@ -3,6 +3,10 @@
 // Explicit local-preview evaluation. Only these public/authored excerpts are
 // sent. A successful run means responses were collected, not judged correct.
 const samples = [
+  { id: 'introduced-practice', selection: 'data statements',
+    source: 'In this paper, we propose data statements as a design solution and professional practice for natural language processing technologists, in both research and development. Through the adoption and widespread use of data statements, the field can begin to address critical scientific and ethical issues that result from the use of data from certain populations in the development of technology for other populations. We present a form that data statements can take and explore the implications of adopting them as part of regular practice.',
+    attribution: { title: 'Data Statements for Natural Language Processing', url: 'https://aclanthology.org/Q18-1041/', location: 'Page 1 abstract; installed native capture' },
+    criteria: 'The excerpt introduces a proposed design solution and professional practice and its intended purpose, but does not define required fields, say it must accompany each dataset, or specify publication or release timing. Do not invent those details or guarantee bias removal.' },
   { id: 'root-n', selection: 'root-N consistent estimation',
     source: String.raw`We develop a series of simple results for obtaining root-N consistent estimation, where N
 is the sample size, and valid inferential statements about a low-dimensional parameter of
