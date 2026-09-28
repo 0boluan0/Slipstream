@@ -45,6 +45,23 @@ function focusSourceRegion(region) {
   requestAnimationFrame(centerSourceRegion);
 }
 
+function scrollEditorToSource(editor, text, start) {
+  const style = getComputedStyle(editor);
+  const ruler = document.createElement('div');
+  Object.assign(ruler.style, { position: 'absolute', visibility: 'hidden', pointerEvents: 'none',
+    width: `${editor.clientWidth}px`, boxSizing: 'border-box', padding: style.padding,
+    font: style.font, lineHeight: style.lineHeight, letterSpacing: style.letterSpacing,
+    whiteSpace: 'pre-wrap', overflowWrap: 'break-word' });
+  ruler.append(document.createTextNode(text.slice(0, start)));
+  const caret = document.createElement('span');
+  caret.textContent = '\u200b';
+  ruler.append(caret);
+  document.body.append(ruler);
+  const top = caret.offsetTop;
+  ruler.remove();
+  editor.scrollTop = Math.max(0, top - editor.clientHeight / 3);
+}
+
 function renderSourcePreview() {
   const text = byId('source-editor').value;
   window.renderReadingMath(byId('source-preview'), text);
@@ -81,8 +98,7 @@ function renderSourcePreview() {
       const delimiter = (range.end - range.start - range.tex.length) / 2;
       editor.focus({ preventScroll: true });
       editor.setSelectionRange(range.start + delimiter, range.end - delimiter);
-      editor.scrollTop = Math.max(0, (text.slice(0, range.start).split('\n').length - 2)
-        * parseFloat(getComputedStyle(editor).lineHeight));
+      scrollEditorToSource(editor, text, range.start);
       byId('source-correction').scrollIntoView({ block: 'start' });
       focusSourceRegion(region);
     };

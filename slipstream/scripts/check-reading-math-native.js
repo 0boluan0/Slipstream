@@ -219,6 +219,16 @@ app.whenReady().then(async () => {
     return marker.getBoundingClientRect().width <= frame.clientWidth * .95;
   })()`), 'the whole highlighted formula should fit the default narrow correction frame');
   if (output) fs.writeFileSync(path.join(output, 'reading-math-source-position.png'), (await markedPin.webContents.capturePage()).toPNG());
+  await markedPin.webContents.executeJavaScript('document.getElementById("source-preview").children[1].click()');
+  await markedPin.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  assert(await markedPin.webContents.executeJavaScript(`(() => {
+    const editor = document.getElementById('source-editor');
+    return editor.scrollHeight > editor.clientHeight && editor.scrollTop > 0
+      && editor.value.slice(editor.selectionStart, editor.selectionEnd).includes('pmatrix');
+  })()`), 'clicking a later formula must scroll its LaTeX into the correction editor');
+  if (output) fs.writeFileSync(path.join(output, 'reading-math-later-formula.png'), (await markedPin.webContents.capturePage()).toPNG());
+  await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").click()');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), false);
   await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = ${JSON.stringify(String.raw`The vectors satisfy $$\unknownmathsymbol$$.`)};
     document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
   assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), true,
