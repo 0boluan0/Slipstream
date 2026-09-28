@@ -328,7 +328,7 @@ async function main() {
   const repairedAuthorization = createReadingProcessor(async (...args) => {
     authorizationAttempts += 1;
     if (authorizationAttempts === 1) return JSON.stringify({ quote: 'undeclared', meaning: '未经授权使用模型输出的下游系统。', note: '' });
-    assert.match(args[3], /A missing access control or an undeclared dependency does not itself establish unauthorized use/);
+    assert.match(args[3], /A missing safeguard or dependency does not establish unauthorized use/);
     return JSON.stringify({ quote: 'undeclared', meaning: '没有被列入依赖关系的下游使用方。', note: '本段说缺少访问控制时，其中一些使用方可能未被声明。' });
   });
   assert.equal((await repairedAuthorization({ text: dependentSource, kind: 'lookup', selection: 'undeclared', settingsSnapshot: settings })).lookup.meaning,
@@ -340,6 +340,32 @@ async function main() {
   const explicitAuthorization = createReadingProcessor(async () => JSON.stringify({ quote: 'Unauthorized', meaning: '未经授权使用模型输出的行为。', note: '' }));
   assert.equal((await explicitAuthorization({ text: 'Unauthorized use of model output is prohibited.', kind: 'lookup', selection: 'Unauthorized', settingsSnapshot: settings })).lookup.meaning,
     '未经授权使用模型输出的行为。', 'explicit source wording can support an authorization claim');
+  const claimRepairs = [
+    { selection: 'data statements', source: 'We present a form that data statements can take.',
+      bad: '作者给出一种表格形式。', good: '作者说文中给出数据声明可采取的一种形式。', hint: /not a table/ },
+    { selection: 'root-N consistent estimation', source: 'We seek root-N consistent estimation, where N is the sample size.',
+      bad: '$\\sqrt{N}$ 倍估计误差具有非退化的渐近行为。', good: '估计误差具有 $N^{-1/2}$ 的收敛速率。', hint: /nondegenerate/ },
+    { selection: 'conditional expectation', source: 'The conditional expectation E[Y|X] is a random variable determined by X.',
+      bad: '由于它随 $X$ 的取值而变，所以不是一个固定数值。', good: '它是由 $X$ 决定的随机变量，也可能恒为常数。', hint: /can still be constant/ },
+    { selection: 'sufficient condition', source: 'Strict convexity is a sufficient condition for uniqueness.',
+      bad: '这个条件足以保证结论，因此不是必要条件。', good: '这个条件成立足以保证结论；是否必要需要其他信息。', hint: /Sufficiency alone/ },
+  ];
+  for (const sample of claimRepairs) {
+    let attempts = 0;
+    const repaired = createReadingProcessor(async (...args) => {
+      attempts += 1;
+      if (attempts === 1) return JSON.stringify({ quote: sample.selection, meaning: sample.bad, note: '' });
+      assert.match(args[3], sample.hint);
+      return JSON.stringify({ quote: sample.selection, meaning: sample.good, note: '' });
+    });
+    assert.equal((await repaired({ text: sample.source, kind: 'lookup', selection: sample.selection,
+      settingsSnapshot: settings })).lookup.meaning, sample.good);
+    assert.equal(attempts, 2, `${sample.selection} should get one bounded correction`);
+    const persistent = createReadingProcessor(async () => JSON.stringify({ quote: sample.selection,
+      meaning: sample.bad, note: '' }));
+    await assert.rejects(persistent({ text: sample.source, kind: 'lookup', selection: sample.selection,
+      settingsSnapshot: settings }), /reading-unsupported-claim/);
+  }
   await assert.rejects(lookup({ text: source, kind: 'lookup', selection: 'invented', settingsSnapshot: settings }), /reading-invalid-input/);
   assert.equal(lookupCalls, 1);
   const wrongQuote = createReadingProcessor(async () => JSON.stringify({ quote: 'different', meaning: 'meaning', note: '' }));

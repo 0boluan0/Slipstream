@@ -109,6 +109,34 @@ function assertsUnauthorizedUseWithoutSource(explanation, source) {
   return claim.test(explanation) && !explicitSource.test(source);
 }
 
+function unsupportedExplanationClaim(selection, source, meaning, note) {
+  const explanation = `${meaning} ${note}`;
+  if (assertsUnauthorizedUseWithoutSource(explanation, source)) {
+    return 'A missing safeguard or dependency does not establish unauthorized use.';
+  }
+  if (/\ba form that\b.{0,100}\bcan take\b/iu.test(source)
+    && !/\b(?:table|tabular|template|form to fill|questionnaire)\b/iu.test(source)
+    && /表格/u.test(explanation)) {
+    return 'The excerpt says a form the proposal can take, not a table or form to fill in.';
+  }
+  if (/root[-–]?N consistent estimation/iu.test(selection)
+    && !/\b(?:non[- ]?degenerate|limiting distribution|asymptotic distribution|asymptotic normality)\b/iu.test(source)
+    && /非退化|极限分布|渐近(?:分布|正态|行为)/u.test(explanation)) {
+    return 'A root-N rate alone does not establish a nondegenerate limiting behavior or distribution.';
+  }
+  if (/conditional expectation/iu.test(selection)
+    && !/\b(?:varies? with|nonconstant|not constant)\b/iu.test(source)
+    && /(?:随|随着).{0,20}X.{0,14}(?:而变|变化)|不是.{0,5}固定.{0,5}数值/u.test(explanation)) {
+    return 'Conditional expectation is determined by X, but it can still be constant.';
+  }
+  if (/sufficient condition/iu.test(selection)
+    && /(?:因此|故|所以)(?:它)?(?:并)?不是必要条件/u.test(meaning)
+    && !/严格凸|strict convexity/iu.test(meaning)) {
+    return 'Sufficiency alone says nothing about necessity; keep the excerpt-specific counterexample in the note.';
+  }
+  return '';
+}
+
 function studyPercentageScopeNotice(source, translation) {
   if (!/\b(?:interviews? with|we interviewed|surveyed)\s+\d[\d,]*\b/iu.test(source)) return '';
   const rates = [...source.matchAll(/\b(\d+(?:\.\d+)?)%\s+prevalence\b/giu)];
@@ -219,9 +247,8 @@ function parseLookup(raw, selection, source) {
     || !value.meaning.trim() || value.meaning.length > 1500
     || typeof value.note !== 'string' || value.note.length > 1500
     || /[\b\f\r\t\v]/u.test(value.meaning + value.note)) throw new Error('reading-invalid-output');
-  if (assertsUnauthorizedUseWithoutSource(value.meaning + value.note, source)) {
-    throw new Error('reading-unsupported-claim');
-  }
+  const unsupported = unsupportedExplanationClaim(selection, source, value.meaning, value.note);
+  if (unsupported) throw Object.assign(new Error('reading-unsupported-claim'), { repairHint: unsupported });
   const exactQuote = typeof value.sourceQuote === 'string' && value.sourceQuote.length <= 600
     ? sourceEvidence(source, value.sourceQuote) : '';
   const sourceQuote = exactQuote && termStart(exactQuote, selection) !== -1 ? exactQuote : '';
@@ -370,7 +397,7 @@ function createReadingProcessor(processBackend) {
         if (error?.message !== 'reading-unsupported-claim') throw error;
         if (signal?.aborted) throw new Error('reading-cancelled');
         const repaired = await processBackend(settings, backend, settings.activeModel,
-          `${messages.systemPrompt} Recheck authorization and permission claims against explicit wording in the excerpt. A missing access control or an undeclared dependency does not itself establish unauthorized use. Define the selected entity by its identifying property; put a possible cause or condition in the context note.`,
+          `${messages.systemPrompt} The previous answer contained an unsupported implication: ${error.repairHint} Recheck every claim against the exact excerpt. Correct the meaning and note, then return the complete JSON response again.`,
           messages.userMessage, 'en', selection, signal, true, { maxTokens: 2400, retries: 1 });
         if (signal?.aborted) throw new Error('reading-cancelled');
         return { lookup: parseLookup(repaired, selection, text) };

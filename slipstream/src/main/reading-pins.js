@@ -894,8 +894,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (main && !main.isDestroyed()) hidden.push(main);
       hidden = hidden.filter((window) => window.isVisible());
       for (const window of hidden) window.hide();
-      // Let the window server remove the cards before the native selector snapshots the screen.
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      // Floating cards can remain in the window-server image during the macOS
+      // hide animation. Let that animation finish before the native selector.
+      await new Promise((resolve) => setTimeout(resolve, 400));
       file = await captureRegion(undefined, { signal: controller.signal });
       if (controller.signal.aborted || disposed) return { success: false, cancelled: true };
       if ((await fs.stat(file)).size > 32 * 1024 * 1024) throw new Error('reading-image-too-large');
