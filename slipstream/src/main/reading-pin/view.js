@@ -62,6 +62,27 @@ function scrollEditorToSource(editor, text, start) {
   editor.scrollTop = Math.max(0, top - editor.clientHeight / 3);
 }
 
+function linkedFormulaSources(text, ranges) {
+  const linked = new Map();
+  if (!state?.sourceText) return linked;
+  const original = window.readingMath.mathRanges(state.sourceText);
+  if (text !== state.sourceText && original.length !== ranges.length) return linked;
+  const originalCounts = new Map(), currentCounts = new Map();
+  const key = (range) => `${range.display}:${range.tex}`;
+  for (const range of original) originalCounts.set(key(range), (originalCounts.get(key(range)) || 0) + 1);
+  for (const range of ranges) currentCounts.set(key(range), (currentCounts.get(key(range)) || 0) + 1);
+  const uncertain = new Set(state.formulaUncertainStarts || []);
+  for (let index = 0; index < ranges.length; index++) {
+    const before = original[index], after = ranges[index];
+    if (!before || key(before) !== key(after)
+      || (text !== state.sourceText && (originalCounts.get(key(before)) !== 1
+        || currentCounts.get(key(after)) !== 1))) continue;
+    linked.set(after.start, { region: state.formulaRegions?.find((item) => item.start === before.start),
+      needsReview: uncertain.has(before.start) });
+  }
+  return linked;
+}
+
 function renderSourcePreview() {
   const text = byId('source-editor').value;
   window.renderReadingMath(byId('source-preview'), text);
@@ -69,8 +90,8 @@ function renderSourcePreview() {
   const invalidDelimiter = window.readingMath.firstInvalidMathDelimiter(text);
   const bareFontCommand = window.readingMath.firstBareFontCommand(text);
   const unrenderable = byId('source-preview').querySelector('.math-fallback');
-  const uncertain = new Set(text === state?.sourceText ? state.formulaUncertainStarts || [] : []);
-  const canLocate = text === state?.sourceText && state.formulaRegions?.length > 0;
+  const linked = linkedFormulaSources(text, ranges);
+  const canLocate = [...linked.values()].some((item) => item.region);
   if (state?.formulaNotice) byId('formula-notice').textContent = text === state.sourceText
     ? state.formulaNotice : state.formulaNotice.replace('，已在公式预览标出', '');
   const hint = byId('formula-edit-hint');
@@ -78,14 +99,14 @@ function renderSourcePreview() {
   hint.textContent = invalidDelimiter ? `公式标记“${invalidDelimiter}”未正确闭合或内容为空，请在下方校正。`
     : bareFontCommand ? `公式里的“${bareFontCommand}”缺少反斜杠，请对照截图校正。`
       : unrenderable ? '有公式无法排版，已显示 LaTeX 原文。请点击该处并对照截图校正。'
-        : canLocate ? '点击公式可定位原始截图并校正；长公式可在公式上左右滚动。'
+        : canLocate ? `${text === state.sourceText ? '点击公式' : '未改动的公式'}可定位原始截图并校正；长公式可在公式上左右滚动。`
           : '点击有误的公式可定位校正；长公式可在公式上左右滚动，查看完整内容。';
   const nodes = [...byId('source-preview').children];
   nodes.forEach((node, index) => {
     const range = ranges[index];
-    const needsReview = uncertain.has(range.start);
-    const region = text === state?.sourceText
-      ? state.formulaRegions?.find((item) => item.start === range.start) : null;
+    const match = linked.get(range.start);
+    const needsReview = Boolean(match?.needsReview);
+    const region = match?.region || null;
     node.classList.toggle('math-needs-review', needsReview);
     node.setAttribute('role', 'button');
     node.tabIndex = 0;

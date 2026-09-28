@@ -73,7 +73,8 @@ app.whenReady().then(async () => {
     captureRegion: async () => { const file = path.join(work, `capture-${Date.now()}.png`); fs.copyFileSync(fixture, file); return file; },
     performOCR: async () => localReviewOcr
       ? { text: source, document: { text: source, layoutReview: false,
-        formulaRegions: [{ start: equations[0].start, x: .1, y: .2, w: .75, h: .15 }] }, confidence: .99, blocks: [],
+        formulaRegions: [{ start: equations[0].start, x: .1, y: .2, w: .75, h: .15 },
+          { start: equations[1].start, x: .1, y: .55, w: .75, h: .15 }] }, confidence: .99, blocks: [],
         formulaOcr: { status: 'done', count: 2, uncertain: 1, uncertainStarts: [source.indexOf('$$')] } }
       : { text: emptyOcr ? '' : 'Conditional expectation E[Y | X] = y', confidence: .99, blocks: [] },
     processReadingText: async ({ kind, selection }) => {
@@ -229,13 +230,27 @@ app.whenReady().then(async () => {
   if (output) fs.writeFileSync(path.join(output, 'reading-math-later-formula.png'), (await markedPin.webContents.capturePage()).toPNG());
   await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").click()');
   assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), false);
-  await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = ${JSON.stringify(String.raw`The vectors satisfy $$\unknownmathsymbol$$.`)};
+  const oneFormulaEdited = source.slice(0, equations[0].start) + String.raw`$$\unknownmathsymbol$$`
+    + source.slice(equations[0].end);
+  await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = ${JSON.stringify(oneFormulaEdited)};
     document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
   assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), true,
     'editing the recognized source must clear its old pixel highlight');
+  await markedPin.webContents.executeJavaScript('document.getElementById("source-preview").children[1].click()');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").style.top'), '55%',
+    'a different unchanged formula keeps its own source pixels after the first formula is edited');
   assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /公式无法排版.*校正/u,
     'an unrenderable edit must explain the problem before confirmation');
   assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-fallback").length'), 1);
+  const duplicateFormula = source.slice(0, equations[1].start)
+    + source.slice(equations[0].start, equations[0].end) + source.slice(equations[1].end);
+  await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = ${JSON.stringify(duplicateFormula)};
+    document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
+  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 0,
+    'ambiguous duplicate formulas must not inherit an old review position');
+  await markedPin.webContents.executeJavaScript('document.getElementById("source-preview").children[1].click()');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), true,
+    'a newly duplicated formula must not point to an unrelated source region');
   await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = 'The vectors satisfy $$x=1$.';
     document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
   assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /未正确闭合/u);
@@ -244,8 +259,12 @@ app.whenReady().then(async () => {
     document.getElementById('source-editor').dispatchEvent(new Event('input'));
   })`);
   await markedPin.webContents.executeJavaScript('document.getElementById("source-editor").value += " corrected"; document.getElementById("source-editor").dispatchEvent(new Event("input"))');
-  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 0,
-    'editing the source invalidates OCR offsets instead of highlighting another symbol');
+  assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /未改动的公式可定位原始截图/u);
+  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 1,
+    'the unchanged unique formula keeps its review mark after prose is edited');
+  await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").click()');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").style.top'), '20%',
+    'the retained review mark still locates the same original pixels');
   assert.doesNotMatch(await markedPin.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'), /已在公式预览标出/);
   await markedPin.webContents.executeJavaScript('document.getElementById("confirm").click()');
   await until(() => markedPin.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state.phase === "done")'), 'edited source translation');
