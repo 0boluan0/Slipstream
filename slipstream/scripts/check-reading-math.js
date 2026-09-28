@@ -46,6 +46,38 @@ async function main() {
     'a lost LaTeX command slash must not print the command name as mathematical letters');
   assert.deepEqual(missingFontSlash.uncertainFormulaStarts, [0],
     'a repaired font command must still ask the reader to check the source pixels');
+  const expFormula = { x: 10, y: 20, w: 80, h: 55, display: true,
+    latex: 'q = \\frac { e x p (z/T) } { e x p (w/T) }' };
+  const expRows = [{ text: 'exp(z/T)', confidence: .5,
+    boundingBox: { x: .28, y: .55, w: .24, h: .14 } },
+  { text: 'exp(w/T)', confidence: .5,
+    boundingBox: { x: .28, y: .31, w: .24, h: .14 } }];
+  const expSource = { blocks: expRows }, expEdge = { blocks: [expRows[0]] };
+  const confirmedExp = mergeFormulaDocument({ blocks: [] }, [expFormula], size, expSource, expEdge);
+  assert.equal((confirmedExp.text.match(/\\exp\b/gu) || []).length, 2,
+    'two source-pixel exp observations and a second OCR layout preserve the operator');
+  assert(confirmedExp.uncertainFormulaCount >= 1, 'the operator repair remains reviewable');
+  const paddedOnlyExp = mergeFormulaDocument({ blocks: [] }, [expFormula], size,
+    { blocks: [] }, { blocks: expRows });
+  assert.equal((paddedOnlyExp.text.match(/\\exp\b/gu) || []).length, 2,
+    'a complete separate padded reading can recover both operators when source OCR omits them');
+  const partialExp = mergeFormulaDocument({ blocks: [] }, [expFormula], size,
+    { blocks: [] }, expEdge);
+  assert.doesNotMatch(partialExp.text, /\\exp\b/u,
+    'one padded operator cannot justify changing both formula occurrences');
+  assert.equal(partialExp.spacedOperatorUnresolved, 1);
+  assert.equal(partialExp.uncertainFormulaCount, 1,
+    'an unconfirmed spaced operator must be visibly marked for review');
+  const namedExp = { ...expFormula,
+    latex: 'q = \\frac { \\operatorname { e x p } (z/T) } { \\sum_j \\operatorname { e x p } (w/T) }' };
+  const confirmedNamedExp = mergeFormulaDocument({ blocks: [] }, [namedExp], size,
+    { blocks: [] }, { blocks: expRows });
+  assert.equal((confirmedNamedExp.text.match(/\\exp\b/gu) || []).length, 2,
+    'a spaced operatorname confirmed by source pixels becomes the actual exp function');
+  assert.equal(confirmedNamedExp.spacedOperatorUnresolved, 0);
+  const unconfirmedExp = mergeFormulaDocument({ blocks: [] }, [expFormula], size, expSource);
+  assert.doesNotMatch(unconfirmedExp.text, /\\exp\b/u,
+    'a spaced math token without independent corroboration stays unchanged');
   assert.equal(firstBareFontCommand(String.raw`State $( mathbf z_L^0 )$ is used.`), 'mathbf');
   assert.equal(firstBareFontCommand(String.raw`State $( \mathbf z_L^0 )$ is used.`), '');
   assert.equal(firstBareFontCommand('The word mathbf is ordinary prose.'), '');

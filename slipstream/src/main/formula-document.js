@@ -517,9 +517,25 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     // marker, not part of the preceding mathematical expression.
     return /\.\s*\^\s*\{\s*(?:\*|\\ast)\s*\}\s*$/u.test(latex);
   }
+  function confirmedSpacedExp(formula, latex) {
+    // The math decoder can spell the printed function as three multiplied
+    // variables. Change it only when Vision sees each "exp(" in the same
+    // equation in either the source or padded layout. If source OCR saw them,
+    // the padded layout must independently corroborate at least one.
+    if (!formula.display) return latex;
+    const spaced = /\\operatorname\s*\{\s*e\s+x\s+p\s*\}\s*(?=\()|\be\s+x\s+p\s*(?=\()/gu;
+    const count = [...latex.matchAll(spaced)].length;
+    if (!count) return latex;
+    const observations = (blocks) => (blocks || []).filter((block) => block.boundingBox
+      && intersects(formula, pixelBox(block.boundingBox)))
+      .reduce((total, block) => total + [...block.text.matchAll(/\bexp\s*\(/giu)].length, 0);
+    const sourceCount = observations(sourceBlocks), paddedCount = observations(edgeProse?.blocks);
+    if (!(sourceCount >= count && paddedCount >= 1) && paddedCount < count) return latex;
+    return latex.replace(spaced, '\\exp');
+  }
   const latinVectorInSelection = formulas.some(({ latex }) =>
     /\\vec\{?(?:\\(?:boldsymbol|mathbf|mathrm)\{?)?[vw]\b/u.test(latex.replace(/\s+/gu, '')));
-  let caseDelimiterRepairs = 0, unrenderableFormulaCount = 0;
+  let caseDelimiterRepairs = 0, unrenderableFormulaCount = 0, spacedOperatorUnresolved = 0;
   for (const formula of formulas) {
     let latex = repairUnpairedEvaluationBars(formula.latex.trim()), punctuation = '';
     let recoveredAmbiguousPeriod = false;
@@ -623,6 +639,11 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const fontCommandRepaired = repairBareFontCommands(latex);
     const repairedFontCommand = fontCommandRepaired !== latex;
     if (repairedFontCommand) latex = fontCommandRepaired;
+    const expRepaired = confirmedSpacedExp(formula, latex);
+    const repairedExp = expRepaired !== latex;
+    if (repairedExp) latex = expRepaired;
+    const unresolvedExp = /\\operatorname\s*\{\s*e\s+x\s+p\s*\}\s*(?=\()|\be\s+x\s+p\s*(?=\()/u.test(latex);
+    if (unresolvedExp) spacedOperatorUnresolved++;
     const sourceBrackets = sourceBlocks.some((block) => block.confidence >= .9 && block.boundingBox
       && intersects(formula, pixelBox(block.boundingBox))
       && /\[\s*\|/u.test(block.text) && /\]\s*[≤<]/u.test(block.text));
@@ -647,7 +668,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     unrenderableFormulaCount += unrenderable;
     items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
       equationLabel: equationLabel?.label,
-      reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || repairedFontCommand
+      reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || repairedFontCommand || repairedExp || unresolvedExp
         || repairedBracketAccents || unrenderable || correctedIota
         || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
@@ -790,7 +811,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   const mathematical = items.filter((item) => item.math);
   const joinedProse = joinVisualHyphenation(text,
     [...(original?.spellJoinCandidates || []), ...(edgeProse?.spellJoinCandidates || [])]);
-  return { text: joinedProse.text, layoutReview, wrappedFormulaRepairs,
+  return { text: joinedProse.text, layoutReview, wrappedFormulaRepairs, spacedOperatorUnresolved,
     hyphenationReview: joinedProse.reviewedJoins,
     edgeRecovered: recoveredLeading.length > 0,
     interiorRecovered: verifiedInterior.length, rowRecovered, proseSpellingConflicts, proseSymbolConflicts,

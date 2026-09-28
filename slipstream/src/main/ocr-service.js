@@ -426,6 +426,90 @@ function withoutClippedBottomRows(ocr, size, cutoffY) {
   return { ...ocr, blocks, text: cleanOcrText(blocks.map((block) => block.text).join('\n')) };
 }
 
+// A display equation can make Vision join the two prose lines immediately
+// above it into one low-confidence, out-of-order observation. Re-read only
+// those source pixels without the equation, and accept the rows only when a
+// separate padded reading agrees on their words and positions.
+async function recheckMergedProseAboveFormula(imagePath, original, padded, formulas, size,
+  temporary, { signal, recognize = performOCR } = {}) {
+  const blocks = original?.blocks || [];
+  if (!blocks.length || !padded?.blocks?.length || !formulas.some((formula) => formula.display)) {
+    return { ocr: original, recovered: 0, unresolved: 0 };
+  }
+  const image = nativeImage.createFromPath(imagePath);
+  if (image.isEmpty() || size.width < 300 || size.height < 100) {
+    return { ocr: original, recovered: 0, unresolved: 0 };
+  }
+  const source = blocks.slice();
+  let recovered = 0, unresolved = 0, checked = 0;
+  const pixel = (box) => ({ left: box.x * size.width,
+    top: (1 - box.y - box.h) * size.height,
+    right: (box.x + box.w) * size.width, bottom: (1 - box.y) * size.height,
+    height: box.h * size.height });
+  for (let index = 0; index < blocks.length && checked < 2; index++) {
+    const block = blocks[index], bounds = rect(block);
+    if (!bounds || block.confidence > .5 || block.text.length < 40
+      || bounds.height * size.height < 50 || bounds.right - bounds.left < .7) continue;
+    const box = pixel(block.boundingBox);
+    const display = formulas.find((formula) => formula.display
+      && formula.y >= box.bottom && formula.y - box.bottom <= 45);
+    if (!display) continue;
+    const candidateRows = padded.blocks.filter((row) => {
+      const rowBox = rect(row);
+      if (!rowBox || row.confidence < .9 || row.text.length < 25
+        || rowBox.height >= bounds.height * .7) return false;
+      const center = rowBox.center;
+      return center >= bounds.top && center <= bounds.bottom
+        && Math.max(0, Math.min(bounds.right, rowBox.right) - Math.max(bounds.left, rowBox.left))
+          >= (rowBox.right - rowBox.left) * .7;
+    }).sort((a, b) => rect(a).center - rect(b).center);
+    if (candidateRows.length < 2 || candidateRows.length > 3) continue;
+    const candidateBoxes = candidateRows.map((row) => pixel(row.boundingBox));
+    if (candidateBoxes.some((row, at) => at
+      && row.top + row.height / 2 - candidateBoxes[at - 1].top
+        - candidateBoxes[at - 1].height / 2 < Math.min(row.height, candidateBoxes[at - 1].height) * .55)) continue;
+    checked++;
+    const cropY = Math.max(0, Math.floor(box.top) - 10);
+    const cropBottom = Math.min(size.height, Math.floor(display.y) - 7);
+    if (cropBottom <= box.bottom || cropBottom - cropY < 60) { unresolved++; continue; }
+    const cropHeight = cropBottom - cropY;
+    const cropPath = path.join(temporary, `prose-above-formula-${index}.png`);
+    let reread;
+    try {
+      await fs.writeFile(cropPath, image.crop({ x: 0, y: cropY,
+        width: size.width, height: cropHeight }).toPNG(), { mode: 0o600 });
+      reread = await recognize(cropPath, { signal, characters: true });
+    } catch (error) {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      unresolved++;
+      continue;
+    }
+    const relocateBox = (relative) => relative && ({ ...relative,
+      y: (size.height - cropY - cropHeight + relative.y * cropHeight) / size.height,
+      h: relative.h * cropHeight / size.height });
+    const rows = (reread.blocks || []).filter((row) => row.confidence >= .9
+      && row.text.length >= 25 && rect(row))
+      .map((row) => ({ ...row, boundingBox: relocateBox(row.boundingBox),
+        characters: (row.characters || []).map((char) => ({ ...char,
+          boundingBox: relocateBox(char.boundingBox) })) }))
+      .filter((row) => {
+        const rowBox = rect(row);
+        return rowBox.center >= bounds.top && rowBox.center <= bounds.bottom;
+      }).sort((a, b) => rect(a).center - rect(b).center);
+    if (rows.length !== candidateRows.length || rows.some((row, at) => {
+      const location = pixel(row.boundingBox), candidate = candidateBoxes[at];
+      return Math.abs(location.top + location.height / 2 - candidate.top - candidate.height / 2) > 14
+        || orderedAgreement(row.text, candidateRows[at].text) < .8;
+    })) { unresolved++; continue; }
+    source[index] = rows;
+    recovered++;
+  }
+  if (!recovered) return { ocr: original, recovered, unresolved };
+  const flattened = source.flat();
+  return { ocr: { ...original, blocks: flattened,
+    text: cleanOcrText(flattened.map((block) => block.text).join('\n')) }, recovered, unresolved };
+}
+
 async function performReadingOCR(imagePath, { signal } = {}) {
   const [textResult, formulaResult] = await Promise.allSettled([
     performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
@@ -483,8 +567,13 @@ async function performReadingOCR(imagePath, { signal } = {}) {
     const zeroChecked = await recheckAmbiguousProseZero(imagePath, quoted, prose, temporary, { signal });
     const symbolChecked = await recheckLineInitialZ(imagePath, zeroChecked, edges, temporary, { signal });
     const interior = await verifyMissingInteriorRows(imagePath, symbolChecked, edges, { signal });
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, symbolChecked, edges, interior.verified);
+    const mergedProse = await recheckMergedProseAboveFormula(imagePath, symbolChecked, edges,
+      recognized.formulas, recognized.size, temporary, { signal });
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size,
+      mergedProse.ocr, edges, interior.verified);
     document.interiorUnresolved = interior.unresolved;
+    document.rowRecovered += mergedProse.recovered;
+    document.proseOrderUnresolved = mergedProse.unresolved;
     return { ...prose, text: document.text, document,
       primeReviewConflicts: findPrimeDefinitionConflicts(original, document.text),
       referenceReviewConflicts: symbolChecked.referenceReviewConflicts || [],
@@ -539,6 +628,7 @@ module.exports = {
   frontmostDocumentWindow,
   performOCR,
   performReadingOCR,
+  recheckMergedProseAboveFormula,
   recheckReferenceOne,
   findPrimeDefinitionConflicts,
   recheckRightEdgeWord,

@@ -1037,8 +1037,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const denseFormula = localFormula?.count >= 8 && localFormula?.uncertain >= 4;
         const unrenderableFormula = localFormula?.unrenderable > 0;
         const repairedCaseDelimiter = localFormula?.caseDelimiterRepairs > 0;
+        const spacedOperator = document.spacedOperatorUnresolved > 0;
         const formulaNotice = localFormula?.count
-          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${unrenderableFormula ? `其中 ${localFormula.unrenderable} 处无法排版，保留了 LaTeX 原文；请校正后再翻译。` : ''}${repairedCaseDelimiter ? `已为 ${localFormula.caseDelimiterRepairs} 处分段公式补上仅用于排版的不可见右定界符，请与截图核对。` : ''}${denseFormula ? '这一框公式较密集。先点击标出的公式与截图逐一对照；若字形难辨，再缩小到一两条公式重框。' : '请对照原图核对。'}`
+          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${unrenderableFormula ? `其中 ${localFormula.unrenderable} 处无法排版，保留了 LaTeX 原文；请校正后再翻译。` : ''}${repairedCaseDelimiter ? `已为 ${localFormula.caseDelimiterRepairs} 处分段公式补上仅用于排版的不可见右定界符，请与截图核对。` : ''}${spacedOperator ? '公式中的 e x p 可能是指数函数 exp，但本地读数不足以确认；请对照原图校正。' : ''}${denseFormula ? '这一框公式较密集。先点击标出的公式与截图逐一对照；若字形难辨，再缩小到一两条公式重框。' : '请对照原图核对。'}`
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,
@@ -1046,7 +1047,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaRegions: Array.isArray(document.formulaRegions) ? document.formulaRegions : [],
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || codeCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || hyphenatedName || primeConflict || referenceConflict || dimensionToken || multiplierToken || regularizerMismatch || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
+          phase: ownUiCapture || codeCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || hyphenatedName || primeConflict || referenceConflict || dimensionToken || multiplierToken || regularizerMismatch || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.proseOrderUnresolved || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter || spacedOperator ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? `选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。${spellingHint}`
             : codeCapture ? `这是代码式或伪代码截图。OCR 可能混淆 l/1、0/O、下划线和括号${codeIdentifier ? `；“${codeIdentifier}”不是合法的函数名，尤其需要核对` : ''}。请对照原图逐行校正后再翻译；放大原文或只框几行可能更易核对。${pixelEdges.length ? `选区${edgeNames[pixelEdge]}也可能截断内容。` : ''}`
@@ -1073,11 +1074,13 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : symbolConflict ? `字形“${symbolConflict.source}”与“${symbolConflict.alternative}”的识别有分歧，已按同一位置的其他读数改为“${symbolConflict.alternative}”。请对照截图核对，确认前不会发送文字。`
             : unrenderableFormula ? `有 ${localFormula.unrenderable} 处公式暂时无法排版。请对照截图校正 LaTeX，确认前不会发送文字。`
             : repairedCaseDelimiter ? '分段公式缺少排版用的右定界符，已补上不可见定界符。请对照截图核对后再翻译。'
+            : document.proseOrderUnresolved ? '公式旁的多行正文识别顺序有分歧，局部复读未能确认。请对照原图逐行核对或重框。'
+            : spacedOperator ? '公式中的 e x p 可能是指数函数 exp，但本地读数不足以确认。请对照原图校正后再翻译。'
+            : document.rowRecovered ? '正文识别有冲突，已结合原图中的独立读数修复。请对照截图核对文字和顺序。'
             : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
             : document.layoutReview ? '这张截图可能包含并排的图与图注、多栏或表格。请对照截图确认阅读顺序，必要时只框选图注或其中一栏。'
             : document.interiorUnresolved ? '两次本地识别对段落中间的文字有分歧，局部复读仍无法确认。请对照截图补齐文字，或重新框选这一段。'
             : document.interiorRecovered ? '段落中间有漏识别的正文，已在原图局部复读后补齐。请对照截图核对文字和顺序。'
-            : document.rowRecovered ? '正文识别有冲突，已结合原图中的独立读数修复。请对照截图核对文字和顺序。'
             : document.edgeRecovered ? '截图上边缘的正文已补读。请对照原图核对开头文字。'
             : regularizerMismatch ? regularizerHint.trim()
             : formulaNotice || (mathReview ? '检测到数学符号。请对照原始截图核对符号、上下标和分式。'
