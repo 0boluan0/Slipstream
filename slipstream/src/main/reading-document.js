@@ -22,11 +22,15 @@ function knownEnglishWord(word, exact = false) {
 
 function shouldJoinSplitWord(first, second, isWord, spellJoinCandidates) {
   const joined = (first + second).toLowerCase();
-  return !/^(?:pre|post|non|anti|self)$/iu.test(first)
-    && (spellJoinCandidates.has(joined)
+  const productivePrefix = /^(?:pre|post|non|anti|self)$/iu.test(first);
+  // Keep ordinary compounds such as pre-trained. A short, unrecognized
+  // continuation of a known whole word is different: pre- / dict is predict.
+  if (productivePrefix && !(second.length <= 4
+    && !isWord(second.toLowerCase(), true) && isWord(joined, true))) return false;
+  return spellJoinCandidates.has(joined)
       || (!(first.length >= 4 && second.length >= 4
         && isWord(first.toLowerCase(), true) && isWord(second.toLowerCase(), true))
-        && isWord(joined)));
+        && isWord(joined));
 }
 
 function joinProseLine(previous, next, isWord, spellJoinCandidates) {

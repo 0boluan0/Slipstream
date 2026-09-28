@@ -26,6 +26,25 @@ function looksLikeOwnReadingUi(text) {
       && /(?:卡片盒|本文速查|屏幕旁|术语卡片)/u.test(text));
 }
 
+function looksLikeCodeCapture(ocr) {
+  // Pseudocode often has comments and assignments but no conventional
+  // for/def anchor. Keep it in review: OCR can turn l2 into 12 while still
+  // reporting high confidence, and a wider crop cannot repair that glyph.
+  const lines = (ocr?.blocks || []).flatMap((block) =>
+    typeof block?.text === 'string' ? block.text.split(/\n/u) : []);
+  const assignments = lines.filter((line) => /^\s*[A-Za-z_]\w*\s*=\s*\S/u.test(line));
+  const calls = assignments.filter((line) => /\b[A-Za-z_]\w*\s*\(/u.test(line));
+  const comments = lines.filter((line) => /^\s*#\s*[A-Za-z_]/u.test(line));
+  return assignments.length >= 3 && calls.length >= 2
+    && (comments.length >= 1 || assignments.length >= 5);
+}
+
+function suspiciousCodeIdentifier(text) {
+  // A digit cannot begin a Python-like function name. Show the exact OCR
+  // token for inspection rather than guessing whether the glyph is l or I.
+  return /\b\d+[A-Za-z_]\w*(?=\s*\()/u.exec(text)?.[0] || null;
+}
+
 function looksLikeClippedProse(ocr, text = ocr?.text || '') {
   // Text touching a selection edge can be read as a plausible fragment.
   // The reader should inspect the screenshot before sending that text.
@@ -104,14 +123,19 @@ function captureEdgeInk(imagePath) {
     for (const edge of Object.keys(edges)) {
       const horizontal = edge === 'top' || edge === 'bottom';
       const length = horizontal ? width : height;
+      // PDF page frames can run down the selection edge. Skip their corner
+      // intersections when looking for a line cut along another edge.
+      const corner = Math.max(6, Math.min(24, Math.floor(length * .02)));
+      const sampledLength = length - corner * 2;
+      if (sampledLength < 40) continue;
       // A clipped formula subscript can occupy only four dark pixels per
       // bottom row. Require agreement across two rows below, so a lone pixel
       // artifact is not enough to pause the reader.
-      const minInk = Math.max(edge === 'bottom' ? 4 : 6, Math.ceil(length * .004));
-      let lightStrips = 0, touchingStrips = 0;
+      const minInk = Math.max(edge === 'bottom' ? 4 : 6, Math.ceil(sampledLength * .004));
+      let lightStrips = 0, touchingStrips = 0, frameStrips = 0;
       for (let strip = 0; strip < 3; strip++) {
         let light = 0, ink = 0;
-        for (let position = 0; position < length; position++) {
+        for (let position = corner; position < length - corner; position++) {
           const x = horizontal ? position : edge === 'left' ? strip : width - strip - 1;
           const y = horizontal ? edge === 'top' ? strip : height - strip - 1 : position;
           const offset = (y * width + x) * 4;
@@ -122,12 +146,15 @@ function captureEdgeInk(imagePath) {
         // A cut printed line can cover more than 20% of a narrow PDF crop's
         // edge. It is still a light page, and its dark strokes are exactly
         // the evidence this check must retain.
-        if (light >= length * .6) {
+        if (light >= sampledLength * .6) {
           lightStrips += 1;
           if (ink >= minInk) touchingStrips += 1;
+          if (ink >= sampledLength * .75) frameStrips += 1;
         }
       }
-      if (lightStrips >= 2) edges[edge] = touchingStrips >= 2;
+      // A continuous dark rule is framing, not evidence of clipped glyphs.
+      // Leave OCR geometry available as fallback if the frame hides a cut.
+      if (lightStrips >= 2 && frameStrips < 2) edges[edge] = touchingStrips >= 2;
     }
   } catch { /* OCR geometry remains the fallback */ }
   return edges;
@@ -951,6 +978,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const document = readingTextFromOcr(ocr);
         const review = assessOcrReview({ source: 'ocr', text: ocr.text, capture: ocr });
         const ownUiCapture = looksLikeOwnReadingUi(document.text);
+        const codeCapture = looksLikeCodeCapture(ocr);
+        const codeIdentifier = codeCapture ? suspiciousCodeIdentifier(document.text) : null;
         const edgeInk = captureEdgeInk(file);
         const geometry = looksLikeClippedProse(ocr, document.text);
         const pixelEdges = ['top', 'right', 'left', 'bottom'].filter((edge) => edgeInk[edge] === true);
@@ -967,7 +996,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         const brokenBrackets = looksLikeBrokenBrackets(document.text);
         const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
         const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
-        const layoutHint = document.layoutReview
+        const layoutHint = document.layoutReview && !codeCapture
           ? ' 截图还可能包含并排的图与图注、多栏或表格；请核对阅读顺序，必要时只框选图注或其中一栏。' : '';
         const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
         const ambiguousAiAl = looksLikeAiAlConfusion(document.text);
@@ -1017,9 +1046,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
           formulaRegions: Array.isArray(document.formulaRegions) ? document.formulaRegions : [],
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: ownUiCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || hyphenatedName || primeConflict || referenceConflict || dimensionToken || multiplierToken || regularizerMismatch || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
+          phase: ownUiCapture || codeCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || spellingConflict || hyphenatedName || primeConflict || referenceConflict || dimensionToken || multiplierToken || regularizerMismatch || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter ? 'review' : 'waiting',
           notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
             : clippedBottomFormula ? `选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。${spellingHint}`
+            : codeCapture ? `这是代码式或伪代码截图。OCR 可能混淆 l/1、0/O、下划线和括号${codeIdentifier ? `；“${codeIdentifier}”不是合法的函数名，尤其需要核对` : ''}。请对照原图逐行校正后再翻译；放大原文或只框几行可能更易核对。${pixelEdges.length ? `选区${edgeNames[pixelEdge]}也可能截断内容。` : ''}`
             : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
             : ambiguousAiAl ? '同一选区出现 AI 和 Al；大写 I 与小写 l 可能被识错。请对照截图核对后再翻译。'
             : nameConflict ? `同一选区出现 ${nameConflict[0]} 和 ${nameConflict[1]} 两种近似专名。请对照截图核对拼写，确认前不会发送文字。`
@@ -1228,6 +1258,6 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   };
 }
 
-module.exports = { createReadingPins, cardBounds, readingDestination, looksLikeClippedProse,
+module.exports = { createReadingPins, cardBounds, readingDestination, looksLikeClippedProse, looksLikeCodeCapture,
   looksLikeUnfinishedTail, suspiciousTimesGlyph, suspiciousCyrillicGlyph,
   suspiciousDimensionToken, ambiguousMultiplierToken, suspiciousRegularizerSubscript };

@@ -99,7 +99,9 @@ struct Output: Codable {
 
 // The system word list used by the reader omits some academic words (such as
 // "quantile"). Only corroborate a printed line-break join when the English
-// spell checker knows the whole word but rejects at least one fragment.
+// spell checker knows the whole word but rejects at least one fragment, or
+// when the printed split has a very short fragment (inter- / net). The reader
+// still protects productive hyphenated prefixes such as pre- / trained.
 func spellJoinCandidates(_ blocks: [Block]) -> [String] {
     let checker = NSSpellChecker.shared
     func known(_ word: String) -> Bool {
@@ -115,7 +117,8 @@ func spellJoinCandidates(_ blocks: [Block]) -> [String] {
         let left = String(previous[leftRange].dropLast()).lowercased()
         let right = String(next[rightRange]).lowercased()
         let joined = left + right
-        if known(joined) && (!known(left) || !known(right)) { candidates.insert(joined) }
+        if known(joined) && (!known(left) || !known(right)
+            || left.count <= 3 || right.count <= 3) { candidates.insert(joined) }
     }
     return candidates.sorted()
 }

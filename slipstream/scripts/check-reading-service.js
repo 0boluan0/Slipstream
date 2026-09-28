@@ -408,6 +408,15 @@ async function main() {
     (word) => oldDictionary.has(word)).text,
   'weighted quantile sketch and an end-to-end system.',
   'an English spelling corroboration can recover a specialist word missing from the legacy list without flattening a real hyphen');
+  const clipWords = new Set(['predict', 'internet', 'pretest', 'pretrained', 'trained', 'test', 'inter', 'net']);
+  const clipLines = ['The model can pre-', 'dict labels over the inter-',
+    'net while using a pre-', 'trained encoder and a pre-', 'test.'];
+  assert.equal(readingTextFromOcr({ text: clipLines.join('\n'),
+    spellJoinCandidates: ['predict', 'internet', 'pretest'],
+    blocks: clipLines.map((line, index) => block(line, .1, .9 - index * .06)) },
+  (word) => clipWords.has(word)).text,
+  'The model can predict labels over the internet while using a pre-trained encoder and a pre-test.',
+  'printed word breaks must join only when the whole word is corroborated, without flattening real prefixed compounds');
   assert.equal(readingTextFromOcr({ text: 'A closed-\nform method.', blocks: [block('A closed-', .1, .8), block('form method.', .1, .6)] }, (word) => words.has(word)).text,
     'A closed-\n\nform method.', 'a new paragraph must not be joined across its gap');
   assert.equal(readingTextFromOcr({ text: 'left\nright', blocks: [block('left', .05, .8, .35), block('right', .55, .8, .35)] }).layoutReview, true);

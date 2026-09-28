@@ -97,6 +97,21 @@ async function main() {
     .references.map((entry) => entry.symbol), roleDefinitions.map((entry) => entry.symbol),
   'a partial broad extraction must not hide the remaining author-defined roles');
   assert.equal(roleCalls, 4, 'the covered speaker definition needs no redundant model call');
+  const batchSource = 'Given a batch of $N$ (image, text) pairs, CLIP predicts which pairings occurred. '
+    + 'It optimizes a symmetric loss over the similarity scores.';
+  const batchEvidence = batchSource.split('. ')[0] + '.';
+  let batchCalls = 0;
+  const batchProcessor = createReadingProcessor(async (_settings, _backend, _model, prompt, message) => {
+    batchCalls += 1;
+    assert.match(prompt, /size of a named collection/);
+    const excerpt = JSON.parse(message).excerpt;
+    return JSON.stringify({ references: excerpt === batchSource ? [] : [{ symbol: 'N',
+      meaning: '这一批中的图像文本对数量。', evidence: batchEvidence }] });
+  });
+  assert.deepEqual((await batchProcessor({ text: batchSource, kind: 'references', settingsSnapshot: settings }))
+    .references.map((entry) => entry.symbol), ['N'],
+  'a direct batch-size introduction deserves a focused source-backed retry after broad extraction misses it');
+  assert.equal(batchCalls, 2);
   // PMF p. 6: the installed preview proposed a source "definition" of RMSE
   // although this sentence only uses the acronym in a result comparison.
   const pmfResult = 'The constrained PMF model achieved a RMSE of 1.0510 on the validation set compared to a RMSE of 1.0726 for the simple movie average model.';

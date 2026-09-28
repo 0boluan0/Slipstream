@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
-const { createReadingPins, looksLikeClippedProse, looksLikeUnfinishedTail, suspiciousTimesGlyph, suspiciousCyrillicGlyph,
+const { createReadingPins, looksLikeClippedProse, looksLikeCodeCapture, looksLikeUnfinishedTail, suspiciousTimesGlyph, suspiciousCyrillicGlyph,
   suspiciousDimensionToken, ambiguousMultiplierToken } = require('../src/main/reading-pins');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
@@ -50,6 +50,10 @@ assert.equal(looksLikeUnfinishedTail('The generative model uses prior knowledge 
 assert.equal(looksLikeUnfinishedTail('Unlike classical autoencoders, the decoder reconstructs the full signal. Following ViT, we divide an image into regular non-overlapping patches,'), true,
   'a real paper screenshot ending after a comma must ask for source review before translation');
 assert.equal(looksLikeUnfinishedTail('Unlike classical autoencoders, the decoder reconstructs the full signal. Following ViT, we divide an image into regular non-overlapping patches.'), false);
+const clipCodeOcr = '# image_encoder - ResNet or Vision Transformer\n# T[n, 1] - minibatch of aligned texts\nI_e = 12_normalize(np.dot(I_f, W_i), axis=1)\nT_e = 12_normalize(np.dot(T_f, W_t), axis=1)\nlogits = np.dot(I_e, T_e.T) * np.exp(t)';
+assert.equal(looksLikeCodeCapture({ blocks: [{ text: clipCodeOcr }] }), true,
+  'assignment-heavy pseudocode must be treated as code even without for/def anchors');
+assert.equal(looksLikeCodeCapture({ blocks: [{ text: 'The model learns a mapping.\nThis improves performance.' }] }), false);
 assert.equal(suspiciousTimesGlyph('The real-world measurements × are computed as a function of y.'), true,
   'a multiplication sign with no right operand before a verb needs review');
 assert.equal(suspiciousTimesGlyph('The kernel is 3× faster than before.'), false);
@@ -121,6 +125,13 @@ app.whenReady().then(async () => {
   for (let x = 30; x < 34; x++) singleStripBitmap.fill(0, (99 * 300 + x) * 4, (99 * 300 + x) * 4 + 3);
   const singleStripFixture = path.join(work, 'single-strip-bottom.png');
   fs.writeFileSync(singleStripFixture, nativeImage.createFromBitmap(singleStripBitmap, { width: 300, height: 100 }).toPNG());
+  const pageFrameBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let y = 0; y < 100; y++) for (let x = 0; x < 5; x++) {
+    const offset = (y * 300 + x) * 4;
+    pageFrameBitmap.fill(0, offset, offset + 3);
+  }
+  const pageFrameFixture = path.join(work, 'page-frame.png');
+  fs.writeFileSync(pageFrameFixture, nativeImage.createFromBitmap(pageFrameBitmap, { width: 300, height: 100 }).toPNG());
   const mainWindow = new BrowserWindow({ width: 400, height: 300, show: false,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   await mainWindow.loadURL('about:blank');
@@ -158,6 +169,7 @@ app.whenReady().then(async () => {
   let imageBottomCut = false;
   let imageSparseBottomCut = false;
   let imageSingleBottomSpot = false;
+  let imagePageFrame = false;
   let ocrLeftPadded = false;
   let ocrRightPadded = false;
   let ocrBottomClipped = false;
@@ -208,6 +220,7 @@ app.whenReady().then(async () => {
       const file = path.join(work, `capture-${++selectionCount}.png`);
       fs.copyFileSync(imageDenseTopCut ? denseTopFixture : imageTopCut ? cutFixture : imageBottomCut ? bottomCutFixture
         : imageSparseBottomCut ? sparseBottomFixture : imageSingleBottomSpot ? singleStripFixture
+          : imagePageFrame ? pageFrameFixture
         : ocrClipped ? rightCutFixture : ocrLeftClipped ? leftCutFixture : fixture, file);
       return file;
     },
@@ -676,6 +689,15 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeSingleStrip + 1, 'one dark bottom strip is insufficient to pause translation');
   manager.clear();
   imageSingleBottomSpot = false;
+  imagePageFrame = true;
+  ocrOverride = 'The whole abstract is inside a PDF page frame, with white space below its final sentence.';
+  const beforePageFrame = providerCalls;
+  await manager.capture();
+  const pageFrame = cards()[0];
+  await until(phaseIs(pageFrame, 'done'), 'page border should not mimic clipped text');
+  assert.equal(providerCalls, beforePageFrame + 1, 'a continuous page rule must not block complete prose');
+  manager.clear();
+  imagePageFrame = false;
   ocrBottomClipped = true;
   ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
   const beforeBottom = providerCalls;
@@ -737,6 +759,23 @@ app.whenReady().then(async () => {
   assert.match((await stateOf(brokenBrackets)).notice, /方括号可能漏识别/);
   assert.equal(providerCalls, beforeBrokenBrackets);
   manager.clear();
+  ocrOverride = clipCodeOcr;
+  const beforeCode = providerCalls;
+  await manager.capture();
+  const codeCard = cards()[0];
+  await until(phaseIs(codeCard, 'review'), 'code OCR must wait for line-by-line review');
+  assert.match((await stateOf(codeCard)).notice, /代码式或伪代码截图.*12_normalize.*逐行校正/u);
+  assert.doesNotMatch((await stateOf(codeCard)).notice, /底部可能截断正文|多栏或表格/u);
+  assert.equal(providerCalls, beforeCode);
+  manager.clear();
+  formulaOcrOverride = { status: 'done', count: 0, clippedBottom: true };
+  await manager.capture();
+  const clippedCodeMath = cards()[0];
+  await until(phaseIs(clippedCodeMath, 'review'), 'clipped formula should outrank code warning');
+  assert.match((await stateOf(clippedCodeMath)).notice, /底边截断了公式/u);
+  assert.equal(providerCalls, beforeCode);
+  manager.clear();
+  formulaOcrOverride = null;
   ocrOverride = 'The span of {1,x) is unchanged after removing 2x.';
   const beforeBrokenBraces = providerCalls;
   await manager.capture();
