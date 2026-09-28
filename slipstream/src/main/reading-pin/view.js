@@ -152,6 +152,7 @@ function renderSegments(segments) {
   for (const segment of segments) {
     const node = segmentNodes.get(segment.id) || createSegment(segment);
     node.section.dataset.status = segment.status;
+    node.section.dataset.code = segment.code ? 'true' : 'false';
     node.source.hidden = mode !== 'parallel' && !sourceOpen.has(segment.id);
     node.toggle.hidden = mode === 'parallel';
     node.toggle.textContent = node.source.hidden ? '原文' : '收起原文';

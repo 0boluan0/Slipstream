@@ -10,7 +10,7 @@ const { formulaRecognitionAvailable } = require('./formula-recognition');
 const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
 const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation');
-const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms } = require('./reading-document');
+const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, isCodeOnly, deduplicateReadingTerms } = require('./reading-document');
 const { referenceKey, referenceCandidateKey, referenceCandidateCovered, preferExplicitReferenceCandidates, referenceOccurrences, isNotation } = require('./reading-references');
 const { captureSource, paperForCapture, titleForCapture } = require('./reading-capture-source');
 const { createTaskSettlement } = require('./task-cancellation');
@@ -61,7 +61,8 @@ function looksLikeLeadingSentenceTail(text) {
 function looksLikeUnfinishedTail(text) {
   const value = text.trim();
   return value.length > 80 && !/[.!?。！？]$/u.test(value)
-    && /\b(?:[A-Za-z]|and|or|of|to|for|with|from|the|an|a)$/iu.test(value);
+    && (/\b(?:[A-Za-z]|and|or|of|to|for|with|from|the|an|a)$/iu.test(value)
+      || /[,;，；-]$/u.test(value));
 }
 
 function suspiciousTimesGlyph(text) {
@@ -652,6 +653,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               report();
               continue;
             }
+            if (isCodeOnly(segment.source)) {
+              segment.translation = segment.source;
+              segment.terms = [];
+              segment.status = 'done';
+              segment.error = '';
+              report();
+              continue;
+            }
             if (isIsolatedNumericRow(segment.source)) {
               segment.translation = '这行数字请以截图为准。';
               segment.terms = [];
@@ -779,7 +788,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       update(pin, { lookupStatus: 'error', lookupNotice: error?.message === 'reading-invalid-output' || error instanceof SyntaxError
         ? '这次解释未能匹配所选原文，请重试。'
         : error?.message === 'reading-unsupported-claim'
-          ? '这次解释把原文没有确认的权限状态说成了事实，已停止展示。请重试或核对原文。'
+          ? '这次解释含有原文不能支持的说法，已停止展示。请重试或核对原文。'
           : classifyError(error, configuration.settings.activeBackend) });
     } finally {
       if (pin.lookupController === controller) pin.lookupController = null;
@@ -894,9 +903,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (main && !main.isDestroyed()) hidden.push(main);
       hidden = hidden.filter((window) => window.isVisible());
       for (const window of hidden) window.hide();
-      // Floating cards can remain in the window-server image during the macOS
-      // hide animation. Let that animation finish before the native selector.
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      // Let the window server remove the cards before the native selector snapshots the screen.
+      await new Promise((resolve) => setTimeout(resolve, 80));
       file = await captureRegion(undefined, { signal: controller.signal });
       if (controller.signal.aborted || disposed) return { success: false, cancelled: true };
       if ((await fs.stat(file)).size > 32 * 1024 * 1024) throw new Error('reading-image-too-large');

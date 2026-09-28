@@ -134,6 +134,13 @@ function unsupportedExplanationClaim(selection, source, meaning, note) {
     && !/严格凸|strict convexity/iu.test(meaning)) {
     return 'Sufficiency alone says nothing about necessity; keep the excerpt-specific counterexample in the note.';
   }
+  const directStakeholderRoles = source.match(/\bDirect stakeholders include\b[\s\S]{0,240}?\(([^)]{1,200})\)/iu)?.[1];
+  const role = selection.trim().toLowerCase().replace(/s$/u, '');
+  if (directStakeholderRoles && /^[a-z][a-z -]{1,60}$/u.test(role)
+    && new RegExp(`\\b${role.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}s?\\b`, 'iu').test(directStakeholderRoles)
+    && /(?:区别于|不同于|有别于|并列于).{0,25}(?:stakeholders?|利益相关者)|(?:与|和).{0,25}(?:stakeholders?|利益相关者).{0,8}(?:并列|同级)/iu.test(explanation)) {
+    return 'The source explicitly lists this role among direct stakeholders; do not contrast it with stakeholders as a separate category.';
+  }
   return '';
 }
 

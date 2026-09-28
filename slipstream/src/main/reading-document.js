@@ -71,6 +71,15 @@ function joinVisualHyphenation(text, candidates = [], isWord = knownEnglishWord)
   return { text: joined, removedAt, reviewedJoins };
 }
 
+function isCodeAnchor(text) {
+  return /^\s*(?:for\s+.+\s+in\s+.+:\s*|(?:def|class)\s+\w+.*:\s*|>>>\s*.+)$/u.test(text);
+}
+
+function isCodeAssignment(text) {
+  return /^\s*[A-Za-z_]\w*(?:\[[^\]]+\])?\s*=\s*\S.*$/u.test(text)
+    || /^\s*\d+\s*=\s*\{\s*\}\s*$/u.test(text);
+}
+
 // Vision emits visual lines. Join wrapped prose while retaining paragraph gaps;
 // keep the untouched capture available for checking notation and reading order.
 function readingTextFromOcr(ocr, isWord = knownEnglishWord) {
@@ -92,19 +101,56 @@ function readingTextFromOcr(ocr, isWord = knownEnglishWord) {
   const paragraphs = [];
   const spellJoinCandidates = new Set(Array.isArray(ocr.spellJoinCandidates)
     ? ocr.spellJoinCandidates.filter((word) => typeof word === 'string') : []);
+  const prompt = (value) => /^>>>\s*\S/u.test(value.trim());
+  const output = (value) => /^(?:[-+]?\d+(?:\.\d+)?|[A-Za-z_]\w*\s*\(.*\)|\{.*\}|\[.*\]|True|False|None)$/u.test(value.trim());
+  const codeRows = new Set();
+  const codeLayout = new Map();
+  for (let index = 0; index < lines.length; index++) {
+    if (prompt(lines[index].text)) codeRows.add(index);
+    else if (index && prompt(lines[index - 1].text) && output(lines[index].text)) codeRows.add(index);
+  }
+  // Without a detected formula there is no math/prose merge to preserve
+  // Python rows. A loop header anchors nearby assignments in Vision's
+  // independent line boxes, including a partly read one-character RHS.
+  for (let index = 0; index < lines.length; index++) {
+    if (!isCodeAnchor(lines[index].text)) continue;
+    codeRows.add(index);
+    const anchor = lines[index].boundingBox;
+    const layout = { origin: anchor.x, characterWidth: anchor.w / Math.max(1, lines[index].text.length) };
+    codeLayout.set(index, layout);
+    for (const direction of [-1, 1]) {
+      let previous = lines[index];
+      for (let at = index + direction; at >= 0 && at < lines.length; at += direction) {
+        const row = lines[at], box = row.boundingBox, before = previous.boundingBox;
+        const gap = Math.abs(box.y + box.h / 2 - before.y - before.h / 2);
+        const aligned = box.x >= anchor.x - before.h && box.x <= anchor.x + before.h * 2.5;
+        if (!isCodeAssignment(row.text) || gap > Math.max(box.h, before.h) * 1.6 || !aligned) break;
+        codeRows.add(at);
+        codeLayout.set(at, layout);
+        previous = row;
+      }
+    }
+  }
   let paragraph = '';
-  let previous;
-  for (const line of lines) {
-    const text = line.text.trim();
+  let previous, previousCode = false;
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index], code = codeRows.has(index);
+    const layout = codeLayout.get(index);
+    const indentation = layout ? Math.max(0, Math.min(8,
+      Math.round((line.boundingBox.x - layout.origin) / Math.max(layout.characterWidth, .001)))) : 0;
+    const text = ' '.repeat(indentation) + line.text.trim();
     if (!text) continue;
     const a = previous?.boundingBox;
     const b = line.boundingBox;
-    const newParagraph = a && (a.y - (b.y + b.h) > Math.max(a.h, b.h) * .8
+    const newParagraph = a && (code !== previousCode
+      || a.y - (b.y + b.h) > Math.max(a.h, b.h) * .8
       || Math.abs(a.h - b.h) > Math.min(a.h, b.h) * .8
       || b.y > a.y + a.h);
     if (newParagraph && paragraph) { paragraphs.push(paragraph); paragraph = ''; }
-    paragraph = paragraph ? joinProseLine(paragraph, text, isWord, spellJoinCandidates) : text;
+    paragraph = paragraph ? code ? `${paragraph}\n${text}`
+      : joinProseLine(paragraph, text, isWord, spellJoinCandidates) : text;
     previous = line;
+    previousCode = code;
   }
   if (paragraph) paragraphs.push(paragraph);
   return { text: paragraphs.join('\n\n'), layoutReview: false };
@@ -136,7 +182,8 @@ function readingSegments(text) {
     }
     if (remaining) pieces.push(remaining);
   }
-  return pieces.map((source, index) => ({ id: index, source, translation: '', status: 'pending' }));
+  return pieces.map((source, index) => ({ id: index, source, code: isCodeOnly(source),
+    translation: '', status: 'pending' }));
 }
 
 function isIsolatedNumericRow(text) {
@@ -144,6 +191,15 @@ function isIsolatedNumericRow(text) {
   // labels. Keep the source and screenshot available without presenting the
   // unverified numbers as translated prose.
   return /^(?:[-−+]?\d+(?:\.\d+)?\s+){5,}[-−+]?\d+(?:\.\d+)?$/u.test(text.trim());
+}
+
+function isCodeOnly(text) {
+  const lines = text.trim().split(/\n/u).map((line) => line.trim()).filter(Boolean);
+  if (lines.length && lines[0].startsWith('>>>')
+    && lines.every((line, index) => /^>>>\s*\S/u.test(line)
+      || index === lines.length - 1 && /^(?:[-+]?\d+(?:\.\d+)?|[A-Za-z_]\w*\s*\(.*\)|\{.*\}|\[.*\]|True|False|None)$/u.test(line))) return true;
+  return lines.length >= 2 && lines.some((line) => /^for\s+.+\s+in\s+.+:\s*$/u.test(line))
+    && lines.every((line) => isCodeAnchor(line) || isCodeAssignment(line));
 }
 
 function deduplicateReadingTerms(segments) {
@@ -183,4 +239,5 @@ function deduplicateReadingTerms(segments) {
     }) });
 }
 
-module.exports = { readingTextFromOcr, joinVisualHyphenation, readingSegments, isIsolatedNumericRow, deduplicateReadingTerms };
+module.exports = { readingTextFromOcr, joinVisualHyphenation, readingSegments, isIsolatedNumericRow,
+  isCodeOnly, isCodeAnchor, isCodeAssignment, deduplicateReadingTerms };

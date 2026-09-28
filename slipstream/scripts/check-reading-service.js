@@ -349,12 +349,15 @@ async function main() {
       bad: '由于它随 $X$ 的取值而变，所以不是一个固定数值。', good: '它是由 $X$ 决定的随机变量，也可能恒为常数。', hint: /can still be constant/ },
     { selection: 'sufficient condition', source: 'Strict convexity is a sufficient condition for uniqueness.',
       bad: '这个条件足以保证结论，因此不是必要条件。', good: '这个条件成立足以保证结论；是否必要需要其他信息。', hint: /Sufficiency alone/ },
+    { selection: 'Speaker', source: 'Speaker refers to the individual whose linguistic behavior is in the dataset. Direct stakeholders include those participating in system creation (developers, speakers, annotators and curators) or using it.',
+      bad: '数据集中产生语言行为的个体。', note: '与标注者并列，并区别于仅受系统影响的 stakeholders。',
+      good: '数据集中产生语言行为的个体；原文将其列为直接利益相关者之一。', hint: /among direct stakeholders/ },
   ];
   for (const sample of claimRepairs) {
     let attempts = 0;
     const repaired = createReadingProcessor(async (...args) => {
       attempts += 1;
-      if (attempts === 1) return JSON.stringify({ quote: sample.selection, meaning: sample.bad, note: '' });
+      if (attempts === 1) return JSON.stringify({ quote: sample.selection, meaning: sample.bad, note: sample.note || '' });
       assert.match(args[3], sample.hint);
       return JSON.stringify({ quote: sample.selection, meaning: sample.good, note: '' });
     });
@@ -362,7 +365,7 @@ async function main() {
       settingsSnapshot: settings })).lookup.meaning, sample.good);
     assert.equal(attempts, 2, `${sample.selection} should get one bounded correction`);
     const persistent = createReadingProcessor(async () => JSON.stringify({ quote: sample.selection,
-      meaning: sample.bad, note: '' }));
+      meaning: sample.bad, note: sample.note || '' }));
     await assert.rejects(persistent({ text: sample.source, kind: 'lookup', selection: sample.selection,
       settingsSnapshot: settings }), /reading-unsupported-claim/);
   }

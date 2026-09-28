@@ -1,6 +1,6 @@
 'use strict';
 const { mathRanges, repairBareFontCommands } = require('../shared/reading-math.cjs');
-const { joinVisualHyphenation } = require('./reading-document');
+const { joinVisualHyphenation, isCodeAnchor, isCodeAssignment } = require('./reading-document');
 const FORMULA_REVIEW_CONFIDENCE = .7;
 
 function proseSuperscript(latex) {
@@ -111,6 +111,32 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   // into complete, confident, vertically separate rows. Keep normal source
   // observations as anchors; a different spelling alone is not a replacement.
   const sourceBlocks = (original || masked)?.blocks || [];
+  // A layout detector can label a monospaced Python block as display math.
+  // Keep the independently read source rows when an unmistakable code line
+  // anchors adjacent assignments; TeX decoding must not rewrite program text.
+  const sourceRows = sourceBlocks.filter((block) => block.boundingBox)
+    .map((block) => ({ block, box: pixelBox(block.boundingBox) }))
+    .sort((a, b) => a.box.y - b.box.y);
+  const codeRows = new Set();
+  const codeOrigin = new Map();
+  for (let i = 0; i < sourceRows.length; i++) {
+    if (!isCodeAnchor(sourceRows[i].block.text)) continue;
+    codeRows.add(sourceRows[i]);
+    codeOrigin.set(sourceRows[i], sourceRows[i].box.x);
+    for (const direction of [-1, 1]) {
+      let previous = sourceRows[i];
+      for (let at = i + direction; at >= 0 && at < sourceRows.length; at += direction) {
+        const row = sourceRows[at];
+        const gap = Math.abs(row.box.y + row.box.h / 2 - previous.box.y - previous.box.h / 2);
+        const aligned = row.box.x >= sourceRows[i].box.x - previous.box.h
+          && row.box.x <= sourceRows[i].box.x + previous.box.h * 2.5;
+        if (!isCodeAssignment(row.block.text) || gap > Math.max(row.box.h, previous.box.h) * 1.6 || !aligned) break;
+        codeRows.add(row);
+        codeOrigin.set(row, sourceRows[i].box.x);
+        previous = row;
+      }
+    }
+  }
   function confirmedHeadingJoin(block) {
     // Vision can read the underline beneath a short heading as an underscore
     // attached to the next word. Remove it only when the padded read sees the
@@ -399,6 +425,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   }
   const proseAnnotations = new Map();
   formulas = formulas.filter((formula) => {
+    if ([...codeRows].some((row) => intersects(formula, row.box))) return false;
     const compact = formula.latex.replace(/\s+/gu, '');
     if (!formula.display && /^(?:etc|e\.g|i\.e)\.\)?$/iu.test(compact)) {
       const observed = originalWords.filter((word) => intersects(formula, word))
@@ -643,6 +670,11 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     if (row) { row.items.push(item); row.height = Math.max(row.height, item.h); }
     else rows.push({ items: [item], center: item.y + item.h / 2, height: item.h, display: item.display });
   }
+  for (const row of rows) {
+    const source = [...codeRows].find((candidate) => row.items.some((item) => intersects(item, candidate.box)));
+    row.code = Boolean(source);
+    row.codeOrigin = source ? codeOrigin.get(source) : null;
+  }
   // Numbered equations can form columns rather than a single line. A tall
   // superscript in the right column otherwise makes (3a) sort before (1a).
   // Reorder only a complete, spatially aligned grid whose printed labels
@@ -727,8 +759,11 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       if (!a.math && !b.math && b.x - a.x - a.w > size.width * .08) layoutReview = true;
     }
     const fragments = row.items.map((item) => ({ item, text: item.text.trim() })).filter(({ text: value }) => value);
-    const line = fragments.map(({ text: value }) => value).join(' ').replace(/\s+([,.;:!?])/g, '$1');
-    const paragraph = previous && (row.display || previous.display
+    const indentation = row.code ? Math.max(0, Math.min(8,
+      Math.round((row.items[0].x - row.codeOrigin) / (row.height * .55)))) : 0;
+    const line = ' '.repeat(indentation)
+      + fragments.map(({ text: value }) => value).join(' ').replace(/\s+([,.;:!?])/g, '$1');
+    const paragraph = previous && (row.display || previous.display || row.code !== previous.code
       || row.center - previous.center > Math.max(row.height, previous.height) * 2);
     const separator = text ? paragraph ? '\n\n' : '\n' : '';
     let cursor = 0;

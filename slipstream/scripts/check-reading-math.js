@@ -1,7 +1,7 @@
 'use strict';
 const assert = require('node:assert/strict');
 const { mathRanges, needsMathReview, isMathOnly, firstBareFontCommand } = require('../src/shared/reading-math.cjs');
-const { readingSegments, joinVisualHyphenation } = require('../src/main/reading-document');
+const { readingTextFromOcr, readingSegments, joinVisualHyphenation } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
 const { characterCandidates } = require('../src/main/local-formula-ocr');
 const { createReadingProcessor } = require('../src/main/reading-service');
@@ -54,6 +54,51 @@ async function main() {
   }
   const placedWord = (text, x, y, w, h) => ({ text, confidence: 1,
     characters: [{ text, boundingBox: { x: x / 100, y: (100 - y - h) / 100, w: w / 100, h: h / 100 } }] });
+  const codeBlock = (text, x, y, w) => ({ ...placedWord(text, x, y, w, 8),
+    boundingBox: { x: x / 100, y: (92 - y) / 100, w: w / 100, h: .08 } });
+  const textbookCode = { blocks: [
+    codeBlock('n = hist.Total ()', 10, 20, 36), codeBlock('0 = {}', 10, 32, 16),
+    codeBlock('for x, freq in hist. Items ():', 10, 44, 52),
+    codeBlock('d[x] = freq / n', 15, 56, 36),
+  ] };
+  const codeAsMath = [
+    { x: 10, y: 20, w: 36, h: 8, latex: String.raw`\mathbf{n}=\mathbf{hist.Total}()`, display: true },
+    { x: 10, y: 32, w: 16, h: 8, latex: String.raw`\textbf{d}=\{\}`, display: true },
+    { x: 15, y: 56, w: 36, h: 8, latex: String.raw`d[x]=freq/n`, display: true },
+  ];
+  const preservedCode = mergeFormulaDocument({ blocks: [] }, codeAsMath, size, textbookCode);
+  assert.equal(preservedCode.formulaCount, 0,
+    'a Python loop and its adjacent assignments must stay code when layout mislabels them as display math');
+  const partlyReadCode = { blocks: textbookCode.blocks.map((block, index) =>
+    index === 1 ? { ...block, text: 'd = {' } : block) };
+  assert.equal(mergeFormulaDocument({ blocks: [] }, codeAsMath, size, partlyReadCode).formulaCount, 0,
+    'an OCR-clipped one-character assignment must not break the nearby Python code block');
+  const plainCode = readingTextFromOcr(partlyReadCode).text;
+  assert.match(plainCode, /n = hist\.Total \(\)\nd = \{\nfor x, freq in hist\. Items \(\):\n\s{3,4}d\[x\] = freq \/ n/u,
+    'ordinary OCR must preserve Python source rows when the formula detector finds no mathematics');
+  assert.equal(readingSegments(plainCode)[0].code, true,
+    'the preserved source must bypass model translation as one code segment');
+  assert.match(preservedCode.text, /n = hist\.Total \(\)[\s\S]*for x, freq in hist\. Items \(\):[\s\S]*d\[x\] = freq \/ n/u);
+  assert.equal(mathRanges(preservedCode.text).length, 0,
+    'formula substitution must not fabricate TeX in a photographed code block');
+  assert.equal(readingSegments(`Explanation.\n\n${preservedCode.text}\n\nNext paragraph.`)
+    .filter((segment) => segment.code).length, 1,
+  'the preserved code block must become one untranslated reading segment');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [codeAsMath[2]], size,
+    { blocks: [textbookCode.blocks[3]] }).formulaCount, 1,
+  'an isolated indexed equation without code context must remain eligible as mathematics');
+  const promptBlock = (text, y) => ({ text, boundingBox: { x: .1, y, w: .8, h: .07 } });
+  const replExample = readingTextFromOcr({ blocks: [
+    promptBlock('>>> import thinkstats2', .8),
+    promptBlock('>>> pmf = thinkstats2.Pmf([1, 2, 2, 3, 5])', .72),
+    promptBlock('>>> pmf', .64),
+    promptBlock('Pmf({1: 0.2, 2: 0.4, 3: 0.2, 5: 0.2})', .56),
+    promptBlock('The Pmf is normalized so total probability is 1.', .42),
+  ] }).text;
+  assert.match(replExample, />>> import thinkstats2\n>>> pmf = thinkstats2\.Pmf\(\[1, 2, 2, 3, 5\]\)\n>>> pmf\nPmf\(\{1: 0\.2, 2: 0\.4, 3: 0\.2, 5: 0\.2\}\)\n\nThe Pmf is normalized/u,
+    'a photographed Python REPL example must retain commands, output and its paragraph boundary');
+  assert.deepEqual(readingSegments(replExample).map((segment) => segment.code), [true, false],
+    'the REPL example must display as code and bypass prose translation');
   const adjacentRows = { blocks: [placedWord('In', 10, 10, 20, 30), placedWord('prose', 45, 10, 40, 30),
     placedWord('x', 10, 32, 20, 25), placedWord('follows', 45, 32, 45, 25)] };
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ x: 10, y: 28, w: 20, h: 28,

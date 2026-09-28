@@ -31,6 +31,7 @@ p { margin: 0; }
 .segment-tools { display: flex; align-items: center; gap: 5px; margin-bottom: 7px; color: var(--muted); font-size: 10px; }
 .segment-tools button { padding: 1px 5px; border: 0; min-height: 22px; color: var(--muted); font-size: 10px; }
 .source-paragraph { font: calc(var(--reading-size) - 1px)/1.75 Georgia, "Times New Roman", serif; color: var(--english); white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--line); padding: 0 0 0 12px; margin: 0 0 11px; }
+.segment[data-code="true"] .source-paragraph, .segment[data-code="true"] .translation-paragraph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--reading-size) - 2px); line-height: 1.65; white-space: pre; overflow-x: auto; overflow-wrap: normal; }
 .source-paragraph::selection, .translation-paragraph::selection { background: #5eaa7e45; }
 .translation-paragraph { font-size: var(--reading-size); line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
 .scope-notice { margin-top: 8px; padding: 7px 10px; border-left: 2px solid var(--accent); background: var(--soft); color: var(--muted); font-size: 11px; line-height: 1.6; }

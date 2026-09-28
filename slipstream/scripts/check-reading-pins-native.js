@@ -42,6 +42,9 @@ assert.equal(looksLikeUnfinishedTail('For example, if we wanted to predict the 3
 assert.equal(looksLikeUnfinishedTail('The generative model uses prior knowledge about how the data were created. For example, if we wanted to predict the 3D position and orientation y'), true,
   'a long capture ending in an unfinished symbol-led sentence needs a boundary check');
 assert.equal(looksLikeUnfinishedTail('The generative model uses prior knowledge about how the data were created.'), false);
+assert.equal(looksLikeUnfinishedTail('Unlike classical autoencoders, the decoder reconstructs the full signal. Following ViT, we divide an image into regular non-overlapping patches,'), true,
+  'a real paper screenshot ending after a comma must ask for source review before translation');
+assert.equal(looksLikeUnfinishedTail('Unlike classical autoencoders, the decoder reconstructs the full signal. Following ViT, we divide an image into regular non-overlapping patches.'), false);
 assert.equal(suspiciousTimesGlyph('The real-world measurements × are computed as a function of y.'), true,
   'a multiplication sign with no right operand before a verb needs review');
 assert.equal(suspiciousTimesGlyph('The kernel is 3× faster than before.'), false);
