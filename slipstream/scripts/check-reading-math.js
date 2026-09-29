@@ -3,12 +3,26 @@ const assert = require('node:assert/strict');
 const { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, firstBareFontCommand } = require('../src/shared/reading-math.cjs');
 const { readingTextFromOcr, readingSegments, joinVisualHyphenation } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
-const { characterCandidates } = require('../src/main/local-formula-ocr');
+const { characterCandidates, confirmedConditionalAccent, completeGlyphBox } = require('../src/main/local-formula-ocr');
 const { createReadingProcessor } = require('../src/main/reading-service');
-const { mergeFormulaDocument, repairUnpairedEvaluationBars } = require('../src/main/formula-document');
+const { mergeFormulaDocument, repairUnpairedEvaluationBars, conditionalAccentCandidate } = require('../src/main/formula-document');
 const { missingInteriorRows, orderedAgreement } = require('../src/main/interior-prose-recheck');
 
 async function main() {
+  const glyphPixels = Buffer.alloc(40 * 24 * 4, 255);
+  for (let y = 5; y <= 18; y++) for (let x = 13; x <= 24; x++) {
+    const at = (y * 40 + x) * 4; glyphPixels.fill(0, at, at + 3);
+  }
+  const cutGlyph = { x: 12, y: 3, w: 11, h: 18 };
+  assert.deepEqual(completeGlyphBox(glyphPixels, { width: 40, height: 24 }, cutGlyph),
+    { ...cutGlyph, w: 14, extendedGlyph: true },
+    'a glyph side cut through ink must extend to its first blank source column');
+  const intactGlyph = { ...cutGlyph, w: 14 };
+  assert.equal(completeGlyphBox(glyphPixels, { width: 40, height: 24 }, intactGlyph), intactGlyph,
+    'a blank gutter must not be crossed to include neighboring ink');
+  const badlyCutGlyph = { ...cutGlyph, w: 3 };
+  assert.equal(completeGlyphBox(glyphPixels, { width: 40, height: 24 }, badlyCutGlyph), badlyCutGlyph,
+    'a large missing stroke cannot be recovered through unbounded crop growth');
   const letterOcr = (text) => ({ blocks: [{ text, characters: Array.from(text, (glyph, index) => ({
     text: glyph, boundingBox: { x: .02 + index * .014, y: .5,
       w: glyph === ' ' ? 0 : .012, h: glyph === ' ' ? 0 : .12 },
@@ -69,23 +83,57 @@ async function main() {
   assert.equal(partialExp.uncertainFormulaCount, 1,
     'an unconfirmed spaced operator must be visibly marked for review');
   const partialBarFormula = { x: 200, y: 20, w: 550, h: 40, display: false, confidence: .95,
-    latex: String.raw`(y_1,y_2)\sim\pi^{\mathrm{SFT}}\bar{(y}\mid x)` };
+    latex: String.raw`(y_{1},y_{2})\sim\pi^{\mathrm{SFT}}\bar{(y}\mid x)` };
   const plainConditional = { text: 'produce pairs of answers (y1,y2) ~ SFT (y | x).', confidence: 1,
     boundingBox: { x: .1, y: .4, w: .8, h: .3 } };
   const parenthesisSize = { width: 1000, height: 100 };
-  const correctedConditional = mergeFormulaDocument({ blocks: [] }, [partialBarFormula],
-    parenthesisSize, { blocks: [plainConditional] }, { blocks: [plainConditional] });
-  assert.match(correctedConditional.text, /\\pi\^\{\\mathrm\{SFT\}\}\(y\\mid x\)/u,
-    'two independent OCR layouts must remove an invented bar on a partial parenthesis');
-  assert.doesNotMatch(correctedConditional.text, /\\bar/u);
-  assert.equal(correctedConditional.uncertainFormulaCount, 1,
-    'a source-corroborated formula repair still asks for pixel review');
   const unconfirmedConditional = mergeFormulaDocument({ blocks: [] }, [partialBarFormula],
-    parenthesisSize, { blocks: [plainConditional] }, { blocks: [] });
+    parenthesisSize, { blocks: [plainConditional] }, { blocks: [plainConditional] });
   assert.match(unconfirmedConditional.text, /\\bar\{\(y\}/u,
-    'one plain-text OCR layout cannot silently rewrite mathematical notation');
+    'plain-text OCR must not remove an accent without formula-pixel agreement');
   assert.equal(unconfirmedConditional.uncertainFormulaCount, 1,
-    'an unresolved partial-parenthesis bar must be visibly marked for review');
+    'an unresolved partial-parenthesis accent must be visibly marked for review');
+  const plainMath = String.raw`(y_{1},y_{2})\sim\pi^{\mathrm{SFT}}(y\mid x)`;
+  const readings = [{ latex: plainMath, confidence: .96 }, { latex: plainMath, confidence: .98 }];
+  for (const accent of ['bar', 'tilde', 'widehat']) {
+    const doubtful = partialBarFormula.latex.replace('bar', accent);
+    const confirmed = confirmedConditionalAccent(doubtful, readings);
+    assert.equal(confirmed?.latex, plainMath,
+      'two agreeing formula-pixel readings may recover the exact unaccented expression');
+    const corrected = mergeFormulaDocument({ blocks: [] }, [{ ...partialBarFormula,
+      ...confirmed, reviewAccent: true }], parenthesisSize, { blocks: [] });
+    assert.equal(corrected.text, `$${plainMath}$`);
+    assert.equal(corrected.uncertainFormulaCount, 1,
+      'a pixel-corroborated formula repair still asks for source review');
+    const complete = plainMath.replace(String.raw`(y\mid x)`, `\\${accent}{(y\\mid x)}`);
+    assert.equal(confirmedConditionalAccent(complete, readings)?.latex, plainMath,
+      'the same source contamination can be decoded as a complete conditional accent');
+    const unchanged = mergeFormulaDocument({ blocks: [] }, [{ ...partialBarFormula, latex: complete }],
+      parenthesisSize, { blocks: [plainConditional] }, { blocks: [plainConditional] });
+    assert.equal(unchanged.text, `$${complete}$.`,
+      'even complete conditional accents stay intact without new pixel readings');
+    assert.equal(unchanged.uncertainFormulaCount, 1);
+    assert.equal(confirmedConditionalAccent(complete,
+      [{ latex: complete, confidence: .99 }, { latex: complete, confidence: .99 }]), null,
+    'rereading a genuine accent never authorizes its removal');
+  }
+  assert.equal(confirmedConditionalAccent(partialBarFormula.latex, [readings[0]]), null);
+  assert.equal(confirmedConditionalAccent(partialBarFormula.latex,
+    [readings[0], { latex: plainMath.replace('y_{2}', 'y_{3}'), confidence: .99 }]), null,
+  'agreement must cover all mathematical symbols, not only the disputed accent');
+  for (const confidence of [.89, NaN, undefined]) {
+    assert.equal(confirmedConditionalAccent(partialBarFormula.latex,
+      [readings[0], { latex: plainMath, confidence }]), null);
+  }
+  for (const legitimate of [String.raw`\bar{y}(y\mid x)`,
+    String.raw`\tilde{y}`, String.raw`\hat{f}(x)`]) {
+    assert.equal(conditionalAccentCandidate(legitimate), null,
+      'ordinary accented symbols are never candidates for this repair');
+    assert.equal(confirmedConditionalAccent(legitimate, readings), null);
+  }
+  const nativeSpacing = String.raw`( y _ { 1 }, y _ { 2 } ) \, \sim \, \pi ^ { \mathrm { S F T } } \bar { ( y } \, \mid \, x )`;
+  assert.equal(confirmedConditionalAccent(nativeSpacing, readings)?.latex, plainMath,
+    'harmless OCR spacing does not prevent whole-expression pixel agreement');
   const namedExp = { ...expFormula,
     latex: 'q = \\frac { \\operatorname { e x p } (z/T) } { \\sum_j \\operatorname { e x p } (w/T) }' };
   const confirmedNamedExp = mergeFormulaDocument({ blocks: [] }, [namedExp], size,
@@ -765,6 +813,14 @@ async function main() {
   assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...styledFootnote, latex: styledFootnote.latex + ',' }], size,
     { blocks: [word('functions?,', 10, 18), word('then', 45, 30)] }).text,
   'functions$^{2}$, then', 'a spurious Vision question mark before a comma cannot erase an independently read footnote');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [{ ...styledFootnote, latex: styledFootnote.latex + ',' }], size,
+    { blocks: [word("functions',", 10, 18), word('then', 45, 30)] },
+    { blocks: [{ ...word('functions?,', 10, 18), confidence: 1 }] }).text,
+  'functions$^{2}$, then', 'a same-position alternate reading confirms a footnote mistaken for an apostrophe');
+  assert.equal(mergeFormulaDocument({ blocks: [] }, [styledFootnote], size,
+    { blocks: [word("functions',", 10, 18), word('then', 45, 30)] },
+    { blocks: [word("functions',", 10, 18)] }).text,
+  "functions', then", 'an undisputed printed apostrophe must not be rewritten as a footnote');
   assert.equal(mergeFormulaDocument({ blocks: [] }, [styledFootnote], size,
     { blocks: [word('functions', 10, 18), word('then', 45, 30)] }).text,
   'functions$^{2}$ then', 'a separate footnote marker is preserved when Vision reads only its prose word');

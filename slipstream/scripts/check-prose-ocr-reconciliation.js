@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
-const { reconcileProseOcr, isolatedGlyphDisagreements } = require('../src/main/prose-ocr-reconciliation');
+const { reconcileProseOcr, isolatedGlyphDisagreements, proseTokenDisagreements } = require('../src/main/prose-ocr-reconciliation');
 
 const rawLines = [
   'We find that a standard pruning technique naturally uncovers subnetworks whose',
@@ -111,5 +111,30 @@ for (const rejected of [
   result([glyphLine, 'The next printed line stays as it is.'], 1, .2),
 ]) assert.equal(isolatedGlyphDisagreements(glyphSource, rejected).length, 0,
   'changed prose, numbers, mismatched symbols, weak evidence or displaced rows cannot become a glyph repair');
+
+const proseLine = 'We compute the attention function on a set of queries simultaneously.';
+const mistakenProse = proseLine.replace('function', 'tunction').replace(' of ', ' ot ');
+const proseSource = result([mistakenProse]);
+const proseCandidate = result([proseLine]);
+assert.deepEqual(proseTokenDisagreements(proseSource, proseCandidate)[0].conflicts,
+  [{ source: 'tunction', alternative: 'function', symbol: false },
+    { source: 'ot', alternative: 'of', symbol: false }],
+  'two isolated spelling differences can request a local image reread');
+const matrixLine = 'The keys and values are also packed into matrices K and V.';
+assert.deepEqual(proseTokenDisagreements(result([matrixLine.replace(' K ', ' A ')]), result([matrixLine]))[0].conflicts,
+  [{ source: 'A', alternative: 'K', symbol: true }],
+  'one disputed capital in otherwise identical prose deserves the same pixel check');
+for (const rejected of [
+  result([proseLine.replace('queries', 'vectors')]),
+  result([proseLine.replace('a set', '1 set')]),
+  result([proseLine.replace('queries', 'queriez')]),
+  result([proseLine.replace('.', ',')]),
+  result([proseLine], .5), result([proseLine], 1, .3),
+  { blocks: [...proseCandidate.blocks, ...proseCandidate.blocks] },
+]) assert.equal(proseTokenDisagreements(proseSource, rejected).length, 0,
+  'rewritten sentences, digits, extra edits, punctuation, low confidence and ambiguous positions cannot change source prose');
+const otherRow = block('A different formula observation.', 2);
+assert.equal(proseTokenDisagreements({ blocks: [...proseSource.blocks, otherRow] }, proseCandidate).length, 1,
+  'unrelated formula observations do not prevent a position-matched prose comparison');
 
 console.log('Prose OCR disagreements pause review; fully supported longer rows can supply a reviewable candidate.');

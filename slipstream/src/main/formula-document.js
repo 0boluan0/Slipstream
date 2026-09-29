@@ -77,22 +77,17 @@ function repairSpuriousBracketAccents(latex, plainBracketsInSource) {
   return canRenderMath(fixed, false) ? fixed : latex;
 }
 
-function repairPartialParenthesisBar(latex, formula, sourceBlocks, paddedBlocks, pixelBox, intersects) {
-  // An accent on only "(y" cannot be the source's complete conditional
-  // argument. Remove it only if two independent text layouts read the same
-  // plain parenthesized conditional at the formula's printed location.
-  const partial = /\\bar\s*\{\s*\(\s*([A-Za-z])\s*\}/u.exec(latex);
-  if (!partial || !/^\s*(?:\\[,;]\s*)?\\mid\b[\s\S]*\)/u.test(latex.slice(partial.index + partial[0].length))) {
-    return latex;
-  }
-  const plain = new RegExp(`\\(\\s*${partial[1]}\\s*\\|\\s*[A-Za-z]\\s*\\)`, 'u');
-  const seesPlain = (blocks) => (blocks || []).some((block) => block.confidence >= .9
-    && block.boundingBox && intersects(formula, pixelBox(block.boundingBox))
-    && plain.test(block.text));
-  if (!seesPlain(sourceBlocks) || !seesPlain(paddedBlocks)) return latex;
-  const repaired = latex.slice(0, partial.index) + `(${partial[1]}`
-    + latex.slice(partial.index + partial[0].length);
-  return canRenderMath(repaired, false) ? repaired : latex;
+function conditionalAccentCandidate(latex) {
+  // Cropping the tail of the preceding prose line can produce either a
+  // partial accent ("\\bar{(y}\\mid x)") or an accent over the entire
+  // conditional. This only proposes a pixel recheck; a real accent is valid.
+  const accent = /\\(?:bar|tilde|hat|widehat|widetilde|overline|breve|check|vec|dot|ddot)\s*\{\s*(\(\s*[A-Za-z]\s*)(\})?((?:\s|\\[,;:!])*\\mid\b(?:\s|\\[,;:!])*[A-Za-z]\s*\))\s*/u.exec(latex);
+  if (!accent) return null;
+  const suffix = latex.slice(accent.index + accent[0].length);
+  if (!accent[2] && !suffix.startsWith('}')) return null;
+  const repaired = latex.slice(0, accent.index) + accent[1] + accent[3]
+    + suffix.slice(accent[2] ? 0 : 1);
+  return canRenderMath(repaired, false) ? repaired : null;
 }
 
 // Keep the original prose as the reading-order anchor. Masking can make Vision
@@ -224,7 +219,9 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   // A padded read can disagree on a single prose letter even when Vision
   // reports confidence 1 for both. A lone alternative only asks the reader
   // to compare the printed word before translation.
-  const proseSpellingConflicts = [];
+  const tokenConflicts = original?.proseTokenConflicts || [];
+  const proseSpellingConflicts = tokenConflicts.filter((conflict) => !conflict.symbol)
+    .map((conflict) => ({ ...conflict, key: `${conflict.source.toLowerCase()}/${conflict.alternative.toLowerCase()}` }));
   for (const block of sourceBlocks) {
     const sourceWords = block.text.match(/[A-Za-z]{4,}/gu) || [];
     if (sourceWords.length < 4) continue;
@@ -377,7 +374,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
   const sourceLetters = standaloneLetters({ blocks: anchored });
   const paddedLetters = standaloneLetters(edgeProse);
   const maskedLetters = standaloneLetters(masked);
-  const proseSymbolConflicts = [...(original?.verifiedGlyphConflicts || [])];
+  const proseSymbolConflicts = [...(original?.verifiedGlyphConflicts || []),
+    ...tokenConflicts.filter((conflict) => conflict.symbol)];
   const correctedLetters = new Map();
   const correctedProseWords = new Map();
   const sameGlyph = (source, candidate) => intersects(source, candidate)
@@ -415,7 +413,8 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       proseSpellingConflicts.push({ key, source: source.text, alternative: padded[0].text });
     }
   }
-  rowRecovered += correctedLetters.size + correctedProseWords.size + (original?.verifiedGlyphConflicts?.length || 0);
+  rowRecovered += correctedLetters.size + correctedProseWords.size + (original?.verifiedGlyphConflicts?.length || 0)
+    + (original?.verifiedProseRows || 0);
   function corroboratedIotaAsLatin(formula, latex) {
     // The character recheck can read an italic loss variable l as Greek iota.
     // Two independently laid-out Latin readings justify l, still with review.
@@ -464,6 +463,14 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     // Vision can read a tiny footnote 2 as '?' immediately before the
     // sentence comma. The math recognizer must independently see that 2.
     if (observed.endsWith('?,') && source.endsWith('?')) source = source.slice(0, -1);
+    // A second Vision layout may disagree on '?' versus an apostrophe at
+    // the same footnote. Preserve the math decoder's numeric superscript
+    // only when that independent reading confirms the identical prose stem.
+    if (/['’],$/u.test(observed)) {
+      const alternative = edgeWords.filter((word) => word.confidence >= .9 && intersects(formula, word))
+        .sort((a, b) => a.x - b.x).map((word) => word.text).join(' ');
+      if (alternative === `${annotated.text}?,`) source = source.slice(0, -1);
+    }
     source = source.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/gu, (digit) => '⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(digit));
     if (source !== annotated.text && source !== annotated.text + annotated.superscript) return false;
     if (!originalWords.some((word) => !intersects(formula, word) && /^[A-Za-z]{3,}/.test(word.text)
@@ -671,11 +678,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     const bracketAccents = repairSpuriousBracketAccents(latex, sourceBrackets);
     const repairedBracketAccents = bracketAccents !== latex;
     if (repairedBracketAccents) latex = bracketAccents;
-    const partialBar = repairPartialParenthesisBar(latex, formula, sourceBlocks,
-      edgeProse?.blocks, pixelBox, intersects);
-    const repairedPartialBar = partialBar !== latex;
-    if (repairedPartialBar) latex = partialBar;
-    const unresolvedPartialBar = /\\bar\s*\{\s*\(\s*[A-Za-z]\s*\}/u.test(latex);
+    const unresolvedConditionalAccent = Boolean(conditionalAccentCandidate(latex));
     // Vision can see the visible sentence mark at the end of the last case
     // branch while the math decoder has already included it inside that row.
     if (punctuation && punctuation === finalCaseRowPunctuation(latex)) punctuation = '';
@@ -695,7 +698,7 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     items.push({ ...formula, display: separatedWhere ? false : formula.display, math: !ordinal, punctuation,
       equationLabel: equationLabel?.label,
       reviewRecognition: recoveredAmbiguousPeriod || repairedEvaluationBar || repairedCaseDelimiter || repairedFontCommand || repairedExp || unresolvedExp
-        || repairedBracketAccents || repairedPartialBar || unresolvedPartialBar || unrenderable || correctedIota
+        || repairedBracketAccents || unresolvedConditionalAccent || unrenderable || correctedIota
         || formula.reviewAccent || formula.reviewSymbol || formula.reviewEdge || uncorroboratedBar(formula, latex)
         || footnoteInsideFormula(latex) || correctedZero || latinGreekConflict(formula, latex)
         || separatedWhere && !sourceWhere,
@@ -861,4 +864,5 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
       start: region.start - joinedProse.removedAt.filter((at) => at < region.start).length * 2 })) };
 }
 
-module.exports = { mergeFormulaDocument, proseSuperscript, repairUnpairedEvaluationBars, canRenderMath };
+module.exports = { mergeFormulaDocument, proseSuperscript, repairUnpairedEvaluationBars,
+  conditionalAccentCandidate, canRenderMath };

@@ -7,7 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { nativeImage } = require('electron');
 const manifest = require('./local-formula-models.json');
-const { proseSuperscript } = require('./formula-document');
+const { proseSuperscript, conditionalAccentCandidate } = require('./formula-document');
 
 function cancelled(signal, deadline) {
   if (signal?.aborted) {
@@ -96,6 +96,44 @@ function trimFormulaCrop(image) {
   return image.crop({ x: left, y: top, width: Math.min(width - left, right - left + 2), height: Math.min(height - top, bottom - top + 2) });
 }
 
+function removePriorLineInk(image, box) {
+  // Trace ink across the crop's top edge in the original image. A preceding
+  // line's descender may contribute only its last 2-3 rows to this formula.
+  // Keep detached accents, strokes mostly inside the formula, and components
+  // too large to classify within this bounded trace.
+  if (box.y === 0) return null;
+  const size = image.getSize(), bitmap = image.toBitmap(), seen = new Set();
+  const pixels = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h }).toBitmap();
+  const ink = (at) => (bitmap[at * 4] + bitmap[at * 4 + 1] + bitmap[at * 4 + 2]) / 3 < 230;
+  let removed = false;
+  for (let x = box.x; x < box.x + box.w; x++) {
+    const origin = box.y * size.width + x;
+    if (seen.has(origin) || !ink(origin)) continue;
+    const queue = [origin]; seen.add(origin);
+    let top = box.y, bottom = box.y, inside = 0;
+    for (let i = 0; i < queue.length && queue.length < 20000; i++) {
+      const px = queue[i] % size.width, py = Math.floor(queue[i] / size.width);
+      top = Math.min(top, py); bottom = Math.max(bottom, py);
+      if (py >= box.y) inside++;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const xx = px + dx, yy = py + dy, at = yy * size.width + xx;
+        if (xx < 0 || xx >= size.width || yy < 0 || yy >= size.height || seen.has(at) || !ink(at)) continue;
+        seen.add(at); queue.push(at);
+      }
+    }
+    if (seen.size >= 50000) return null;
+    if (queue.length >= 20000 || box.y - top < box.h * .4
+      || bottom - box.y > box.h * .12 || inside > queue.length * .2) continue;
+    for (const at of queue) {
+      const xx = at % size.width - box.x, yy = Math.floor(at / size.width) - box.y;
+      if (xx < 0 || xx >= box.w || yy < 0 || yy >= box.h) continue;
+      pixels.fill(255, (yy * box.w + xx) * 4, (yy * box.w + xx) * 4 + 4);
+      removed = true;
+    }
+  }
+  return removed ? nativeImage.createFromBitmap(pixels, { width: box.w, height: box.h }) : null;
+}
+
 function padFormulaCrop(image, ratio) {
   const size = image.getSize(), margin = Math.max(1, Math.round(size.height * ratio));
   const paddedSize = { width: size.width + margin * 2, height: size.height + margin * 2 };
@@ -125,6 +163,15 @@ function accentSignature(latex) {
   const compact = latex.replace(/\s+/g, '');
   return [...compact.matchAll(/\\(?:hat|bar|tilde|vec|breve|check|dot|ddot|widehat|widetilde)\{?[A-Za-z]\}?/g)]
     .map((match) => match[0]).join('|');
+}
+
+function confirmedConditionalAccent(latex, readings) {
+  const candidate = conditionalAccentCandidate(latex);
+  if (!candidate || readings.length !== 2) return null;
+  const compact = (value) => value.replace(/\s+|\\[,;:!]/gu, '');
+  if (readings.some((reading) => !Number.isFinite(reading.confidence) || reading.confidence < .9
+    || compact(reading.latex) !== compact(candidate))) return null;
+  return { latex: readings[0].latex, confidence: Math.min(...readings.map((reading) => reading.confidence)) };
 }
 
 function weakAccentGeometry(box, size) {
@@ -195,6 +242,27 @@ function matchingParameterTupleAtom(latex, letters) {
     .replace(/\\(?:boldsymbol|mathbf|mathit)\{([A-Z])\}/gu, '$1')
     .replace(/,$/u, '');
   return compact === `(\\Delta,${letters.join(',')})` ? latex : null;
+}
+
+function completeGlyphBox(pixels, size, box) {
+  if (box.tupleLetters) return box;
+  const columnHasInk = (x) => {
+    for (let y = box.y; y < box.y + box.h; y++) {
+      const at = (y * size.width + x) * 4;
+      if ((pixels[at] + pixels[at + 1] + pixels[at + 2]) / 3 < 160) return true;
+    }
+    return false;
+  };
+  // Vision may call a clipped omega "I" and omit its right foot from the
+  // glyph rectangle, or cut the closing parenthesis of a short f(x) call.
+  // Extend only an ink-cut side, up to the first blank column within a small
+  // glyph-height margin. Never cross a blank gutter.
+  const limit = Math.ceil(box.h * .3), originalRight = box.x + box.w - 1;
+  let left = box.x, right = originalRight;
+  while (left > Math.max(0, box.x - limit) && columnHasInk(left)) left--;
+  while (right < Math.min(size.width - 1, originalRight + limit) && columnHasInk(right)) right++;
+  if (columnHasInk(left) || columnHasInk(right) || left === box.x && right === originalRight) return box;
+  return { ...box, x: left, w: right - left + 1, extendedGlyph: true };
 }
 
 function characterCandidates(ocr, size, formulas) {
@@ -506,7 +574,7 @@ function createLocalFormulaOcr(modelDir) {
       deadline = Math.max(deadline, started + Math.min(60000, 20000 + boxes.length * 2500));
       const formulas = [];
       let clippedBottomY = null;
-      let accentRechecks = 0;
+      let accentRechecks = 0, conditionalRechecks = 0;
       for (const box of boxes) {
         cancelled(signal, deadline);
         const touchingBottom = size.height - (box.y + box.h) <= 2;
@@ -524,6 +592,20 @@ function createLocalFormulaOcr(modelDir) {
         let { latex, confidence } = await recognizeCrop(model, trimmed, signal, deadline);
         const regularizer = await recheckMultilineRegularizer(model, crop, latex, confidence, signal, deadline);
         latex = regularizer.latex;
+        // Re-read only when the original pixels show an outside glyph's tail
+        // crossing this crop. Two confident readings must agree on every
+        // mathematical symbol, with only the suspect accent removed.
+        const reviewConditionalAccent = Boolean(conditionalAccentCandidate(latex));
+        if (reviewConditionalAccent && conditionalRechecks++ < 4) {
+          const cleaned = removePriorLineInk(image, box);
+          if (cleaned) {
+            const readings = [];
+            for (const ratio of [.15, .25]) readings.push(await recognizeCrop(model,
+              padFormulaCrop(trimFormulaCrop(cleaned), ratio), signal, deadline));
+            const confirmed = confirmedConditionalAccent(latex, readings);
+            if (confirmed) { latex = confirmed.latex; confidence = confirmed.confidence; }
+          }
+        }
         let agreedStyledAtom = false;
         // Tight isolated glyphs can look like another font or letter when
         // stretched to the model input. Recheck only uncertain styled atoms;
@@ -558,9 +640,9 @@ function createLocalFormulaOcr(modelDir) {
         // expression. Compare its accent labels under two crop margins; any
         // disagreement asks the reader to check rather than silently changing
         // the mathematics. Bound extra passes on dense pages.
-        let reviewAccent = false;
+        let reviewAccent = reviewConditionalAccent;
         const signature = accentSignature(latex);
-        if (signature && confidence >= .7 && box.score >= .7 && !agreedAccentAtom) {
+        if (signature && confidence >= .7 && box.score >= .7 && !agreedAccentAtom && !reviewConditionalAccent) {
           if (accentRechecks++ >= 8) reviewAccent = true;
           else {
             const first = await recognizeCrop(model, padFormulaCrop(trimmed, .1), signal, deadline);
@@ -611,9 +693,11 @@ function createLocalFormulaOcr(modelDir) {
       const candidates = characterCandidates(original, size, baseline);
       if (!candidates.length) return { ...detected, formulas: baseline };
       const model = await load(), deadline = Date.now() + 20000;
+      const pixels = image.toBitmap();
       const supplements = [];
-      for (const box of candidates) {
+      for (const candidate of candidates) {
         cancelled(signal, deadline);
+        const box = completeGlyphBox(pixels, size, candidate);
         // Vision's character box is already wider than the printed ink here.
         // Expanding it admits neighboring prose and can turn a calligraphic A
         // into a different symbol in all three recognizer passes.
@@ -639,7 +723,7 @@ function createLocalFormulaOcr(modelDir) {
           || Math.min(...readings.map(({ confidence }) => confidence)) < minimum
           || Math.max(...readings.map(({ confidence }) => confidence)) < maximum) continue;
         supplements.push({ ...box, latex: atoms[0], confidence: Math.min(...readings.map(({ confidence }) => confidence)),
-          score: .7, display: false, reviewSymbol: Boolean(box.tupleLetters || box.sourceGlyph === 'w') });
+          score: .7, display: false, reviewSymbol: Boolean(box.tupleLetters || box.sourceGlyph === 'w' || box.extendedGlyph) });
       }
       if (!supplements.length) return { ...detected, formulas: baseline };
       const formulas = [...baseline, ...supplements].sort((a, b) => a.y - b.y || a.x - b.x);
@@ -652,4 +736,5 @@ function createLocalFormulaOcr(modelDir) {
   return { recognize, recheckCharacters, cleanup: () => { queue = queue.then(cleanup); return queue; } };
 }
 
-module.exports = { createLocalFormulaOcr, detectBoxes, tokenDecoder, characterCandidates };
+module.exports = { createLocalFormulaOcr, detectBoxes, tokenDecoder, characterCandidates,
+  confirmedConditionalAccent, removePriorLineInk, completeGlyphBox };

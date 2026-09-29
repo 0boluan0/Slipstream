@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const { createOcrEnvironment } = require('./ocr-environment');
 const { createLocalFormulaOcr } = require('./local-formula-ocr');
 const { mergeFormulaDocument } = require('./formula-document');
-const { reconcileProseOcr, isolatedGlyphDisagreements } = require('./prose-ocr-reconciliation');
+const { reconcileProseOcr, isolatedGlyphDisagreements, proseTokenDisagreements } = require('./prose-ocr-reconciliation');
 const { missingInteriorRows, orderedAgreement, rect } = require('./interior-prose-recheck');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
@@ -611,7 +611,8 @@ async function performReadingOCR(imagePath, { signal } = {}) {
       prose = withoutClippedBottomRows(prose, recognized.size, recognized.clippedBottomY);
       edges = withoutClippedBottomRows(edges, recognized.size, recognized.clippedBottomY);
     }
-    const references = await recheckReferenceOne(imagePath, original, edges, temporary, { signal });
+    const proseChecked = await recheckProseTokens(imagePath, original, edges, temporary, { signal });
+    const references = await recheckReferenceOne(imagePath, proseChecked, edges, temporary, { signal });
     const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
     const quoted = await recheckEmptyEdgeQuote(imagePath, corroborated, temporary, { signal });
     const zeroChecked = await recheckAmbiguousProseZero(imagePath, quoted, prose, temporary, { signal });
@@ -636,6 +637,39 @@ async function performReadingOCR(imagePath, { signal } = {}) {
         unrenderable: document.unrenderableFormulaCount,
         milliseconds: recognized.milliseconds } };
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+}
+
+async function recheckProseTokens(imagePath, original, padded, temporary,
+  { signal, recognize = performOCR } = {}) {
+  const candidates = proseTokenDisagreements(original, padded).slice(0, 2);
+  if (!candidates.length) return original;
+  const blocks = original.blocks.slice(), proseTokenConflicts = [];
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  let verifiedProseRows = 0;
+  for (const [at, candidate] of candidates.entries()) {
+    const box = blocks[candidate.index].boundingBox;
+    const extra = Math.max(2, Math.round(box.h * size.height * .2));
+    const y = Math.max(0, Math.floor((1 - box.y - box.h) * size.height) - extra);
+    const end = Math.min(size.height, Math.ceil((1 - box.y) * size.height) + extra);
+    if (end <= y) continue;
+    const crop = path.join(temporary, `disputed-prose-${at}.png`);
+    await fs.writeFile(crop, image.crop({ x: 0, y, width: size.width, height: end - y })
+      .resize({ width: Math.min(2400, size.width * 2), quality: 'best' }).toPNG(), { mode: 0o600 });
+    const local = await recognize(crop, { signal, characters: true, padEdges: true }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    const text = (value) => String(value || '').replace(/\s+/gu, ' ').trim();
+    const verified = local?.blocks?.length === 1 && local.blocks[0].confidence >= .9
+      && text(local.blocks[0].text) === text(candidate.block.text);
+    proseTokenConflicts.push(...candidate.conflicts.map((conflict) => ({ ...conflict, verified })));
+    if (!verified) continue;
+    blocks[candidate.index] = candidate.block;
+    verifiedProseRows++;
+  }
+  return { ...original, blocks, text: cleanOcrText(blocks.map((block) => block.text).join('\n')),
+    proseTokenConflicts, verifiedProseRows };
 }
 
 async function verifyMissingInteriorRows(imagePath, original, padded, { signal } = {}) {
@@ -679,6 +713,7 @@ module.exports = {
   performOCR,
   performReadingOCR,
   recheckIsolatedProseGlyphs,
+  recheckProseTokens,
   recheckMergedProseAboveFormula,
   recheckReferenceOne,
   findPrimeDefinitionConflicts,

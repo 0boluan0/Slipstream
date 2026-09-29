@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { execFileSync } = require('node:child_process');
 const { app, BrowserWindow } = require('electron');
 
 if (process.platform !== 'darwin') { console.log('Apple Vision glyph pixel check skipped.'); process.exit(0); }
@@ -26,7 +27,13 @@ app.whenReady().then(async () => {
   await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   const imagePath = path.join(profile, 'authored-temperature.png');
   fs.writeFileSync(imagePath, (await window.webContents.capturePage()).toPNG());
-  const { performOCR, recheckIsolatedProseGlyphs } = require('../src/main/ocr-service');
+  // Release apps bundle this helper. Give development compilation its own
+  // setup budget instead of charging it to a 15-second recognition request.
+  execFileSync('/bin/bash', [path.join(__dirname, 'ocr-swift-runner.sh'), imagePath], {
+    env: require('../src/main/ocr-environment').createOcrEnvironment(path.join(app.getPath('userData'), 'ocr-cache')),
+    timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const { performOCR, recheckIsolatedProseGlyphs, recheckProseTokens } = require('../src/main/ocr-service');
   const padded = await performOCR(imagePath, { characters: true, padEdges: true });
   assert.match(padded.blocks[0]?.text || '', /\bT\b.*\bT\b/u,
     'the local authored image must expose both printed variables');
@@ -45,6 +52,27 @@ app.whenReady().then(async () => {
   assert.equal(rejected.recovered, 0, 'the crop must reject an incorrect padded candidate');
   assert.equal(rejected.ocr, source, 'an unsupported alternative leaves the source intact');
   assert.equal(rejected.conflicts[0].verified, false);
+  const wrongTokens = padded.blocks[0].text.replace(' T ', ' B ').replace('normally', 'nornally');
+  const tokenSource = { ...padded, blocks: [{ ...padded.blocks[0], text: wrongTokens }, ...padded.blocks.slice(1)] };
+  const tokenRepair = await recheckProseTokens(imagePath, tokenSource, padded, profile);
+  assert.equal(tokenRepair.verifiedProseRows, 1,
+    'a source-pixel line reread must confirm both the letter and spelling before replacing either');
+  assert.equal(tokenRepair.blocks[0].text, padded.blocks[0].text);
+  assert.deepEqual(tokenRepair.proseTokenConflicts,
+    [{ source: 'B', alternative: 'T', symbol: true, verified: true },
+      { source: 'nornally', alternative: 'normally', symbol: false, verified: true }]);
+  for (const local of [null, { blocks: [{ text: wrongTokens, confidence: 1 }] },
+    { blocks: [{ text: padded.blocks[0].text, confidence: .5 }] },
+    { blocks: [{ text: padded.blocks[0].text + ' Added words.', confidence: 1 }] }]) {
+    const refused = await recheckProseTokens(imagePath, tokenSource, padded, profile,
+      { recognize: async () => local });
+    assert.equal(refused.blocks[0].text, wrongTokens,
+      'an inconclusive, conflicting, weak or partial-match crop cannot silently change prose');
+    assert(refused.proseTokenConflicts.every((conflict) => conflict.verified === false));
+  }
+  await assert.rejects(recheckProseTokens(imagePath, tokenSource, padded, profile,
+    { recognize: async () => { throw Object.assign(new Error('cancel'), { isCancellation: true }); } }),
+  (error) => error.isCancellation, 'source rereads must propagate cancellation');
   window.destroy();
   fs.rmSync(profile, { recursive: true, force: true });
   console.log('Authored isolated-symbol pixels: crop-confirmed correction and unsupported-candidate rejection passed.');

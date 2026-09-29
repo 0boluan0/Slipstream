@@ -76,6 +76,33 @@ function isolatedGlyphDisagreements(original, padded) {
   });
 }
 
+// Keep a few single-letter disagreements within otherwise identical prose
+// rows available for an independent pixel reread. This never chooses a word
+// by dictionary or context, and cannot change digits or mathematical syntax.
+function proseTokenDisagreements(original, padded) {
+  return (original?.blocks || []).flatMap((block, index) => {
+    if (!(block.confidence >= .9)) return [];
+    const matches = (padded?.blocks || []).filter((candidate) => candidate.confidence >= .9
+      && aligned(block, candidate) && sameNumbers(block.text, candidate.text));
+    if (matches.length !== 1) return [];
+    const candidate = matches[0], words = normalizedText(block.text).split(' ');
+    const alternatives = normalizedText(candidate.text).split(' ');
+    if (words.length < 8 || words.length !== alternatives.length) return [];
+    const changed = words.flatMap((word, at) => word === alternatives[at] ? [] : [at]);
+    if (!changed.length || changed.length > 2) return [];
+    const conflicts = [];
+    for (const at of changed) {
+      const from = /^([A-Za-z]+)([,.;:!?]?)$/u.exec(words[at]);
+      const to = /^([A-Za-z]+)([,.;:!?]?)$/u.exec(alternatives[at]);
+      if (!from || !to || from[2] !== to[2] || from[1].length !== to[1].length
+        || [...from[1].toLowerCase()].filter((letter, i) => letter !== to[1][i].toLowerCase()).length !== 1
+        || from[1].length === 1 && !/^[A-Z][A-Z]$/u.test(from[1] + to[1])) return [];
+      conflicts.push({ source: from[1], alternative: to[1], symbol: from[1].length === 1 });
+    }
+    return [{ index, block: candidate, conflicts }];
+  });
+}
+
 function reconcileProseOcr(original, padded) {
   const source = original?.blocks, alternative = padded?.blocks;
   if (!Array.isArray(source) || !Array.isArray(alternative) || !alternative.length) {
@@ -100,4 +127,4 @@ function reconcileProseOcr(original, padded) {
   return { ...chosen, proseComparison: { disagree: true, recovered: canUsePadded } };
 }
 
-module.exports = { reconcileProseOcr, isolatedGlyphDisagreements };
+module.exports = { reconcileProseOcr, isolatedGlyphDisagreements, proseTokenDisagreements };
