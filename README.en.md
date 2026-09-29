@@ -2,19 +2,19 @@
 
 # Slipstream
 
-**Read the original. Keep the concepts.**
+**Select the part you need help with. Keep reading.**
 
-A macOS reading companion for native Chinese speakers working through English textbooks, research papers, and specialist articles. Capture a passage, keep a Chinese translation beside it, explore unfamiliar concepts in context, and save useful explanations as local Markdown cards.
+A macOS quick lookup companion for native Chinese speakers reading English textbooks, research papers, and specialist articles. Select an unfamiliar sentence, short passage, formula with its necessary context, or small part of a figure. Read Chinese and optional explanations beside the source, then continue reading. Full-document translation and in-depth research are outside the main workflow.
 
 > **Reading release v1.2.1** · macOS 12+ · [Download](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · Existing production installations can check for updates from the Slipstream menu.
 
 ## Stay with the page
 
-1. Press `Option + Shift + S`. Drag a bright rectangle on the dimmed screen to select a paragraph or two. Release to read, or press `Esc` to cancel.
-2. Read the Chinese translation in an independent, movable, resizable window. Switch to parallel English and Chinese when needed.
-3. Click a suggested term for its conceptual meaning and its role in this passage. Select any English phrase to look it up yourself.
-4. Save an explanation and its source as a concept card. Add your own understanding and link related cards later.
-5. Close the temporary window when finished. Saved cards remain on disk.
+1. Press `Option + Shift + S`. Drag a bright rectangle on the dimmed screen around the small part you need help with, including any necessary nearby explanation. Release to read, or press `Esc` to cancel.
+2. Read Chinese beside the source. Switch to English and Chinese, click a suggested term, or select a phrase for an explanation when needed.
+3. Close the temporary window and continue reading.
+
+Saving an explanation as a local concept card and managing paper-specific references are optional. They do not have to precede a quick lookup.
 
 Pasting text and choosing “开始阅读”, or copying text and pressing `Option + C`, opens the same reading workflow without screen-recording permission.
 
