@@ -29,6 +29,11 @@ const CAPTURE_STAGES = [
   { label: '在本机识别文字', detail: 'OCR 在这台 Mac 上完成，不会上传截图', Icon: ShieldCheck },
   { label: '识别完成后进入分析', detail: '届时才按所选处理方式使用识别出的原文', Icon: LinkSimple },
 ];
+const IMAGE_CAPTURE_STAGES = [
+  { label: '拖框选中英文', detail: '只读取亮框里的内容，Esc 取消', Icon: ListChecks },
+  { label: '交给当前服务阅读', detail: '图片与文字共用你的 API 配置', Icon: CloudArrowUp },
+  { label: '在原文旁显示中文', detail: '关闭阅读卡片可取消请求', Icon: TextAa },
+];
 
 export default function LoadingOverlay({
   visible,
@@ -41,13 +46,14 @@ export default function LoadingOverlay({
   cancelError = '',
   opensSettingsAfterCancel = false,
   translationOnly = false,
+  imageReading = false,
   phase = 'analysis',
 }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [announcedStatus, setAnnouncedStatus] = useState('');
   const isCapturePhase = phase === 'capture';
   const stages = isCapturePhase
-    ? CAPTURE_STAGES
+    ? imageReading ? IMAGE_CAPTURE_STAGES : CAPTURE_STAGES
     : translationOnly ? TRANSLATION_STAGES : STAGES;
   const cancelLabel = returnsToPreviousResult
     ? '取消并返回上一份结果'
@@ -64,6 +70,8 @@ export default function LoadingOverlay({
     ? opensSettingsAfterCancel
       ? '正在等待停止确认；确认后会打开设置…'
       : '正在等待应用确认任务已经停止…'
+    : isCapturePhase
+      && imageReading ? '等待框选或当前服务返回；关闭阅读卡片可停止。'
     : isCapturePhase
       ? elapsedSeconds < 2
         ? '正在打开本机截图框选…'
@@ -98,7 +106,7 @@ export default function LoadingOverlay({
           <p className="eyebrow">{isCapturePhase ? '正在捕获' : '正在处理'}</p>
           <h2 ref={contextRef} id="processing-context-title" tabIndex={-1}>
             {isCapturePhase
-              ? '框选截图并在本机识别文字'
+              ? imageReading ? '框选英文，在旁边读中文' : '框选截图并在本机识别文字'
               : translationOnly ? '按原文顺序生成完整翻译' : '把原文整理成可追溯的行动结论'}
           </h2>
         </div>
@@ -179,7 +187,8 @@ export default function LoadingOverlay({
           <strong>可以先隐藏窗口，任务会继续</strong>
           <small>
             {isCapturePhase
-              ? '菜单栏会显示框选和本机 OCR 进度；若系统允许通知，提醒不会包含截图或识别文字。'
+              ? imageReading ? '阅读卡片会显示进度；只有选区内容交给当前服务。'
+                : '菜单栏会显示框选和本机 OCR 进度；若系统允许通知，提醒不会包含截图或识别文字。'
               : '菜单栏会显示进度和完成标记；若系统允许通知，提醒也不会包含原文或分析内容。'}
           </small>
         </span>

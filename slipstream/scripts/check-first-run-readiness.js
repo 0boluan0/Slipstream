@@ -373,7 +373,7 @@ async function main() {
     deepseekApiKey: 'legacy-secret',
   });
   assert.equal(legacyDeepSeek.store.getSettings('setupMode'), SETUP_MODES.FULL);
-  assert.equal(legacyDeepSeek.store.getSettings('activeModel'), 'deepseek-v4-flash');
+  assert.equal(legacyDeepSeek.store.getSettings('activeModel'), 'deepseek-flash');
   assert.equal(legacyDeepSeek.raw().productReadinessVersion, 2);
 
   const unavailableKeychain = loadStoreWithMocks({

@@ -330,7 +330,8 @@ function render(next) {
   const completed = segments.filter((segment) => segment.status === 'done').length;
   const working = ['ocr', 'waiting', 'translating', 'explaining', 'recognizing'].includes(state.phase);
   const labels = { ocr: '正在本机识别…', waiting: '准备翻译…', translating: `已完成 ${completed} / ${segments.length} 段`, explaining: '正在解释…', review: '等待核对', done: `${segments.length} 段 · 已完成`, partial: '部分段落待重试', error: '需要处理' };
-  if (!copyTimer) byId('status').textContent = state.phase === 'recognizing' ? '正在转写公式…' : labels[state.phase] || '';
+  if (!copyTimer) byId('status').textContent = state.phase === 'recognizing'
+    ? state.imageReading ? '正在读这张截图…' : '正在转写公式…' : labels[state.phase] || '';
   byId('card-label').textContent = state.collapsed ? '双击展开' : '阅读';
   document.body.classList.toggle('collapsed', Boolean(state.collapsed));
   byId('collapse').setAttribute('aria-expanded', String(!state.collapsed));
@@ -339,13 +340,18 @@ function render(next) {
   byId('collapse').querySelector('img').src = state.collapsed ? './icons/ArrowsOutSimple.svg' : './icons/Minus.svg';
   byId('notice').hidden = !state.notice;
   byId('notice').textContent = state.notice || '';
-  byId('destination').textContent = state.imageSent
+  byId('notice-retake').hidden = !state.imageReading || state.formulaStatus !== 'uncertain';
+  byId('notice-retake').disabled = working;
+  byId('destination').textContent = state.imageSent && !state.imageReading
     ? `${(state.destination || '').replace('截图留在本机。', '')}本次已请求将截图发送到 DeepSeek 识别公式。`
     : state.destination || '截图文字识别在本机完成';
   byId('pin').setAttribute('aria-pressed', String(state.topmost));
   byId('pin').title = state.topmost ? '取消置顶' : '置顶';
   byId('loading').hidden = !working || segments.length > 0;
   byId('review').hidden = state.phase !== 'review' || mode === 'image';
+  byId('review-retake').hidden = !state.imageReading;
+  byId('confirm').classList.toggle('primary', !state.imageReading);
+  byId('review-title').textContent = state.imageReading ? '这一处没看清' : '核对识别文字';
   byId('tab-translation').textContent = state.phase === 'review' ? '核对' : '译文';
   byId('tab-image').hidden = !state.image;
   if (state.phase === 'review' && previousPhase !== 'review') {
@@ -362,7 +368,8 @@ function render(next) {
   byId('reading-hint').hidden = mode !== 'parallel' || !segments.length;
   byId('reading-hint').textContent = state.explainSupported ? '选中英文词句，查看概念与上下文解释。' : '选中英文词句可单独翻译；术语解释需配置模型。';
   byId('recovery').hidden = !['error', 'partial'].includes(state.phase);
-  byId('retry').hidden = !state.sourceText;
+  byId('retry').hidden = !state.sourceText && !state.imageReading;
+  byId('retry').lastChild.textContent = state.imageReading ? '重新读这张图' : '重试未完成段落';
   byId('original').hidden = mode !== 'image' || !state.image;
   for (const id of ['source-image', 'correction-image']) {
     if (byId(id).getAttribute('src') === state.image) continue;
@@ -374,7 +381,7 @@ function render(next) {
   byId('edit-source').disabled = working;
   byId('copy').disabled = !['done', 'translating'].includes(state.phase) || !state.translation
     || !segments.length || segments.some((segment) => segment.status !== 'done');
-  byId('formula-tools').hidden = !state.image || (!['review', 'recognizing', 'error'].includes(state.phase) && mode !== 'image');
+  byId('formula-tools').hidden = !state.image || state.imageReading || (!['review', 'recognizing', 'error'].includes(state.phase) && mode !== 'image');
   byId('recognize-formulas').hidden = !state.formulaSupported;
   byId('recognize-formulas').disabled = working;
   byId('formula-unavailable').hidden = state.formulaSupported;
@@ -472,6 +479,8 @@ byId('recognize-formulas').onclick = async () => {
   if (state?.phase === 'review') setMode('translation');
 };
 byId('retry').onclick = () => act('translate', { revision: state?.revision, retryFailed: true });
+byId('review-retake').onclick = () => act('retake');
+byId('notice-retake').onclick = () => act('retake');
 byId('retake').onclick = () => act('retake');
 for (const id of ['settings', 'footer-settings', 'lookup-settings']) byId(id).onclick = () => act('settings');
 byId('edit-source').onclick = async () => {

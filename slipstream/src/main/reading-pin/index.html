@@ -34,6 +34,7 @@
   </div>
   <main id="scroll-area">
     <p id="notice" role="alert" hidden></p>
+    <button id="notice-retake" class="primary" hidden>重新框完整这一段</button>
     <section id="reference-content" aria-label="本文速查" hidden>
       <div class="reference-intro"><h2>本文速查</h2><p class="muted">记住本文的符号与约定，下次接着读。</p></div>
       <div id="reference-welcome"><p class="muted">为正在读的论文或章节开一份速查。同一文档的截图可以继续使用。</p><button id="paper-create" class="primary">新建阅读</button></div>
@@ -62,7 +63,7 @@
     <button id="reference-extract" class="text-button" hidden>整理这段的符号定义</button>
     <section id="review" aria-labelledby="review-title" hidden>
       <h2 id="review-title" tabindex="-1">核对识别文字</h2>
-      <div class="review-actions"><button id="confirm" class="primary">确认并翻译</button><button id="review-image">查看截图</button></div>
+      <div class="review-actions"><button id="review-retake" class="primary" hidden>重新框完整这一段</button><button id="confirm" class="primary">确认并翻译</button><button id="review-image">查看截图</button></div>
       <details id="formula-preview"><summary>排版后的原文</summary><p id="formula-edit-hint" class="muted" role="status" hidden>点击有误的公式可定位校正；长公式可在公式上左右滚动，查看完整内容。</p><div id="source-preview"></div></details>
       <details id="source-correction"><summary>校正文字与公式</summary>
         <div id="correction-reference" hidden>

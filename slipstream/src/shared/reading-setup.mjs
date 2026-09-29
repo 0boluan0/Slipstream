@@ -13,7 +13,8 @@ function readingSetupSample(value) {
   if (!validText(value.translation, 4000, true)
     || !validText(value.meaning, 1500, true)
     || !validText(value.note, 1500, false)) return null;
-  return { translation: value.translation.trim(), meaning: value.meaning.trim(), note: value.note.trim() };
+  return { translation: value.translation.trim(), meaning: value.meaning.trim(), note: value.note.trim(),
+    ...(value.imageChecked === true ? { imageChecked: true } : {}) };
 }
 
 export { READING_SETUP_SOURCE, READING_SETUP_SELECTION, readingSetupSample };

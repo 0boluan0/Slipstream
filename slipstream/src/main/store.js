@@ -54,6 +54,7 @@ const schema = {
     enum: ['unconfigured', 'full', 'translation-only'],
     default: 'unconfigured',
   },
+  screenshotReadingMode: { type: 'string', enum: ['local', 'image'], default: 'local' },
   productReadinessVersion: { type: 'number', default: 0 },
   windowWidth: { type: 'number', default: 520 },
   windowHeight: { type: 'number', default: 680 },

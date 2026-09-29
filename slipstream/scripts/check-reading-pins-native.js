@@ -153,6 +153,7 @@ app.whenReady().then(async () => {
   let providerCalls = 0;
   let selectionCount = 0;
   let settings = { setupMode: 'full', activeBackend: 'custom', activeModel: 'fixture', customEndpointUrl: 'http://127.0.0.1:11434/v1' };
+  let imageUncertain = false, imageHeld = false, finishImage, imageSignal, imageReads = 0;
   let copied = '';
   let ocrOverride = null;
   let ocrProseDisagreement = false;
@@ -203,6 +204,13 @@ app.whenReady().then(async () => {
     return args[8] ? JSON.stringify({ terms: [{ quote: 'Correlation', explanation: '指变量一起变化的统计关系；这里没有据此断定因果。' }], sentences: [] }) : chinese;
   });
   manager = createReadingPins({ BrowserWindow, ipcMain, screen,
+    readScreenshot: async ({ image, signal, onTranslation }) => {
+      imageReads += 1; imageSignal = signal; assert.match(image, /^data:image\/png;base64,/u);
+      const result = { text: english, translation: chinese, terms: [], references: [],
+        uncertain: imageUncertain ? ['下边没有显示下一行。'] : [] };
+      if (imageHeld) { onTranslation?.(result); return new Promise(resolve => { finishImage = () => resolve(result); }); }
+      return result;
+    },
     copyText: (text) => { copied = text; },
     saveTermCard: (input) => termStore.save(input),
     getSettings: () => settings, getMainWindow: () => mainWindow,
@@ -960,6 +968,40 @@ app.whenReady().then(async () => {
   await pause(60);
   assert.equal(cards().length, 0, 'a late review cannot reopen a closed pin');
   console.log('ok - translation arrives before term review; review failure and cancellation preserve reading behavior');
+  held = false; holdReview = false; ocrOverride = null;
+  settings = { ...settings, screenshotReadingMode: 'image' };
+  const beforeImage = providerCalls;
+  await manager.capture();
+  const imageCard = cards()[0];
+  await until(phaseIs(imageCard, 'done'), 'image reading without OCR approval');
+  assert.equal(imageReads, 1); assert.equal(providerCalls, beforeImage, 'a picture read does not also run the text/OCR translation path');
+  assert.equal((await stateOf(imageCard)).translation, chinese);
+  assert.match((await stateOf(imageCard)).destination, /选区图片/u);
+  const imageState = await stateOf(imageCard);
+  await action(imageCard, 'lookup', { revision: imageState.revision,
+    segmentId: imageState.segments[0].id, start: 0, end: 'Correlation'.length });
+  await until(async () => (await stateOf(imageCard)).lookupStatus === 'done', 'manual lookup on a screenshot read');
+  assert.equal((await stateOf(imageCard)).lookup.quote, 'Correlation');
+  assert.equal(providerCalls, beforeImage + 1, 'manual lookup uses the same text provider on the image source');
+  manager.clear(); imageUncertain = true;
+  await manager.capture(); const warnedImage = cards()[0];
+  await until(phaseIs(warnedImage, 'done'), 'localized image uncertainty keeps readable translation');
+  assert.equal((await stateOf(warnedImage)).translation, chinese);
+  assert.match((await stateOf(warnedImage)).notice, /没看清/u);
+  assert(await warnedImage.webContents.executeJavaScript('!document.getElementById("notice-retake").hidden && !document.getElementById("reading-content").hidden'));
+  manager.clear(); imageUncertain = false; imageHeld = true;
+  const pendingImage = manager.capture();
+  await until(() => Boolean(finishImage), 'pending image recommendation');
+  const closingImage = cards()[0];
+  void action(closingImage, 'close').catch(() => {});
+  await until(() => closingImage.isDestroyed(), 'close during image reading');
+  assert(imageSignal.aborted);
+  finishImage(); await pendingImage; await pause(30); assert.equal(cards().length, 0);
+  finishImage = null;
+  const changingImage = manager.capture(); await until(() => Boolean(finishImage), 'second pending image');
+  manager.invalidateProcessing(); assert(imageSignal.aborted, 'settings changes abort the remaining image request even after early translation');
+  finishImage(); await changingImage; manager.clear();
+  console.log('ok - image route, localized warning, closing and settings invalidation preserve reading lifecycle');
   assert(!fs.readdirSync(work).some((file) => /^capture-.*\.png$/.test(file)), 'temporary captures must be removed');
   console.log('Reading cards native checks passed: real Apple Vision OCR, rendered local source, independent cards, resize/move/pin, low-confidence gate, provider retry, cancellation, late-result suppression, settings changes, sandbox and close cleanup. Translation responses were deterministic fixtures; native screen selection and live translation were not exercised by this test.');
   manager.dispose();

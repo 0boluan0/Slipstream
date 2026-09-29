@@ -160,8 +160,9 @@ async function main() {
     getRepresentativeStructuredBriefChecks,
     isRepresentativeStructuredBrief,
     testFullAnalysisCompatibility,
-    testProviderReadiness,
+    testProviderReadiness: originalReadiness,
   } = require('../src/main/provider-readiness');
+  const testProviderReadiness = (settings, dependencies) => originalReadiness(settings, { requireImage: false, ...dependencies });
   const { CUSTOM_ENDPOINT_ERROR_CODES } = require('../src/main/custom-endpoint-fetch');
   const { analyzeModelOutput } = require('../src/main/analysis');
   const {
@@ -550,6 +551,32 @@ async function main() {
   const readingResponse = (options) => options.kind === 'lookup'
     ? { lookup: { quote: options.selection, contextual: true, meaning: readingSample.meaning, note: readingSample.note } }
     : { translation: readingSample.translation, terms: [] };
+  let imageRequests = 0, textRequests = 0;
+  const imageSettings = { activeBackend: 'deepseek', activeModel: 'deepseek-flash' };
+  const imageTrial = await originalReadiness(imageSettings, {
+    requireImage: true,
+    testProviderConnection: async () => ({ status: 'connected', code: 'ok' }),
+    readScreenshot: async options => {
+      imageRequests += 1;
+      assert.match(options.image, /^data:image\/png;base64,/u);
+      assert.deepEqual(options.settingsSnapshot, { ...imageSettings, setupMode: 'full' });
+      return { text: require('../src/shared/reading-setup.mjs').READING_SETUP_SOURCE + ' In this sample, n = 12.',
+        translation: readingSample.translation, uncertain: [], terms: [] };
+    },
+    processReadingText: async options => {
+      textRequests += 1; assert.equal(options.kind, 'lookup');
+      assert.equal(options.settingsSnapshot, imageSettings); assert.match(options.text, /n = 12/u);
+      return readingResponse(options);
+    },
+  });
+  assert.deepEqual(imageTrial, { status: 'connected', code: 'ok', sample: { ...readingSample, imageChecked: true } });
+  assert.equal(imageRequests, 1); assert.equal(textRequests, 1);
+  const noImages = await originalReadiness(imageSettings, {
+    requireImage: true, testProviderConnection: async () => ({ status: 'connected', code: 'ok' }),
+    readScreenshot: async () => { throw Object.assign(new Error('Images not supported'), { status: 400 }); },
+    processReadingText: async () => { throw new Error('text fallback must not unlock image reading'); },
+  });
+  assert.deepEqual(noImages, { status: 'failed', code: CONNECTION_CODES.IMAGE_NOT_SUPPORTED });
   const ready = await testProviderReadiness({
     activeBackend: 'ollama',
     activeModel: 'qwen2.5',
@@ -1359,9 +1386,10 @@ async function main() {
     'readiness must use one stable settings snapshot for metadata and compatibility checks');
   assert.match(preloadSource, /'provider:connection-test'/);
   assert.match(preloadSource, /'provider:connection-cancel'/);
-  assert.match(rendererSource, /内置的自拟英文段落/);
-  assert.match(rendererSource, /中文翻译和上下文术语解释/);
-  assert.match(rendererSource, /不会发送截图、剪贴板、你的任务原文或高级分析说明/);
+  assert.match(rendererSource, /只发送内置试读图片/);
+  assert.match(rendererSource, /<h3>中文译文<\/h3>/);
+  assert.match(rendererSource, /再解释其中的 confounder（混杂变量）/);
+  assert.match(rendererSource, /试读使用你选择的服务和 API Key/);
   assert.match(rendererSource, /在线服务可能产生少量调用费用/);
   assert.match(rendererSource, /取消测试/);
   assert.match(rendererSource, /handleCancelConnectionTest/);
@@ -1428,7 +1456,7 @@ async function main() {
   assert.match(modelSelectorSource, /保存模型/);
   assert.match(modelSelectorSource, /<select[\s\S]*?id=\{inputId\}/,
     'known online providers must use a visible native model picker');
-  assert.match(modelSelectorSource, /DeepSeek V4 Flash（推荐）/);
+  assert.match(modelSelectorSource, /DeepSeek Flash（推荐，支持图片）/);
   assert.match(modelSelectorSource, /DeepSeek V4 Pro/);
   assert.match(modelSelectorSource, /当前已保存：/,
     'a saved online model outside the built-in list must remain selectable');

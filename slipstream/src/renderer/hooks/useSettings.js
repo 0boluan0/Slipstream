@@ -45,6 +45,7 @@ const CONNECTION_TEST_CODES = new Set([
   'service-unavailable',
   'http-error',
   'structured-output-invalid',
+  'image-not-supported',
   'generation-failed',
   'busy',
   'cancelled',
@@ -122,6 +123,7 @@ const defaultSettings = {
   clipboardShortcut: DEFAULTS.CLIPBOARD_SHORTCUT,
   screenshotShortcut: DEFAULTS.SCREENSHOT_SHORTCUT,
   setupMode: SETUP_MODES.UNCONFIGURED,
+  screenshotReadingMode: 'local',
   runtimeStatus: {
     trayAvailable: true,
     clipboardMonitoringDisabled: false,

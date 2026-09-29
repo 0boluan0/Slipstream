@@ -4582,8 +4582,12 @@ export default function FloatingPanel({
     processingLocation: privacyProcessingLocation,
   });
   const readingStart = !LEGACY_WORKSPACE_DEMO && !isEditingSource && !lastGoodRef.current;
+  const readingImageEnabled = settings.setupMode === 'full'
+    && settings.screenshotReadingMode === 'image' && !isFreeTranslate;
   const readingPrivacyDisclosure = { ...privacyDisclosure,
-    detail: privacyProvider === 'free_translate'
+    detail: readingImageEnabled
+      ? '框选的图片与文字交给当前服务翻译；点击术语时再请求解释。只发送你框内的内容。'
+      : privacyProvider === 'free_translate'
       ? '原文发送至 Google Translate，必要时使用 MyMemory。截图留在本机。'
       : privacyProcessingLocation === PROCESSING_LOCATIONS.LOCAL
         ? '译文和按需术语解释由本机模型处理。'
@@ -4593,7 +4597,9 @@ export default function FloatingPanel({
   };
   const capturePrivacyDisclosure = status === STATUS.PROCESSING
     && processingPhase === PROCESSING_PHASE.CAPTURE
-    ? SCREENSHOT_CAPTURE_PRIVACY_DISCLOSURE
+    ? readingImageEnabled ? { ...privacyDisclosure,
+      activeTitle: readingPrivacyDisclosure.title,
+      activeDetail: readingPrivacyDisclosure.detail } : SCREENSHOT_CAPTURE_PRIVACY_DISCLOSURE
     : readingStart ? readingPrivacyDisclosure : privacyDisclosure;
   const ocrReviewCopy = ocrReview
     ? describeOcrReview({
@@ -5429,6 +5435,7 @@ export default function FloatingPanel({
               cancelError={processingCancelError}
               opensSettingsAfterCancel={settingsOpenIntent === 'analysis'}
               translationOnly={isFreeTranslate}
+              imageReading={readingImageEnabled}
               phase={processingPhase}
             />
           ) : (
@@ -5454,13 +5461,21 @@ export default function FloatingPanel({
                 </div>
               </div>
 
-              {readingStart && screenshotSupported && !ocrReviewCopy && (
+              {readingStart && screenshotSupported && !ocrReviewCopy && (<>
                 <button type="button" className="reading-capture-primary" onClick={handleScreenshot}>
                   <Camera size={24} aria-hidden="true" />
                   <span><strong>截图阅读</strong><small>框选一段，译文贴在屏幕旁</small></span>
                   <kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT, platform)}</kbd>
                 </button>
-              )}
+                <ol className="capture-start-steps" aria-label="截图阅读步骤">
+                  <li>按快捷键，屏幕变暗</li><li>拖出亮框，松开鼠标</li><li>在原文旁读中文</li>
+                </ol>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                  按 Esc 取消。{readingImageEnabled
+                    ? `框选的图片与文字发送给 ${settings.activeBackend === 'deepseek' ? 'DeepSeek' : settings.activeBackend === 'custom' ? '你配置的服务' : settings.activeBackend}。`
+                    : '截图先在本机识字；在设置中试读一张图片，即可启用直接读图。'}
+                </p>
+              </>)}
 
               {!readingStart && !inputText.trim() && !isEditingSource && !isFreeTranslate && (
                 <ol className="capture-start-steps" aria-label="第一次使用步骤">
@@ -5760,7 +5775,9 @@ export default function FloatingPanel({
               {!ocrReviewCopy && screenshotSupported && (
                 <p className="capture-permission-note" role="note">
                   <ShieldCheck size={16} weight="fill" aria-hidden="true" />
-                  <span>首次截图需要屏幕录制权限。文字识别在本机完成；粘贴阅读无需此权限。</span>
+                  <span>{readingImageEnabled
+                    ? '首次截图需要屏幕录制权限。只有你拖框选中的内容会交给当前服务。'
+                    : '首次截图需要屏幕录制权限。文字识别在本机完成；粘贴阅读无需此权限。'}</span>
                 </p>
               )}
 

@@ -332,7 +332,7 @@ export default function SetupGate({
 
         <footer className="setup-privacy">
           <LockKey size={15} />
-          <span>专业阅读使用你选择的服务；基础翻译使用 Google / MyMemory。{platform === 'darwin' ? '截图默认留在本机，' : ''}剪贴板自动检测默认关闭。</span>
+          <span>专业阅读使用你选择的服务；基础翻译使用 Google / MyMemory。{platform === 'darwin' ? '启用图片试读后，选区图片交给当前服务。' : ''}剪贴板自动检测默认关闭。</span>
         </footer>
       </section>
     </main>

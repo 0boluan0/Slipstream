@@ -100,6 +100,16 @@ app.whenReady().then(async () => {
     }
     if (channel === 'provider:connection-test') return testProviderReadiness({ ...settings }, {
       testProviderConnection: async () => ({ status: 'connected', code: 'ok' }),
+      requireImage: !windowsUi,
+      readScreenshot: async ({ image, settingsSnapshot }) => {
+        providerCalls += 1;
+        assert.match(image, /^data:image\/png;base64,/);
+        assert.equal(settingsSnapshot.activeModel, settings.activeModel);
+        if (rejectSetupTrial) throw new Error('reading-invalid-output');
+        return { text: `${require('../src/shared/reading-setup.mjs').READING_SETUP_SOURCE} In this sample, n = 12.`,
+          translation: '混杂变量同时影响处理与结果，即使处理没有因果效应也可能观察到关联。样本中 n = 12。',
+          terms: [], references: [], uncertain: [] };
+      },
       processReadingText: rejectSetupTrial
         ? async () => { throw new Error('reading-invalid-output'); } : provider,
     });
@@ -224,9 +234,14 @@ app.whenReady().then(async () => {
   assert(await js('Array.from(document.querySelectorAll(".reading-setup-sample")).every(e => e.scrollWidth <= e.clientWidth + 1)'));
   main.webContents.setZoomFactor(1); main.setSize(820, 720);
   const callsBeforeActivation = providerCalls;
+  assert.equal(await js('document.querySelector(".full-analysis-enable-button").disabled'), false);
   await js('document.querySelector(".full-analysis-enable-button").click()');
-  await until(() => js('Boolean(document.querySelector(".capture-card"))'), 'activated reading home');
+  await until(async () => settings.setupMode === 'full'
+    && await js('!document.querySelector(".settings-panel") && Boolean(document.querySelector(".capture-card"))'),
+  'activation settings persisted and reading home visible');
   assert.equal(settings.setupMode, 'full');
+  assert.equal(settings.screenshotReadingMode, windowsUi ? 'local' : 'image',
+    'only the image-tested macOS trial enables image reading');
   assert.equal(providerCalls, callsBeforeActivation, 'activation must not submit a user excerpt or start another trial');
   await until(() => lastQuitRisk === false, 'settled reading home');
   await showHome();

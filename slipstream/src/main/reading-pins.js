@@ -7,6 +7,7 @@ const { assessOcrReview } = require('./ocr-review');
 const { mathAssetUrls } = require('./reading-math-assets');
 const { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, firstBareFontCommand } = require('../shared/reading-math.cjs');
 const { formulaRecognitionAvailable } = require('./formula-recognition');
+const { imageReadingAvailable } = require('./reading-image');
 const { canRenderMath } = require('./formula-document');
 const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
@@ -254,18 +255,19 @@ function readingDestination(settings) {
   if (settings.activeBackend === 'ollama') validateOllamaEndpointUrl(settings.ollamaBaseUrl);
   const location = processingLocationForSettings(settings);
   if (location === 'unknown') throw new Error('reading-unknown-destination');
+  const image = settings.screenshotReadingMode === 'image' && imageReadingAvailable(settings);
   if (settings.activeBackend === 'free_translate') {
     return '文字发送至 Google Translate；必要时使用 MyMemory。截图留在本机。';
   }
-  if (settings.activeBackend === 'ollama') return '文字由本机 Ollama 处理。截图留在本机。';
-  if (location === 'local-loopback') return '文字交给本机兼容服务；该服务可能继续联网。截图留在本机。';
+  if (settings.activeBackend === 'ollama') return image ? '选区图片与文字由本机 Ollama 处理。' : '文字由本机 Ollama 处理。截图留在本机。';
+  if (location === 'local-loopback') return image ? '选区图片与文字交给本机兼容服务；该服务可能继续联网。' : '文字交给本机兼容服务；该服务可能继续联网。截图留在本机。';
   const provider = { anthropic: 'Anthropic', openai: 'OpenAI', deepseek: 'DeepSeek', custom: '已配置的在线服务' }[settings.activeBackend];
   if (!provider) throw new Error('reading-unknown-destination');
-  return `文字发送至 ${provider}。截图留在本机。`;
+  return image ? `选区图片与文字发送至 ${provider}，共用当前配置。` : `文字发送至 ${provider}。截图留在本机。`;
 }
 
 function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMainWindow,
-  captureRegion, getCaptureWindow = async () => null, performOCR, processReadingText, recognizeReadingFormulas, requestCapturePermission, canCapture = () => true,
+  captureRegion, getCaptureWindow = async () => null, performOCR, processReadingText, readScreenshot, recognizeReadingFormulas, requestCapturePermission, canCapture = () => true,
   captureAppName = 'Slipstream', captureSupported = true,
   copyText = () => {}, saveTermCard, findTermCard, referenceStore, onOpenLibrary = () => {}, onOpenSettings = () => {}, onError = () => {}, classifyError = () => '处理没有完成，请重试或检查设置。' }) {
   const pins = new Map();
@@ -409,7 +411,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         segments: [], lookup: null, lookupStatus: '', lookupNotice: '', saveStatus: '', savedCardId: null, collapsed: false,
         notice: '', destination: '', topmost: true, explainSupported: false,
         formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-        formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], formulaRegions: [], imageSent: false } };
+        formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], formulaRegions: [], imageSent: false, imageReading: false } };
     pins.set(pin.id, pin);
     window.setAlwaysOnTop(true, 'floating');
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -964,6 +966,15 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       // The selection mutex can be released while this card performs OCR.
       if (selecting === controller) selecting = null;
       showPendingCards();
+      const configuration = settingsForReading();
+      if (configuration.settings.screenshotReadingMode === 'image' && readScreenshot && imageReadingAvailable(configuration.settings)) {
+        const edges = captureEdgeInk(file);
+        const names = { top: '上边', right: '右边', bottom: '下边', left: '左边' };
+        const touching = Object.keys(edges).filter(edge => edges[edge] === true);
+        await readImage(pin, { configuration, controller,
+          edgeNotice: touching.length ? `选区${touching.map(edge => names[edge]).join('、')}可能截断了文字。请再框完整这一段。` : '' });
+        return { success: true, pinned: true };
+      }
       const ocr = await performOCR(file, { signal: controller.signal, onProgress: stage => {
         if (!alive(pin) || controller.signal.aborted) return;
         update(pin, { notice: stage === 'initializing'
@@ -1123,6 +1134,55 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
   }
 
+  async function readImage(pin, { configuration, controller = new AbortController(), edgeNotice = '' } = {}) {
+    if (!alive(pin) || disposed || !readScreenshot) return false;
+    try { configuration ||= settingsForReading(); } catch {
+      update(pin, { phase: 'error', notice: '请先在设置中完成图片试读，再重新框选。' }); return false;
+    }
+    pin.lookupController?.abort(); pin.referenceController?.abort(); pin.lookupSequence += 1;
+    pin.lookupCache.clear(); pin.referenceCandidates = []; pin.referenceStatus = '';
+    pin.controller = controller; pin.generation = generation;
+    const revision = ++pin.revision, requestGeneration = generation, paperId = pin.view.paperId;
+    const active = () => alive(pin) && !controller.signal.aborted && pin.revision === revision && generation === requestGeneration;
+    update(pin, { phase: 'recognizing', imageReading: true, imageSent: true,
+      destination: configuration.destination, notice: '', lookup: null, lookupStatus: '', lookupNotice: '',
+      translation: '', segments: [], formulaNotice: '', formulaStatus: '', explainSupported: true });
+    const publishResult = result => {
+      if (!active()) return;
+      const segment = { id: 0, start: 0, end: result.text.length, source: result.text,
+        translation: result.translation, status: 'done', error: '', terms: result.terms || [],
+        termsStatus: result.termsStatus || 'ready', referenceCandidates: pin.view.paperId === paperId ? result.references || [] : [] };
+      update(pin, { sourceText: result.text, translation: result.translation, segments: [segment], phase: 'done', notice: '' });
+    };
+    try {
+      const result = await readScreenshot({ image: pin.view.image, settingsSnapshot: configuration.settings,
+        signal: controller.signal, onTranslation: result => {
+          if (!edgeNotice && !result.uncertain?.length && !looksLikeOwnReadingUi(result.text)) publishResult(result);
+        } });
+      if (!active()) return false;
+      if (looksLikeOwnReadingUi(result.text)) {
+        update(pin, { phase: 'error', notice: '这张图包含 Slipstream 自己的界面。请回到原文，再框选要读的英文。' });
+        return false;
+      }
+      if (edgeNotice || result.uncertain.length) {
+        publishResult(result);
+        update(pin, {
+          formulaStatus: 'uncertain', formulaNotice: result.uncertain.join('；'),
+          notice: edgeNotice || `有一处没看清：${result.uncertain.join('；')}。这里仅显示读清的内容，可重新框完整这一段。` });
+        return true;
+      }
+      publishResult(result); return true;
+    } catch (error) {
+      if (!active()) return false;
+      update(pin, { phase: 'error', notice: error?.message === 'reading-image-math-mismatch'
+        ? '返回的译文改动了公式，已停止显示。原图保留在“截图”中；请重试，或缩小到这一段重新框选。'
+        : /^reading-(?:image-invalid-output|symbol-role-mismatch|terminology-mismatch)$/u.test(error?.message || '') || error instanceof SyntaxError
+          ? '这张图没有读完整，原图已保留。请重试，或重新框选清晰的一段英文。'
+          : classifyError(error, configuration.settings.activeBackend) });
+      return false;
+    } finally { if (pin.controller === controller) pin.controller = null; }
+  }
+
   function cancelCapture(owner) {
     const task = captureTasks.get(owner);
     if (!task) return null;
@@ -1228,7 +1288,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         || (payload.text !== undefined && (typeof payload.text !== 'string' || payload.text.length > DEFAULTS.MAX_TEXT_LENGTH))) {
         throw new Error('Invalid reading request');
       }
-      void process(pin, action, payload);
+      if (action === 'translate' && payload.retryFailed && pin.view.imageReading && !pin.view.sourceText
+        && payload.revision === pin.revision) void readImage(pin);
+      else void process(pin, action, payload);
       return true;
     }
     if (action === 'retake') { void capture().then((result) => { if (result.pinned && alive(pin)) close(pin); }); return true; }
@@ -1246,6 +1308,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       pin.referenceStatus = '';
       pin.lookupSequence += 1;
       pin.lookupCache.clear();
+      if (pin.view.imageReading) { pin.controller?.abort(); pin.controller = null; }
       if (pin.view.lookupStatus === 'loading') update(pin, { lookupStatus: 'error', lookupNotice: '处理服务已改变，请重新翻译后查询。' });
       if (pin.view.phase === 'ocr' || pin.view.phase === 'done' || pin.view.phase === 'partial') continue;
       pin.controller?.abort();

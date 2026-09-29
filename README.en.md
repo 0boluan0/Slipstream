@@ -10,7 +10,7 @@ A macOS reading companion for native Chinese speakers working through English te
 
 ## Stay with the page
 
-1. Press `Option + Shift + S` and select a paragraph or two.
+1. Press `Option + Shift + S`. Drag a bright rectangle on the dimmed screen to select a paragraph or two. Release to read, or press `Esc` to cancel.
 2. Read the Chinese translation in an independent, movable, resizable window. Switch to parallel English and Chinese when needed.
 3. Click a suggested term for its conceptual meaning and its role in this passage. Select any English phrase to look it up yourself.
 4. Save an explanation and its source as a concept card. Add your own understanding and link related cards later.
@@ -54,9 +54,9 @@ Allow screen recording when macOS requests it for capture. If macOS asks for a r
 
 The installers include [local formula OCR](./docs/local-formula-ocr.md): specialized models recover LaTeX from screenshot pixels and place it back into the prose before review. It needs no API key, Python installation, or general-purpose LLM. No additional installation is needed.
 
-Apple Vision normally recognizes screenshots on your Mac. Suspected mathematical OCR enters an editable review. A supported DeepSeek configuration additionally offers explicit image-based formula transcription: the app names the destination, sends the current screenshot only on that action, and asks you to check the transcription before translation.
+In the local preview, setup reads an included authored image and explains one term using the same model, key, and endpoint. After you explicitly enable screenshot reading, your selected pixels go to that provider for reading and translation; pixels outside the selection are not sent. Existing configurations retain local Apple Vision and formula OCR until image reading is enabled. The tested default is `deepseek-flash`; other models must pass the image trial. Local OCR retains its editable math review and optional DeepSeek formula transcription.
 
-The selected provider receives submitted text for translation. Multiple term candidates receive one additional brief review by the same provider while the translation is already visible. Selected phrases and the current reading context are sent on demand for explanations. Local Ollama uses a loopback endpoint; a custom local service may independently forward requests. Temporary reading windows do not create automatic source history. Explicitly saved cards include their source passage, and macOS controls any Documents-folder synchronization.
+The configured provider may store requests and charge for images and text. Multiple term candidates receive one additional brief deletion review while the translation is already visible. Selected phrases and the current reading context are sent on demand for explanations. Unreadable areas have a visible recovery prompt; a changed formula between recognized source and translation blocks that translation. This comparison cannot prove the image was recognized correctly. Local Ollama uses a loopback endpoint; a custom local service may independently forward requests. Temporary reading windows do not create automatic source history. Explicitly saved cards include their source passage, and macOS controls any Documents-folder synchronization.
 
 Clipboard monitoring is off by default and requires destination-specific confirmation. While enabled, the interface and macOS menu keep the destination and an off action visible. API keys use macOS encrypted storage. Slipstream has no accounts, ads, or product analytics. Read the [privacy and data-flow guide](./docs/PRIVACY.md).
 

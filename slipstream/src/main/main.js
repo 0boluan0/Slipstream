@@ -473,6 +473,7 @@ const LLM_PROCESSING_SETTING_KEYS = new Set([
   'customPrompt',
   'languageHint',
   'verificationPolicy',
+  'screenshotReadingMode',
 ]);
 const uiFixtureRuntime = uiFixtureMode.enabled
   ? uiFixtureMain.createUiFixtureRuntime({
@@ -2923,10 +2924,11 @@ app.on('ready', () => {
     onOpenLibrary: (id) => termLibrary.open(id),
     getSettings: () => store.isStoreReady() ? store.getAllSettings() : null,
     getMainWindow: () => mainWindow,
-    captureRegion: ScreenshotService.captureSelectedRegion,
+    captureRegion: ScreenshotService.captureReadingRegion,
     getCaptureWindow: OCRService.frontmostDocumentWindow,
     performOCR: OCRService.performReadingOCR,
     processReadingText: LLMService.processReadingText,
+    readScreenshot: LLMService.readScreenshot,
     recognizeReadingFormulas: LLMService.recognizeReadingFormulas,
     requestCapturePermission: requestScreenRecordingAccessForCapture,
     canCapture: () => !app.isQuitting && !captureRequestInFlight

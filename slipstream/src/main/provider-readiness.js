@@ -1,4 +1,6 @@
 const LLMService = require('./llm-service');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 const { analyzeModelOutput } = require('./analysis');
 const {
   CONNECTION_CODES,
@@ -435,6 +437,8 @@ async function testProviderReadiness(settings, dependencies = {}) {
   const stopped = () => failed(timedOut ? CONNECTION_CODES.TIMEOUT : CONNECTION_CODES.CANCELLED);
   const connectionTest = dependencies.testProviderConnection || testProviderConnection;
   const processReadingText = dependencies.processReadingText || LLMService.processReadingText;
+  const requireImage = dependencies.requireImage ?? process.platform === 'darwin';
+  const readScreenshot = dependencies.readScreenshot || LLMService.readScreenshot;
   try {
     const metadataResult = await connectionTest(settings, {
       ...(dependencies.connectionDependencies || {}),
@@ -445,7 +449,11 @@ async function testProviderReadiness(settings, dependencies = {}) {
     // actual reading request decide; credential and endpoint failures still stop.
     if (metadataResult?.status === CONNECTION_STATUSES.FAILED
       && metadataResult.code !== CONNECTION_CODES.MODEL_NOT_FOUND) return metadataResult;
-    const translated = await processReadingText({
+    const translated = requireImage ? await readScreenshot({
+      image: `data:image/png;base64,${(await fs.readFile(path.join(__dirname, '../shared/reading-setup.png'))).toString('base64')}`,
+      settingsSnapshot: { ...settings, setupMode: 'full' },
+      signal,
+    }) : await processReadingText({
       text: READING_SETUP_SOURCE,
       kind: 'translate',
       withTerms: true,
@@ -453,8 +461,10 @@ async function testProviderReadiness(settings, dependencies = {}) {
       signal,
     });
     if (signal.aborted) return stopped();
+    if (requireImage && (translated?.uncertain?.length || !/confounder/iu.test(translated?.text || '')
+      || !/n\s*=\s*12/u.test(translated?.text || ''))) return failed(CONNECTION_CODES.IMAGE_NOT_SUPPORTED);
     const explained = await processReadingText({
-      text: READING_SETUP_SOURCE,
+      text: requireImage ? translated.text : READING_SETUP_SOURCE,
       kind: 'lookup',
       selection: READING_SETUP_SELECTION,
       settingsSnapshot: settings,
@@ -465,6 +475,7 @@ async function testProviderReadiness(settings, dependencies = {}) {
       translation: translated?.translation,
       meaning: explained?.lookup?.meaning,
       note: explained?.lookup?.note,
+      imageChecked: requireImage,
     });
     if (!sample || !Array.isArray(translated?.terms)
       || explained?.lookup?.quote !== READING_SETUP_SELECTION
@@ -476,6 +487,9 @@ async function testProviderReadiness(settings, dependencies = {}) {
     if (signal.aborted) return stopped();
     if (error instanceof SyntaxError || error?.message === 'reading-invalid-output') {
       return failed(CONNECTION_CODES.STRUCTURED_OUTPUT_INVALID);
+    }
+    if (requireImage && (Number(error?.status) === 400 || /image.*(?:unsupported|not supported)|does not support.*image/iu.test(error?.message || ''))) {
+      return failed(CONNECTION_CODES.IMAGE_NOT_SUPPORTED);
     }
     return failed(compatibilityErrorCode(error, signal, settings?.activeBackend));
   } finally {

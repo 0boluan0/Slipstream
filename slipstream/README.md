@@ -20,7 +20,7 @@ npm run dev
 
 `Option + Shift + S` 截图阅读，`Option + C` 读取已复制文字，`Command + ,` 打开设置；粘贴英文后用“开始阅读”或 `Command + Enter` 提交。截图需要 macOS 屏幕录制权限，纯文字阅读不需要。
 
-专业阅读可配置本机 Ollama、DeepSeek、OpenAI、Anthropic 或兼容端点。基础翻译使用 Google Translate，必要时回退至 MyMemory。模型配置的兼容性探测仍使用固定虚构材料和现有结构化校验，界面会说明测试内容；不发送当前阅读材料。
+专业阅读可配置支持图片的本机 Ollama、DeepSeek、OpenAI、Anthropic 或兼容端点。macOS 首次设置实际提交随包图片并查询其中一个术语，使用同一模型、密钥和端点；推荐 `deepseek-flash`。成功后明确启用直接读图，旧配置保留本机识字直到启用。基础翻译使用 Google Translate，必要时回退至 MyMemory。试读不发送当前阅读材料。
 
 安装包自带本地公式 OCR，无需用户安装 Python 或下载模型。源码构建需先下载固定摘要的模型；模型许可见 `licenses/`，实现和真实论文测试见[公式识别说明](../docs/local-formula-ocr.md)。
 
@@ -32,6 +32,8 @@ Apple Vision 首次初始化可能超过普通识字的 15 秒时限。应用启
 | --- | --- |
 | `src/main/reading-pins.js` | 独立窗口、截图/OCR、文字入口、请求生命周期、选词解释与保存 |
 | `src/main/reading-service.js` | 翻译与术语契约、原文匹配、可为空的推荐、上下文解释 |
+| `src/main/reading-image.js` | 同一配置读图、数学一致性拦截、明确来源定义、可取消的术语复核 |
+| `src/main/capture-overlay.js`、`capture-overlay/` | 暗屏拖框、坐标裁切、取消清理，只返回选区图片 |
 | `src/main/reading-document.js` | 分段与段落状态，保留独立公式 |
 | `src/main/reading-pin/` | 中文阅读卡片、英文对照、原图与公式核对 |
 | `src/shared/reading-math.cjs` | LaTeX 规范化与本地渲染 |
@@ -53,6 +55,7 @@ npm run check:reading-home
 
 - `check:reading-home` 使用真实 Electron、生产渲染构建和临时目录，覆盖首页 → 粘贴示例 → 独立阅读卡片 → 解释 → 保存 → 首页卡片盒，并检查首次设置及 200% 排版。回复为固定示例，不调用模型或读取屏幕。
 - `check:reading-pins` 覆盖术语契约、本地存储、原生卡片与卡片盒、数学渲染和预览配置。
+- `check:reading-image` 使用固定回复验证图片协议、公式改变拦截、译文先显示、术语删除复核和选择器的边界／取消；它不证明真实模型语义质量或实际桌面鼠标操作。
 - `check:reading-math` 检查 LaTeX 保留、核对界面、渲染、复制和存储。
 - 显式在线检查和既有质量记录见[阅读验收说明](../docs/reading-pins.md)。测试和 Issue 只使用自拟或已授权材料。
 

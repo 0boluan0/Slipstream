@@ -25,7 +25,7 @@ export default function ModelSelector({
   const inputId = providedInputId || generatedInputId;
   const listId = useId();
   const isEditableModel = backend === 'ollama' || backend === 'custom';
-  const hasSavedModelOutsideList = !isEditableModel && draft && !models.includes(draft);
+  const hasSavedModelOutsideList = !isEditableModel && value && !models.includes(value);
   const draftRevisionRef = useRef(0);
   const failedDraftRevisionRef = useRef(null);
   const lastRetryReceiptIdRef = useRef(null);
@@ -140,12 +140,12 @@ export default function ModelSelector({
           onChange={(event) => updateDraft(event.target.value)}
         >
           {hasSavedModelOutsideList && (
-            <option value={draft}>{`当前已保存：${draft}`}</option>
+            <option value={value}>{`当前已保存：${value}`}</option>
           )}
           {models.map((model) => (
             <option key={model} value={model}>
-              {backend === 'deepseek' && model === 'deepseek-v4-flash'
-                ? 'DeepSeek V4 Flash（推荐）'
+              {backend === 'deepseek' && model === 'deepseek-flash'
+                ? 'DeepSeek Flash（推荐，支持图片）'
                 : backend === 'deepseek' && model === 'deepseek-v4-pro'
                   ? 'DeepSeek V4 Pro'
                   : model}

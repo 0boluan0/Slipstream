@@ -31,6 +31,17 @@ exports.run = function run() {
       deepseekApiKey: safeStorage.decryptString(Buffer.from(raw.deepseekApiKey.slice(4), 'base64')) };
     const { processReadingText, recognizeReadingFormulas } = require('./llm-service');
     report.provider = settings.activeBackend; report.model = settings.activeModel;
+    const screenshotsArg = process.argv.find(arg => arg.startsWith('--reading-check-screenshots='));
+    if (screenshotsArg) {
+      stage = 'screenshot-comparison';
+      const passed = await require('./reading-screenshot-check').run({
+        settings: { ...settings, activeModel: 'deepseek-flash' }, output,
+        manifestPath: screenshotsArg.slice('--reading-check-screenshots='.length),
+      });
+      fs.rmSync(work, { recursive: true, force: true });
+      app.exit(passed ? 0 : 1);
+      return;
+    }
     if (process.argv.includes('--reading-check-setup')) {
       stage = 'reading-setup';
       const started = Date.now();

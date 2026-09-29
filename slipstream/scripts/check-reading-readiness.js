@@ -11,7 +11,7 @@ const translation = { translation: '混杂变量同时影响处理与结果，�
 const lookup = { quote: 'confounder', contextual: true, meaning: '同时影响处理与结果的变量。', note: '本段说明仅有统计关联不足以确立因果效应。' };
 const validReading = async options => options.kind === 'lookup' ? { lookup } : translation;
 const check = dependencies => testProviderReadiness(settings, {
-  testProviderConnection: connected, processReadingText: validReading, ...dependencies,
+  requireImage: false, testProviderConnection: connected, processReadingText: validReading, ...dependencies,
 });
 
 async function main() {
@@ -30,6 +30,7 @@ async function main() {
     });
   });
   const result = await testProviderReadiness(settings, {
+    requireImage: false,
     testProviderConnection: connected,
     processReadingText,
     processText: async () => { legacyCalls += 1; throw new Error('Email analysis is unavailable'); },

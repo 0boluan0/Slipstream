@@ -1,8 +1,5 @@
 .claude/
 .DS_Store
-BACKLOG.md
-PROGRESS.md
-Slipstream-Brainstorm.md
 extract_plan.py
 .codex/
 .audit/
@@ -10,7 +7,4 @@ docs/PERFORMANCE.md
 docs/ux-evidence/
 slipstream/src/renderer/.vite/
 .git-nested-slipstream-backup/
-DIRECTIVES.md
-GOAL_PROMPT.md
-PLAN.md
 slipstream/.prettierrc
