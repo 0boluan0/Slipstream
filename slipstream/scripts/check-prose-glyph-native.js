@@ -27,7 +27,7 @@ app.whenReady().then(async () => {
   const imagePath = path.join(profile, 'authored-temperature.png');
   fs.writeFileSync(imagePath, (await window.webContents.capturePage()).toPNG());
   require('./prepare-ocr-test')(imagePath);
-  const { performOCR, recheckIsolatedProseGlyphs, recheckProseTokens } = require('../src/main/ocr-service');
+  const { performOCR, recheckIsolatedProseGlyphs, recheckProseTokens, recheckReferenceOne } = require('../src/main/ocr-service');
   const padded = await performOCR(imagePath, { characters: true, padEdges: true });
   assert.match(padded.blocks[0]?.text || '', /\bT\b.*\bT\b/u,
     'the local authored image must expose both printed variables');
@@ -67,6 +67,41 @@ app.whenReady().then(async () => {
   await assert.rejects(recheckProseTokens(imagePath, tokenSource, padded, profile,
     { recognize: async () => { throw Object.assign(new Error('cancel'), { isCancellation: true }); } }),
   (error) => error.isCancellation, 'source rereads must propagate cancellation');
+  await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(
+    '<!doctype html><style>body{margin:12px 24px;font:26px/42px "Times New Roman";background:white;color:black}</style>'
+    + 'We minimize the average loss in (1) over all training examples.<br>Separate observations follow below.'));
+  const referenceImage = path.join(profile, 'authored-parenthesized-reference.png');
+  fs.writeFileSync(referenceImage, (await window.webContents.capturePage()).toPNG());
+  const referenceOcr = await performOCR(referenceImage, { characters: true });
+  const referenceRow = referenceOcr.blocks.find((block) => block.text.includes('(1)'));
+  assert(referenceRow?.characters?.length === [...referenceRow.text].length);
+  const refAt = referenceRow.text.indexOf('(1)');
+  const mistakenReference = { ...referenceRow, text: referenceRow.text.replace('(1)', '(I)'),
+    characters: referenceRow.characters.map((char, i) => i === refAt + 1 ? { ...char, text: 'I' } : char) };
+  const checkedReference = await recheckReferenceOne(referenceImage,
+    { blocks: [mistakenReference] }, referenceOcr, profile);
+  assert.equal(checkedReference.blocks[0].text, referenceRow.text,
+    'a parenthesized I/1 disagreement needs an agreeing local pixel reading');
+  const cutReference = { ...referenceRow, text: referenceRow.text.slice(0, refAt + 2),
+    characters: referenceRow.characters.slice(0, refAt + 2) };
+  const checkedCut = await recheckReferenceOne(referenceImage,
+    { blocks: [cutReference] }, { blocks: [] }, profile, { supportingOcr: referenceOcr });
+  assert.equal(checkedCut.blocks[0].text, referenceRow.text.slice(0, refAt + 3),
+    'a split OCR block may recover its closing parenthesis only from agreeing source pixels');
+  assert.equal(checkedCut.blocks[0].characters.map((char) => char.text).join(''), checkedCut.blocks[0].text);
+  for (const alternative of [{ blocks: [] }, { blocks: [{ ...referenceRow,
+    text: referenceRow.text.replace('(1)', '(I)') }] }, { blocks: [{ ...referenceRow,
+    characters: referenceRow.characters.map((char) => ({ ...char,
+      boundingBox: { ...char.boundingBox, x: char.boundingBox.x + .2 } })) }] }]) {
+    assert.equal((await recheckReferenceOne(referenceImage, { blocks: [mistakenReference] }, alternative, profile))
+      .blocks[0].text, mistakenReference.text, 'a Roman numeral cannot change without a differing reading at the same pixels');
+  }
+  const unconfirmedReference = await recheckReferenceOne(referenceImage,
+    { blocks: [mistakenReference] }, referenceOcr, profile,
+    { recognize: async () => ({ text: 'loss in (I)', confidence: 1 }) });
+  assert.equal(unconfirmedReference.blocks[0].text, mistakenReference.text);
+  assert.deepEqual(unconfirmedReference.referenceReviewConflicts, [{ source: '(I)', alternative: '(1)' }],
+    'a conflicting local reading must retain the source and expose the disagreement');
   window.destroy();
   fs.rmSync(profile, { recursive: true, force: true });
   console.log('Authored isolated-symbol pixels: crop-confirmed correction and unsupported-candidate rejection passed.');

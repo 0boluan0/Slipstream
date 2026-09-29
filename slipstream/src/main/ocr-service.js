@@ -173,9 +173,9 @@ function runOCR(imagePath, { signal, characters = false, padEdges = false, timeo
 }
 
 async function recheckReferenceOne(imagePath, original, padded, temporary,
-  { signal, recognize = performOCR } = {}) {
+  { signal, recognize = performOCR, supportingOcr } = {}) {
   const source = original?.blocks || [], alternative = padded?.blocks || [];
-  const reference = /\b(?:Figure|Table|Equation|Algorithm|Eq\.) I\b/u;
+  const reference = /\b(?:Figure|Table|Equation|Algorithm|Eq\.) I\b|\(I\)|\(1(?=\s|$)/u;
   if (!source.some((block) => reference.test(block.text))) return original;
   const image = nativeImage.createFromPath(imagePath), size = image.getSize();
   if (image.isEmpty()) return original;
@@ -187,20 +187,42 @@ async function recheckReferenceOne(imagePath, original, padded, temporary,
     const block = blocks[row];
     const match = reference.exec(block.text);
     if (!match || !block.boundingBox) continue;
-    const corrected = block.text.slice(0, match.index) + match[0].replace(/I$/u, '1')
+    const parenthesized = match[0].startsWith('(');
+    const replacement = parenthesized ? '(1)' : match[0].replace(/I$/u, '1');
+    const corrected = block.text.slice(0, match.index) + replacement
       + block.text.slice(match.index + match[0].length);
-    const before = block.text.slice(Math.max(0, match.index - 18), match.index);
+    const context = parenthesized ? 12 : 18;
+    const before = block.text.slice(Math.max(0, match.index - context), match.index);
     const after = block.text.slice(match.index + match[0].length,
-      match.index + match[0].length + 18);
-    if (before.trim().length < 3 || after.trim().length < 3) continue;
-    const alternativeRow = alternative.find((candidate) => candidate.confidence >= .9
-      && candidate.text.includes(before + match[0].replace(/I$/u, '1') + after)
-      && candidate.boundingBox
-      && Math.abs(candidate.boundingBox.y + candidate.boundingBox.h / 2
-        - block.boundingBox.y - block.boundingBox.h / 2) < Math.min(candidate.boundingBox.h, block.boundingBox.h) * .6);
+      match.index + match[0].length + context);
+    if (before.trim().length < 3 || after.trim().length < 3 && !(parenthesized && !after)) continue;
+    let alternativeCharacters;
+    const witnesses = parenthesized ? [...alternative, ...(supportingOcr?.blocks || [])] : alternative;
+    const alternativeRow = witnesses.find((candidate) => {
+      const at = candidate.text.indexOf(before + replacement + after);
+      if (candidate.confidence < .9 || at < 0 || !candidate.boundingBox
+        || Math.abs(candidate.boundingBox.y + candidate.boundingBox.h / 2
+          - block.boundingBox.y - block.boundingBox.h / 2) >= Math.min(candidate.boundingBox.h, block.boundingBox.h) * .6) return false;
+      if (!parenthesized) return true;
+      if (candidate.characters?.length !== [...candidate.text].length
+        || block.characters?.length !== [...block.text].length) return false;
+      const start = [...candidate.text.slice(0, at + before.length)].length;
+      const proposed = candidate.characters.slice(start, start + replacement.length);
+      const sourceStart = [...block.text.slice(0, match.index)].length;
+      const current = block.characters.slice(sourceStart, sourceStart + match[0].length);
+      if (proposed.map((char) => char.text).join('') !== replacement
+        || [...current, ...proposed].some((char) => !char.boundingBox
+          || !(char.boundingBox.w > 0) || !(char.boundingBox.h > 0))) return false;
+      const span = (characters) => ({ left: Math.min(...characters.map((char) => char.boundingBox.x)),
+        right: Math.max(...characters.map((char) => char.boundingBox.x + char.boundingBox.w)) });
+      const a = span(current), b = span(proposed);
+      if (Math.min(a.right, b.right) - Math.max(a.left, b.left) < Math.min(a.right - a.left, b.right - b.left) * .5) return false;
+      alternativeCharacters = proposed;
+      return true;
+    });
     if (!alternativeRow) continue;
     const unresolved = () => {
-      const pair = { source: match[0], alternative: match[0].replace(/I$/u, '1') };
+      const pair = { source: match[0], alternative: replacement };
       if (!referenceReviewConflicts.some((entry) => entry.source === pair.source)) referenceReviewConflicts.push(pair);
     };
     if (!block.characters?.length || block.characters.length !== Array.from(block.text).length) {
@@ -213,7 +235,9 @@ async function recheckReferenceOne(imagePath, original, padded, temporary,
     const x = Math.max(0, Math.floor(Math.min(...chars.map((char) => char.boundingBox.x)) * size.width) - 8);
     const right = Math.min(size.width, Math.ceil(Math.max(...chars.map((char) => char.boundingBox.x + char.boundingBox.w)) * size.width) + 8);
     const y = Math.max(0, Math.floor((1 - Math.max(...chars.map((char) => char.boundingBox.y + char.boundingBox.h))) * size.height) - 8);
-    const bottom = Math.min(size.height, Math.ceil((1 - Math.min(...chars.map((char) => char.boundingBox.y))) * size.height) + 8);
+    // Tall source boxes can touch the next printed row. Parentheses need no
+    // extra lower margin; its stray letter tops can scramble this small crop.
+    const bottom = Math.min(size.height, Math.ceil((1 - Math.min(...chars.map((char) => char.boundingBox.y))) * size.height) + (parenthesized ? 0 : 8));
     if (right - x < 40 || bottom - y < 12) { unresolved(); continue; }
     const crop = path.join(temporary, `reference-${checked++}.png`);
     await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
@@ -222,11 +246,13 @@ async function recheckReferenceOne(imagePath, original, padded, temporary,
       return null;
     });
     if (!confirmed || confirmed.confidence < .9
-      || !confirmed.text.includes(match[0].replace(/I$/u, '1'))) { unresolved(); continue; }
+      || !(parenthesized ? /\(1\)\s*[.,;:]?\s*$/u.test(confirmed.text) : confirmed.text.includes(replacement))) { unresolved(); continue; }
     const index = last - 1;
-    blocks[row] = { ...block, text: corrected, characters: block.characters.map((char, i) =>
-      i === index ? { ...char, text: '1' } : char) };
-    verifiedGlyphConflicts.push({ source: match[0], alternative: match[0].replace(/I$/u, '1') });
+    const start = [...block.text.slice(0, match.index)].length;
+    blocks[row] = { ...block, text: corrected, characters: parenthesized
+      ? [...block.characters.slice(0, start), ...alternativeCharacters, ...block.characters.slice(last)]
+      : block.characters.map((char, i) => i === index ? { ...char, text: '1' } : char) };
+    verifiedGlyphConflicts.push({ source: match[0], alternative: replacement });
   }
   return { ...original, blocks, verifiedGlyphConflicts, referenceReviewConflicts };
 }
@@ -660,7 +686,7 @@ async function performReadingOCR(imagePath, { signal, onProgress } = {}) {
       edges = withoutClippedBottomRows(edges, recognized.size, recognized.clippedBottomY);
     }
     const proseChecked = await recheckProseTokens(imagePath, original, edges, temporary, { signal });
-    const references = await recheckReferenceOne(imagePath, proseChecked, edges, temporary, { signal });
+    const references = await recheckReferenceOne(imagePath, proseChecked, edges, temporary, { signal, supportingOcr: prose });
     const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
     const quoted = await recheckEmptyEdgeQuote(imagePath, corroborated, temporary, { signal });
     const zeroChecked = await recheckAmbiguousProseZero(imagePath, quoted, prose, temporary, { signal });

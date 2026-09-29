@@ -374,6 +374,15 @@ async function main() {
   const splitDocument = mergeFormulaDocument(splitMaskedRow, [], size, splitSourceRow, splitPaddedRow);
   assert.equal((splitDocument.text.match(/which acts as the normalized alternative/gu) || []).length, 1,
     'an adjacent OCR block must not be borrowed into the left block and then repeated at its own position');
+  const overlapLeft = 'Training the function f with an objective (1)';
+  const overlapRight = 'is described as the weighted average loss over finite observations';
+  const overlapSource = { blocks: [tokenBlock(overlapLeft, 1, 42), tokenBlock(overlapRight, 45, 50)] };
+  const overlappingMasked = { blocks: [tokenBlock(overlapLeft.replace(' f ', ' '), 1, 42),
+    tokenBlock(`with an objective (1) ${overlapRight}`, 27, 68)] };
+  const overlapPadded = { blocks: [tokenBlock(`${overlapLeft} ${overlapRight}`, 1, 94)] };
+  assert.equal(mergeFormulaDocument(overlappingMasked, [], size, overlapSource, overlapPadded).text,
+    `${overlapLeft} ${overlapRight}`,
+    'a partially overlapping masked block must not replace a source fragment with its neighboring clause');
   const ravSource = symbolLine('The statistic is estimated from rav inputs');
   const rawPadded = symbolLine('The statistic is estimated from raw inputs');
   const rawMasked = symbolLine('The statistic is estimated from raw inputs');

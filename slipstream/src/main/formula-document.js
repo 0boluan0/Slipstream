@@ -278,6 +278,15 @@ function mergeFormulaDocument(masked, formulas, size, original, edgeProse, verif
     if (!block.boundingBox || block.confidence < .9 || block.text.length < 30) return null;
     const maskedRows = (masked?.blocks || []).filter((candidate) => sharesSourceSpan(block, candidate)
       && proseTokens(candidate.text).size);
+    // Vision can split the source row into adjacent fragments while a masked
+    // observation overlaps both. Its neighboring clause is not evidence that
+    // this fragment is wrong, and would also survive in the next source block.
+    const source = pixelBox(block.boundingBox);
+    if (maskedRows.some((candidate) => {
+      const row = pixelBox(candidate.boundingBox);
+      return row.x < source.x - source.h * .5
+        || row.x + row.w > source.x + source.w + source.h * .5;
+    })) return null;
     const maskedText = maskedRows.sort((a, b) => pixelBox(a.boundingBox).x - pixelBox(b.boundingBox).x)
       .map((candidate) => candidate.text).join(' ');
     if (proseTokens(maskedText).size < 4 || tokenCoverage(maskedText, block.text) >= .45) return null;
