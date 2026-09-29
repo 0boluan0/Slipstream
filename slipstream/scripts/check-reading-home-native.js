@@ -43,6 +43,12 @@ const invocations = [];
 const quitDecisions = [];
 let lastQuitRisk = true;
 const js = (code) => main.webContents.executeJavaScript(code);
+async function showHome() {
+  main.show();
+  // A reader must see the home before clicking it. Establish a shown, painted
+  // renderer before driving the subsequent DOM actions and hide/reload sequence.
+  await js('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+}
 async function shot(window, name) {
   if (!output) return;
   await window.webContents.executeJavaScript('document.fonts.ready');
@@ -120,7 +126,7 @@ app.whenReady().then(async () => {
     : path.join(__dirname, '../dist/renderer/index.html');
   await main.loadFile(entry);
   await until(() => js('Boolean(document.querySelector(".capture-card"))'), 'reading home');
-  main.showInactive();
+  await showHome();
   if (before) {
     await shot(main, '01-reading-home-before.png');
     library.dispose(); pins.dispose(); main.destroy(); cleanupWork(); app.exit(0); return;
@@ -164,7 +170,7 @@ app.whenReady().then(async () => {
   await shot(pin, '03-reading-concept.png');
   await pin.webContents.executeJavaScript('document.getElementById("save-term").click()');
   await until(async () => (await stateOf(pin)).saveStatus === 'saved', 'explicit card save');
-  pins.clear(); main.showInactive();
+  pins.clear(); await showHome();
   await js(`document.querySelector('[aria-label="打开本地术语卡片盒"]').click()`);
   await until(() => BrowserWindow.getAllWindows().length === 2, 'local card box');
   const box = BrowserWindow.getAllWindows().find(window => window !== main);
@@ -223,6 +229,7 @@ app.whenReady().then(async () => {
   assert.equal(settings.setupMode, 'full');
   assert.equal(providerCalls, callsBeforeActivation, 'activation must not submit a user excerpt or start another trial');
   await until(() => lastQuitRisk === false, 'settled reading home');
+  await showHome();
   assert.equal(pins.openText('Correlation does not imply causation.').success, true);
   assert.equal(main.isVisible(), false, 'reading hides the home window');
   await until(() => js('document.visibilityState === "hidden"'), 'hidden reading home visibility');
