@@ -14,6 +14,43 @@ const OCR_SCRIPT = app.isPackaged
   : path.join(APP_ROOT, 'scripts', 'ocr-swift-runner.sh');
 const formulaOcr = createLocalFormulaOcr(app.isPackaged
   ? path.join(process.resourcesPath, 'formula-models') : path.join(APP_ROOT, 'formula-models'));
+let prepared = false;
+let preparation = null;
+let preparationController = null;
+
+function ocrCancellation() {
+  return Object.assign(new Error('OCR cancelled by user'), { isCancellation: true });
+}
+
+function prepareOCR() {
+  if (prepared) return Promise.resolve();
+  if (!preparation) {
+    preparationController = new AbortController();
+    // Cold Vision/ANE compilation can take about 30 seconds. Share this bounded
+    // startup work; each actual screenshot still has a 15-second OCR deadline.
+    preparation = runOCR('--warm-up', { signal: preparationController.signal, timeout: 60000 })
+      .then(() => { prepared = true; })
+      .catch(error => {
+        if (!error.isCancellation) error.code = 'ocr-initialization-failed';
+        throw error;
+      }).finally(() => { preparation = null; preparationController = null; });
+  }
+  return preparation;
+}
+
+function waitForPreparation(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const finish = (callback, value) => {
+      signal.removeEventListener('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, ocrCancellation());
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(value => finish(resolve, value), error => finish(reject, error));
+    if (signal.aborted) onAbort();
+  });
+}
 
 function frontmostDocumentWindow() {
   if (process.platform !== 'darwin') return Promise.resolve(null);
@@ -52,7 +89,18 @@ function cleanOcrText(rawText) {
  * @param {string} imagePath - Absolute path to the image file.
  * @returns {Promise<{text: string, confidence: number, blocks: Array}>}
  */
-function performOCR(imagePath, { signal, characters = false, padEdges = false } = {}) {
+async function performOCR(imagePath, { signal, onProgress, ...options } = {}) {
+  if (signal?.aborted) throw ocrCancellation();
+  if (!prepared) {
+    onProgress?.('initializing');
+    await waitForPreparation(prepareOCR(), signal);
+  }
+  if (signal?.aborted) throw ocrCancellation();
+  onProgress?.('recognizing');
+  return runOCR(imagePath, { ...options, signal });
+}
+
+function runOCR(imagePath, { signal, characters = false, padEdges = false, timeout = 15000 } = {}) {
   return new Promise((resolve, reject) => {
     const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
     let settled = false;
@@ -82,7 +130,7 @@ function performOCR(imagePath, { signal, characters = false, padEdges = false } 
       return;
     }
     child = execFile('/bin/bash', [OCR_SCRIPT, imagePath, ...(characters ? ['--characters'] : []), ...(padEdges ? ['--pad-edges'] : [])], {
-      timeout: 15000,
+      timeout,
       maxBuffer: 8 * 1024 * 1024,
       env: environment,
     }, (error, stdout, stderr) => {
@@ -553,9 +601,9 @@ async function recheckIsolatedProseGlyphs(imagePath, original, padded,
   conflicts, recovered };
 }
 
-async function performReadingOCR(imagePath, { signal } = {}) {
+async function performReadingOCR(imagePath, { signal, onProgress } = {}) {
   const [textResult, formulaResult] = await Promise.allSettled([
-    performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
+    performOCR(imagePath, { signal, onProgress, characters: true }), formulaOcr.recognize(imagePath, { signal }),
   ]);
   if (textResult.status === 'rejected') throw textResult.reason;
   let original = textResult.value;
@@ -702,13 +750,16 @@ async function verifyMissingInteriorRows(imagePath, original, padded, { signal }
 
 /**
  * Cleanup any resources held by the OCR service.
- * Currently a no-op but provided for interface consistency.
+ * Cancel background preparation and release the local formula workers.
  */
 function cleanup() {
+  preparationController?.abort();
+  prepared = false;
   return formulaOcr.cleanup();
 }
 
 module.exports = {
+  prepareOCR,
   frontmostDocumentWindow,
   performOCR,
   performReadingOCR,

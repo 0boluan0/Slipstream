@@ -1,7 +1,7 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 11
+let OCR_VERSION = 12
 
 import Vision
 import AppKit
@@ -139,7 +139,14 @@ func main() {
     let imagePath = CommandLine.arguments[1]
     let imageURL = URL(fileURLWithPath: imagePath)
 
-    guard let image = NSImage(contentsOf: imageURL) else {
+    // Initialize Vision's model cache without reading a screen or user file.
+    let input = imagePath == "--warm-up"
+        ? NSImage(size: NSSize(width: 64, height: 64), flipped: false, drawingHandler: { rect in
+            NSColor.white.setFill()
+            rect.fill()
+            return true
+        }) : NSImage(contentsOf: imageURL)
+    guard let image = input else {
         let output = Output(error: "Failed to load image at path: \(imagePath)")
         print(encodeJSON(output))
         exit(1)

@@ -964,7 +964,12 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       // The selection mutex can be released while this card performs OCR.
       if (selecting === controller) selecting = null;
       showPendingCards();
-      const ocr = await performOCR(file, { signal: controller.signal });
+      const ocr = await performOCR(file, { signal: controller.signal, onProgress: stage => {
+        if (!alive(pin) || controller.signal.aborted) return;
+        update(pin, { notice: stage === 'initializing'
+          ? '正在准备本机识字，首次使用可能需要约半分钟。完成后会自动继续；关闭卡片可取消本次阅读。'
+          : '' });
+      } });
       if (controller.signal.aborted) {
         if (alive(pin)) close(pin);
         return { success: false, cancelled: true };
@@ -1099,7 +1104,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         return { success: false, cancelled: true };
       }
       if (pin && alive(pin)) {
-        update(pin, { phase: 'error', notice: '文字识别没有完成，请重新框选清晰的一段英文。' });
+        update(pin, { phase: 'error', notice: error.code === 'ocr-initialization-failed'
+          ? '本机识字准备没有完成，请再次截图重试。原图仍可在这张卡片中查看。'
+          : '文字识别没有完成，请重新框选清晰的一段英文。' });
         return { success: true, pinned: true };
       }
       onError(error.code === 'capture-timeout' ? '框选等待时间较长，已结束本次截图。请按快捷键重新框选。'

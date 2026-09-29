@@ -53,6 +53,7 @@ app.whenReady().then(async () => {
   const fixture = path.join(work, 'source.png');
   fs.writeFileSync(fixture, (await sourceWindow.webContents.capturePage()).toPNG());
   if (output) { fs.copyFileSync(fixture, path.join(output, 'reading-math-source.png')); fs.writeFileSync(path.join(output, 'reading-math-source.txt'), source); }
+  require('./prepare-ocr-test')(fixture);
   const ocr = await require('../src/main/ocr-service').performOCR(fixture);
   console.log(JSON.stringify({ localOcr: ocr.text, confidence: ocr.confidence }));
   if (output) fs.writeFileSync(path.join(output, 'reading-math-local-ocr.json'), JSON.stringify(ocr, null, 2));

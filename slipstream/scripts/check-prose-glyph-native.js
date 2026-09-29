@@ -4,7 +4,6 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 const { app, BrowserWindow } = require('electron');
 
 if (process.platform !== 'darwin') { console.log('Apple Vision glyph pixel check skipped.'); process.exit(0); }
@@ -27,12 +26,7 @@ app.whenReady().then(async () => {
   await window.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   const imagePath = path.join(profile, 'authored-temperature.png');
   fs.writeFileSync(imagePath, (await window.webContents.capturePage()).toPNG());
-  // Release apps bundle this helper. Give development compilation its own
-  // setup budget instead of charging it to a 15-second recognition request.
-  execFileSync('/bin/bash', [path.join(__dirname, 'ocr-swift-runner.sh'), imagePath], {
-    env: require('../src/main/ocr-environment').createOcrEnvironment(path.join(app.getPath('userData'), 'ocr-cache')),
-    timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  require('./prepare-ocr-test')(imagePath);
   const { performOCR, recheckIsolatedProseGlyphs, recheckProseTokens } = require('../src/main/ocr-service');
   const padded = await performOCR(imagePath, { characters: true, padEdges: true });
   assert.match(padded.blocks[0]?.text || '', /\bT\b.*\bT\b/u,

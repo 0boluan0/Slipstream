@@ -85,6 +85,7 @@ app.whenReady().then(async () => {
   const fixture = path.join(work, 'source.png');
   fs.writeFileSync(fixture, (await sourceWindow.webContents.capturePage()).toPNG());
   sourceWindow.destroy();
+  require('./prepare-ocr-test')(fixture);
   const cutBitmap = Buffer.alloc(300 * 100 * 4, 255);
   for (let y = 0; y < 4; y++) for (let x = 30; x < 42; x++) {
     const offset = (y * 300 + x) * 4;

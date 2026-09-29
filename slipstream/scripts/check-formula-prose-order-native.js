@@ -17,6 +17,7 @@ setTimeout(() => { console.error('Prose-order OCR timed out'); app.exit(1); }, 4
 
 app.whenReady().then(async () => {
   app.dock?.hide();
+  require('./prepare-ocr-test')(input);
   const { performOCR, performReadingOCR, recheckMergedProseAboveFormula } =
     require('../src/main/ocr-service');
   const padded = await performOCR(input, { characters: true, padEdges: true });

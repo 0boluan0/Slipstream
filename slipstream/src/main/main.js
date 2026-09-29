@@ -2905,6 +2905,7 @@ app.on('ready', () => {
   if (!uiFixtureMode.enabled) registerIpcHandlers();
   createMainWindow(settings);
   if (uiFixtureMode.enabled) return;
+  if (process.platform === 'darwin') OCRService.prepareOCR().catch(() => {});
   const termCardStore = createTermCardStore(path.join(app.getPath('documents'), 'Slipstream', '术语卡片'));
   termLibrary = createTermLibrary({ BrowserWindow, ipcMain, shell, dialog, store: termCardStore });
   readingPins = createReadingPins({
