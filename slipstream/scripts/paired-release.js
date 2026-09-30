@@ -9,7 +9,7 @@ const sha256 = file => crypto.createHash('sha256').update(fs.readFileSync(file))
 
 function sourceIdentity() {
   const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-  const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal', '--', 'src', 'scripts', 'preload.js', 'package.json', 'package-lock.json', 'build'], { cwd: root, encoding: 'utf8' }).trim();
+  const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=normal', '--', 'src', 'scripts', 'preload.js', 'package.json', 'package-lock.json', 'build', 'assets', 'licenses', 'LICENSE', 'README.md'], { cwd: root, encoding: 'utf8' }).trim();
   if (dirty) throw new Error('Commit the application and build inputs before producing paired release artifacts.');
   return { version: require('../package.json').version, sourceRevision: revision };
 }
