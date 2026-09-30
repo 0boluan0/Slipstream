@@ -5775,7 +5775,7 @@ export default function FloatingPanel({
                 </div>
               )}
 
-              {!ocrReviewCopy && screenshotSupported && (
+              {!ocrReviewCopy && platform === 'darwin' && (
                 <p className="capture-permission-note" role="note">
                   <ShieldCheck size={16} weight="fill" aria-hidden="true" />
                   <span>{readingImageEnabled
