@@ -97,7 +97,7 @@ npm run dev
 
 ## Code signing policy
 
-Windows 正在准备申请 SignPath Foundation 开源签名，当前预览安装包仍未签名，申请尚未获批。签名负责人、构建来源与发行要求见 [Code signing policy](./docs/code-signing.md)。
+Windows 的 SignPath Foundation 开源签名申请已于 2026-09-30 提交，等待审核。当前预览安装包仍未签名，申请尚未获批。签名负责人、构建来源与发行要求见 [Code signing policy](./docs/code-signing.md)。
 
 ## 项目状态与参与
 

@@ -1,6 +1,6 @@
 # Code signing policy
 
-Slipstream is preparing an application to [SignPath Foundation](https://signpath.org/) for free Windows code signing. Approval and a production signing certificate are pending. The Windows installer in `v1.3.0-preview.1` is unsigned; this application does not change that installer or its trust status.
+Slipstream submitted its application to [SignPath Foundation](https://signpath.org/) for free Windows code signing on 2026-09-30. The application page confirmed submission; approval and a production signing certificate are pending. The Windows installer in `v1.3.0-preview.1` is unsigned; this application does not change that installer or its trust status.
 
 ## Project and responsibilities
 
