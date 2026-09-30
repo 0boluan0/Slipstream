@@ -93,7 +93,11 @@ npm run dev
 - **保存由你决定**：临时阅读卡片不自动成为历史记录；主动保存的概念卡片包含解释和原文。
 - **剪贴板监听默认关闭**，开启前确认处理去向，开启后界面和菜单栏持续显示去向及关闭入口；API Key 使用 macOS 加密存储；应用没有账户、广告或产品分析埋点。
 
-详见[隐私与数据流](./docs/PRIVACY.md)。
+详见[隐私与数据流](./docs/PRIVACY.md)与 [Windows 预览隐私说明](./docs/windows-privacy.md)。
+
+## Code signing policy
+
+Windows 正在准备申请 SignPath Foundation 开源签名，当前预览安装包仍未签名，申请尚未获批。签名负责人、构建来源与发行要求见 [Code signing policy](./docs/code-signing.md)。
 
 ## 项目状态与参与
 

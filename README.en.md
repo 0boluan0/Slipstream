@@ -8,6 +8,8 @@ A macOS quick lookup companion for native Chinese speakers reading English textb
 
 > **Reading release v1.2.1** · macOS 12+ · [Download](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · Existing production installations can check for updates from the Slipstream menu.
 
+**[Code signing policy](./docs/code-signing.md):** an application to SignPath Foundation for Windows signing is being prepared. Approval and signing integration are pending; the current Windows preview remains unsigned.
+
 ## Stay with the page
 
 1. Press `Option + Shift + S`. Drag a bright rectangle on the dimmed screen around the small part you need help with, including any necessary nearby explanation. Release to read, or press `Esc` to cancel.
