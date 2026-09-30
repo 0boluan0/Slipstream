@@ -19,6 +19,8 @@ async function run() {
   assert.equal(sameMath('The $28^{th}$ conference.', '第 $28$ 届会议。'), true);
   assert.equal(sameMath('The $28^{th}$ conference.', '第 $29$ 届会议。'), false);
   assert.equal(sameMath('$X\\to$\n$\\{0,1\\}$', '$X\\to\\{0,1\\}$'), true);
+  assert.equal(sameMath('The value is $x$\n\n$$u+v$$', '数值是 $x$。\n\n$$u+v$$'), true,
+    'independent display formulas remain separate when prose moves');
   assert.equal(sameMath('$x_i \\text{ are raw input vectors}$', '$x_i \\text{ 是原始输入向量}$'), true);
   assert.equal(sameMath('$x$ then $y$.', '$y$，然后 $x$。'), true);
   assert.throws(() => validateReadingImage('data:image/png;base64,aGVsbG8='), /reading-invalid-image/u);
