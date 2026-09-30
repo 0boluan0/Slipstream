@@ -141,7 +141,7 @@ app.whenReady().then(async () => {
     await shot(main, '01-reading-home-before.png');
     library.dispose(); pins.dispose(); main.destroy(); cleanupWork(); app.exit(0); return;
   }
-  assert.equal(await js('document.querySelector("h1").textContent'), '读懂原文，留下概念');
+  assert.equal(await js('document.querySelector("h1").textContent'), '卡住哪一块，就划哪一块');
   if (windowsUi) {
     assert.equal(await js('document.querySelector(".reading-capture-primary") === null'), true);
     assert(await js('document.body.textContent.includes("Windows 预览暂不支持截图识字")'));

@@ -258,7 +258,7 @@ assert.equal(
 
 assert.match(
   floatingPanel,
-  /aria-label="要解释的完整原文"[\s\S]{0,180}lang=\{inputText\.trim\(\) \? inferTextLanguageTag\(inputText\) : undefined\}/u,
+  /aria-label=\{readingStart \? '要查的词句或短段落' : '要解释的完整原文'\}[\s\S]{0,180}lang=\{inputText\.trim\(\) \? inferTextLanguageTag\(inputText\) : undefined\}/u,
 );
 assert.match(floatingPanel, /const previousVisibleRef = useRef\(visible\);/u);
 assert.match(

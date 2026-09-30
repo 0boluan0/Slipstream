@@ -468,7 +468,7 @@ function settledTaskFocusTarget() {
   return resultFocusTarget()
     || document.getElementById('ocr-review-title')
     || document.getElementById('processing-error-card')
-    || document.querySelector('textarea[aria-label="要解释的完整原文"]');
+    || document.querySelector('.capture-input textarea');
 }
 
 if (RESULT_DEMO) document.documentElement.dataset.previewTheme = 'light';
@@ -4692,7 +4692,8 @@ export default function FloatingPanel({
         : '';
   const capturePlaceholder = settings.clipboardMonitoring
     ? '粘贴英文，或复制后等待自动检测…'
-    : '也可以粘贴教材、论文或专业文章中的一段英文…';
+    : readingStart ? '粘贴不懂的词句或短段落；公式请带上必要说明…'
+      : '也可以粘贴教材、论文或专业文章中的一段英文…';
   const sourceDescriptionIds = [
     ocrReviewCopy ? 'ocr-review-detail' : null,
     ocrReviewCopy ? 'ocr-review-destination' : null,
@@ -5450,21 +5451,22 @@ export default function FloatingPanel({
                   <p className="eyebrow">{isEditingSource ? '修正原文' : '英文教材 · 论文 · 专业阅读'}</p>
                   <h1>{isEditingSource
                     ? '核对并修正识别文本'
-                    : isFreeTranslate ? '让英文阅读继续下去' : '读懂原文，留下概念'}</h1>
+                    : readingStart ? '卡住哪一块，就划哪一块'
+                      : isFreeTranslate ? '让英文阅读继续下去' : '读懂原文，留下概念'}</h1>
                   <p>{isEditingSource
                     ? '上一份结果仍在内存保留；只有修正后的原文生成成功，才会替换它。'
                     : !screenshotSupported
                       ? '复制或粘贴英文，看中文译文；按需解释概念并保存卡片。Windows 预览暂不支持截图识字。'
                       : isFreeTranslate
                       ? '框选一段英文，把中文译文贴在阅读位置旁。'
-                      : '框选正在读的内容，看中文译文；遇到不懂的概念，再展开解释、存成卡片。'}</p>
+                      : '遇到不懂的词句、公式或小块图文，框选后看中文；查懂就关掉浮窗，继续读。'}</p>
                 </div>
               </div>
 
               {readingStart && screenshotSupported && !ocrReviewCopy && (<>
                 <button type="button" className="reading-capture-primary" onClick={handleScreenshot}>
                   <Camera size={24} aria-hidden="true" />
-                  <span><strong>截图阅读</strong><small>框选一段，译文贴在屏幕旁</small></span>
+                  <span><strong>截图阅读</strong><small>框选不懂的这一小块</small></span>
                   <kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT, platform)}</kbd>
                 </button>
                 <ol className="capture-start-steps" aria-label="截图阅读步骤">
@@ -5633,7 +5635,7 @@ export default function FloatingPanel({
                     }
                   }}
                   placeholder={capturePlaceholder}
-                  aria-label="要解释的完整原文"
+                  aria-label={readingStart ? '要查的词句或短段落' : '要解释的完整原文'}
                   aria-describedby={sourceDescriptionIds}
                   lang={inputText.trim() ? inferTextLanguageTag(inputText) : undefined}
                 />

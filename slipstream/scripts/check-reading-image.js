@@ -26,7 +26,12 @@ async function run() {
   const read = createImageReader(async (_settings, backend, model, _prompt, content) => {
     calls += 1;
     assert.equal(backend, settingsSnapshot.activeBackend); assert.equal(model, settingsSnapshot.activeModel);
-    assert.equal(content[1].image_url.url, image);
+    if (calls === 1) {
+      assert.equal(content[1].image_url.url, image);
+      return JSON.stringify({ source: valid.source, uncertain: [] });
+    }
+    assert.equal(typeof content, 'string', 'translation uses the transcribed local text');
+    assert.ok(content.includes(valid.source.replaceAll('\\', '\\\\')));
     return JSON.stringify(valid);
   });
   await assert.rejects(read({ image, settingsSnapshot: { ...settingsSnapshot, setupMode: 'unconfigured' } }), /unavailable/u);
@@ -34,6 +39,7 @@ async function run() {
   await assert.rejects(read({ image, settingsSnapshot, signal: cancelled.signal }), /cancelled/u);
   assert.equal(calls, 0);
   assert.equal((await read({ image, settingsSnapshot })).translation, valid.translation);
+  assert.equal(calls, 2, 'one image transcription then one text translation');
   const equationOnly = { source: '$$Y = D\\theta_0 + U$$', translation: '$$Y = D\\theta_0 + U$$',
     uncertain: [], terms: [{ quote: 'D\\theta_0', label: '处理效应', role: 'core' }],
     references: [{ symbol: 'U', meaning: '结构误差项', evidence: 'Y = D\\theta_0 + U' }] };
@@ -50,13 +56,33 @@ async function run() {
   let step = 0, firstShown = false;
   const terms = [{ quote: 'gradient', label: '梯度', role: 'core' }, { quote: 'moment', label: '矩', role: 'core' }];
   const withTerms = { ...valid, source: valid.source + ' A moment is used.', terms };
-  const reviewed = await createImageReader(async () => ++step === 1 ? JSON.stringify(withTerms) : '{"keep":[0]}')({
-    image, settingsSnapshot, onTranslation: result => { firstShown = true; assert.equal(step, 1); assert.deepEqual(result.terms, []); },
+  const reviewed = await createImageReader(async () => ++step <= 2 ? JSON.stringify(withTerms) : '{"keep":[0]}')({
+    image, settingsSnapshot, onTranslation: result => { firstShown = true; assert.equal(step, 2); assert.deepEqual(result.terms, []); assert.equal(result.text, withTerms.source); },
   });
   assert.equal(firstShown, true); assert.equal(reviewed.terms.length, 1); assert.equal(reviewed.terms[0].quote, 'gradient');
   step = 0;
-  const unavailable = await createImageReader(async () => ++step === 1 ? JSON.stringify(withTerms) : '{"keep":[99]}')({ image, settingsSnapshot });
+  const unavailable = await createImageReader(async () => ++step <= 2 ? JSON.stringify(withTerms) : '{"keep":[99]}')({ image, settingsSnapshot });
   assert.equal(unavailable.translation, valid.translation); assert.deepEqual(unavailable.terms, []);
+  step = 0; firstShown = false;
+  await assert.rejects(createImageReader(async () => {
+    step += 1;
+    return step === 1 ? JSON.stringify(withTerms) : step === 2
+      ? JSON.stringify({ ...withTerms, translation: valid.translation.replace('t-1', 't+1') }) : '{"keep":[0]}';
+  })({ image, settingsSnapshot, onTranslation: () => { firstShown = true; } }), /reading-image-math-mismatch/u);
+  assert.equal(firstShown, false, 'mismatched formulas never reach the early result callback');
+  step = 0;
+  const duringTranslation = new AbortController();
+  await assert.rejects(createImageReader(async () => {
+    if (++step === 2) duringTranslation.abort();
+    return JSON.stringify(valid);
+  })({ image, settingsSnapshot, signal: duringTranslation.signal }), /reading-cancelled/u);
+  assert.equal(step, 2);
+  const usage = () => {}, stages = []; step = 0;
+  await createImageReader(async (...args) => {
+    assert.equal(args[9].onUsage, usage, 'both requests report usage to the caller');
+    step += 1; return JSON.stringify(valid);
+  })({ image, settingsSnapshot, onUsage: usage, onResponse: (_raw, info) => stages.push(info.stage) });
+  assert.deepEqual(stages, ['transcription', 'text']); assert.equal(step, 2);
   console.log('image reading transport, cancellation, formula integrity and term review checks passed');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

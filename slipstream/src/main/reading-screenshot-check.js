@@ -30,8 +30,9 @@ exports.run = async ({ settings, output, manifestPath }) => {
         if (fs.statSync(file).size > 32 * 1024 * 1024) throw new Error('Image too large');
         const result = await readScreenshot({ image: `data:image/png;base64,${fs.readFileSync(file).toString('base64')}`,
           settingsSnapshot: settings, signal: AbortSignal.timeout(95000),
-          onResponse: raw => fs.writeFileSync(path.join(output, `${id}-raw.json`), raw, { mode: 0o600 }),
-          onUsage: ({ model, usage }) => { record.model = model; record.requests.push({ model, usage }); },
+          onResponse: (raw, request) => fs.writeFileSync(path.join(output,
+            `${id}-${request.stage}-${request.index}-raw.json`), raw, { mode: 0o600 }),
+          onUsage: ({ model, usage }) => { record.model = model; record.requests.push({ date: new Date().toISOString(), model, usage }); },
           onTranslation: () => { record.firstTranslationMs ??= Math.round(performance.now() - start); } });
         fs.writeFileSync(path.join(output, `${id}-cloud.json`), JSON.stringify({ id, result }, null, 2) + '\n', { mode: 0o600 });
         Object.assign(record, { success: true, sourceLength: result.text.length, translationLength: result.translation.length, uncertain: result.uncertain });

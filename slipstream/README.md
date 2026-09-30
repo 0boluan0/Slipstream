@@ -32,7 +32,7 @@ Apple Vision 首次初始化可能超过普通识字的 15 秒时限。应用启
 | --- | --- |
 | `src/main/reading-pins.js` | 独立窗口、截图/OCR、文字入口、请求生命周期、选词解释与保存 |
 | `src/main/reading-service.js` | 翻译与术语契约、原文匹配、可为空的推荐、上下文解释 |
-| `src/main/reading-image.js` | 同一配置读图、数学一致性拦截、明确来源定义、可取消的术语复核 |
+| `src/main/reading-image.js` | 同一配置先转写选区、再翻译局部原文，公式一致性拦截与可取消的术语复核 |
 | `src/main/capture-overlay.js`、`capture-overlay/` | 暗屏拖框、坐标裁切、取消清理，只返回选区图片 |
 | `src/main/reading-document.js` | 分段与段落状态，保留独立公式 |
 | `src/main/reading-pin/` | 中文阅读卡片、英文对照、原图与公式核对 |
