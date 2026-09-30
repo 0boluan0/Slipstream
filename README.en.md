@@ -8,7 +8,9 @@ A macOS quick lookup companion for native Chinese speakers reading English textb
 
 > **Reading release v1.2.1** · macOS 12+ · [Download](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · Existing production installations can check for updates from the Slipstream menu.
 
-**[Code signing policy](./docs/code-signing.md):** SignPath Foundation declined the application on 2026-09-30 because the project does not yet have enough public trust and community-adoption evidence. The current Windows preview remains unsigned.
+**[Download the unsigned Windows preview (about 160 MB)](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.1/Slipstream-Windows-Preview-1.3.0-preview.1-x64-Setup.exe)** · [Installation instructions (Chinese)](./docs/windows-preview.md#下载与安装)
+
+**[Code signing policy](./docs/code-signing.md):** the Windows preview is distributed unsigned. Windows may display an unknown-publisher or SmartScreen prompt during installation.
 
 ## Stay with the page
 
