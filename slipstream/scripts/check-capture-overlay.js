@@ -22,7 +22,7 @@ class Window extends EventEmitter {
   isDestroyed() { return this.destroyed; }
   setAlwaysOnTop() {} setVisibleOnAllWorkspaces() {} showInactive() {} show() {} focus() {}
 }
-function load() {
+function load(platform = 'darwin') {
   handlers = new Map(); windows = []; snapshots = Promise.resolve([{ display_id: '1', thumbnail: image }]); loadFailure = false;
   const fake = { BrowserWindow: Window, desktopCapturer: { getSources: () => snapshots },
     ipcMain: { handle: (key, handler) => handlers.set(key, handler), removeHandler: key => handlers.delete(key) },
@@ -30,7 +30,7 @@ function load() {
   const module = { exports: {} };
   vm.runInNewContext(fs.readFileSync(path.join(main, 'capture-overlay.js'), 'utf8'), {
     module, exports: module.exports, __dirname: main, require: name => name === 'electron' ? fake : require(name),
-    Buffer, setTimeout, clearTimeout,
+    Buffer, setTimeout, clearTimeout, process: { platform },
   });
   return module.exports;
 }
@@ -42,12 +42,21 @@ async function run() {
   const selected = api.selectRegion(); await tick();
   const handler = handlers.get('capture-overlay:action'), window = windows[0];
   assert.equal(window.options.webPreferences.sandbox, true); assert.equal(window.options.webPreferences.nodeIntegration, false);
+  assert.equal(window.options.fullscreen, false, 'macOS retains its existing window behavior');
   const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
   assert.throws(() => handler({ ...event, senderFrame: { url: entry } }, 'select', {}), /Untrusted/u);
   assert.equal(handler(event, 'select', { x: -10, y: 20, width: 100, height: 50 }), false);
   handler(event, 'select', { x: 10, y: 20, width: 100, height: 60 });
   assert.deepEqual(JSON.parse((await selected).toString()), { x: 20, y: 40, width: 200, height: 120 });
   assert.equal(handlers.size, 0); assert.equal(window.isDestroyed(), true);
+  api = load('win32');
+  const windowsSelection = api.selectRegion(); await tick();
+  const fullWindow = windows[0];
+  assert.equal(fullWindow.options.fullscreen, true, 'Windows capture must include the taskbar area');
+  assert.equal(fullWindow.options.resizable, true, 'Windows fullscreen must be allowed to exceed the work area');
+  assert.equal(fullWindow.options.maximizable, true);
+  handlers.get('capture-overlay:action')({ sender: fullWindow.webContents, senderFrame: fullWindow.webContents.mainFrame }, 'select', { x: 10, y: 20, width: 100, height: 60 });
+  assert.deepEqual(JSON.parse((await windowsSelection).toString()), { x: 20, y: 40, width: 200, height: 120 });
   api = load(); snapshots = new Promise(() => {});
   const controller = new AbortController(), waiting = api.selectRegion({ signal: controller.signal }); controller.abort();
   await assert.rejects(waiting, error => error.isCancellation === true);

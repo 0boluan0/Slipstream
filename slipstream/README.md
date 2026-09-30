@@ -78,3 +78,7 @@ npm run build:reading-preview
 阅读版从 1.1.0 开始提供正式安装包，使用 `com.slipstream.app` 与既有应用内更新渠道。正式发布运行 `npm run release:signed`，核对两个架构的签名、公证、安装包、更新元数据和校验和后，再发布同一提交的版本标签。
 
 公证凭据可通过已验证的 Keychain profile 提供：设置 `APPLE_KEYCHAIN` 为钥匙串路径，`APPLE_KEYCHAIN_PROFILE` 为 profile 名称。凭据保留在本机钥匙串，不写入仓库。完整流程见[发布说明](../docs/RELEASE.md)。
+
+## Windows 与双端预览
+
+Windows 11 x64 的截图阅读通过已启用的图片 API；首次图片试读、局部翻译和解释与 Mac 共用链路，本机 Vision OCR 仍只在 Mac 可用。运行 `npm run build:windows` 构建独立 NSIS 预览；Mac 使用 `npm run build:reading-preview -- --dmg` 生成独立签名 DMG。两份包必须来自同一提交，复制安装包及清单后运行 `npm run release:pair -- /absolute/path/to/directory` 验证。发行与真机证据见[双端发行](../docs/paired-release.md)和[Windows 预览](../docs/windows-preview.md)。
