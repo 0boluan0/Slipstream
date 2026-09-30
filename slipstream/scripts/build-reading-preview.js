@@ -8,6 +8,8 @@ const { execFileSync } = require('node:child_process');
 const { resolveDeveloperIdIdentity, assertCleanPackagingInputs } = require('./build-macos');
 const { READING_PREVIEW } = require('../src/shared/reading-preview.cjs');
 const { check } = require('./check-reading-preview-identity');
+const { extractFile } = require('@electron/asar');
+const { sourceIdentity, writeManifest } = require('./paired-release');
 const root = path.join(__dirname, '..');
 function buildArguments(output, identity) {
   return ['--dir', '--mac', '--arm64', '--publish', 'never',
@@ -22,6 +24,7 @@ function buildArguments(output, identity) {
 }
 function build() {
   if (process.platform !== 'darwin') throw new Error('Reading preview requires macOS.');
+  const source = sourceIdentity();
   const identity = resolveDeveloperIdIdentity();
   const output = fs.mkdtempSync(path.join(os.tmpdir(), 'slipstream-reading-preview-'));
   const project = path.join(output, 'project');
@@ -37,12 +40,26 @@ function build() {
   delete environment.SLIPSTREAM_REQUIRE_SIGNING;
   execFileSync('npm', ['ci', '--no-audit', '--no-fund'], { cwd: project, env: environment, stdio: 'inherit' });
   assertCleanPackagingInputs(project);
-  execFileSync(path.join(project, 'node_modules/.bin/electron-builder'), buildArguments(output, identity), { cwd: project, env: environment, stdio: 'inherit' });
+  execFileSync(path.join(project, 'node_modules/.bin/electron-builder'), [...buildArguments(output, identity),
+    `-c.extraMetadata.slipstreamSourceRevision=${source.sourceRevision}`], { cwd: project, env: environment, stdio: 'inherit' });
   const built = path.join(output, 'mac-arm64/Slipstream.app');
   const preview = path.join(output, `${READING_PREVIEW.name}.app`);
   fs.renameSync(built, preview);
   check(preview);
   fs.rmSync(project, { recursive: true, force: true });
+  if (process.argv.includes('--dmg')) {
+    const contents = path.join(output, 'installer');
+    fs.mkdirSync(contents);
+    execFileSync('ditto', [preview, path.join(contents, path.basename(preview))]);
+    fs.symlinkSync('/Applications', path.join(contents, 'Applications'));
+    const artifact = path.join(output, `Slipstream-Reading-Preview-${source.version}-arm64.dmg`);
+    execFileSync('hdiutil', ['create', '-volname', READING_PREVIEW.name, '-srcfolder', contents, '-format', 'UDZO', artifact], { stdio: 'inherit' });
+    execFileSync('hdiutil', ['verify', artifact], { stdio: 'inherit' });
+    const metadata = JSON.parse(extractFile(path.join(preview, 'Contents/Resources/app.asar'), 'package.json'));
+    writeManifest(artifact, 'darwin', 'arm64', source, metadata);
+    fs.rmSync(contents, { recursive: true, force: true });
+    console.log(`READING_PREVIEW_DMG=${artifact}`);
+  }
   console.log(`READING_PREVIEW_APP=${preview}`);
 }
 if (require.main === module) {

@@ -437,7 +437,7 @@ async function testProviderReadiness(settings, dependencies = {}) {
   const stopped = () => failed(timedOut ? CONNECTION_CODES.TIMEOUT : CONNECTION_CODES.CANCELLED);
   const connectionTest = dependencies.testProviderConnection || testProviderConnection;
   const processReadingText = dependencies.processReadingText || LLMService.processReadingText;
-  const requireImage = dependencies.requireImage ?? process.platform === 'darwin';
+  const requireImage = dependencies.requireImage ?? ['darwin', 'win32'].includes(process.platform);
   const readScreenshot = dependencies.readScreenshot || LLMService.readScreenshot;
   try {
     const metadataResult = await connectionTest(settings, {

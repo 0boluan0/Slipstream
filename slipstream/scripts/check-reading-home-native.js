@@ -100,7 +100,7 @@ app.whenReady().then(async () => {
     }
     if (channel === 'provider:connection-test') return testProviderReadiness({ ...settings }, {
       testProviderConnection: async () => ({ status: 'connected', code: 'ok' }),
-      requireImage: !windowsUi,
+      requireImage: true,
       readScreenshot: async ({ image, settingsSnapshot }) => {
         providerCalls += 1;
         assert.match(image, /^data:image\/png;base64,/);
@@ -143,8 +143,8 @@ app.whenReady().then(async () => {
   }
   assert.equal(await js('document.querySelector("h1").textContent'), '卡住哪一块，就划哪一块');
   if (windowsUi) {
-    assert.equal(await js('document.querySelector(".reading-capture-primary") === null'), true);
-    assert(await js('document.body.textContent.includes("Windows 预览暂不支持截图识字")'));
+    assert.equal(await js('document.querySelector(".reading-capture-primary") === null'), false);
+    assert(await js('document.body.textContent.includes("支持图片的服务")'));
     assert(await js('document.body.textContent.includes("Alt+C")'));
     assert.equal(await js('document.querySelector(".capture-permission-note") === null'), true);
   } else {
@@ -204,8 +204,7 @@ app.whenReady().then(async () => {
   await shot(main, '06-reading-setup.png');
   assert(await js('document.body.textContent.includes("专业阅读")'));
   if (windowsUi) {
-    assert(await js('document.body.textContent.includes("Windows 预览暂不支持截图识字")'));
-    assert.equal(await js('document.body.textContent.includes("截图读译文")'), false);
+    assert(await js('document.body.textContent.includes("支持图片的阅读服务")'));
   }
   await js(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('配置阅读服务')).click()`);
   await until(() => js('Boolean(document.querySelector(".settings-panel"))'), 'reading setup settings');
@@ -240,7 +239,7 @@ app.whenReady().then(async () => {
     && await js('!document.querySelector(".settings-panel") && Boolean(document.querySelector(".capture-card"))'),
   'activation settings persisted and reading home visible');
   assert.equal(settings.setupMode, 'full');
-  assert.equal(settings.screenshotReadingMode, windowsUi ? 'local' : 'image',
+  assert.equal(settings.screenshotReadingMode, 'image',
     'only the image-tested macOS trial enables image reading');
   assert.equal(providerCalls, callsBeforeActivation, 'activation must not submit a user excerpt or start another trial');
   await until(() => lastQuitRisk === false, 'settled reading home');

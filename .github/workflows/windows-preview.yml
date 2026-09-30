@@ -25,10 +25,12 @@ jobs:
           cache-dependency-path: slipstream/package-lock.json
       - run: npm ci
       - run: npm run check:windows
+      - run: npm run check:reading-image
+      - run: npm run check:paired-release
       - run: npm run check:build-identity
       - run: npm run lint
       - run: npm run build:renderer
-      - name: Text reading, contextual lookup and local card persistence (fixture provider)
+      - name: Image setup, text reading, contextual lookup and local cards (fixture provider)
         run: npm run check:windows-ui
       - name: Build unsigned Windows preview installer
         run: node scripts/build-windows.js
@@ -37,4 +39,5 @@ jobs:
           name: slipstream-windows-preview-x64
           path: |
             slipstream/release/windows-preview/*Setup.exe
+            slipstream/release/windows-preview/*Setup.exe.manifest.json
           if-no-files-found: error

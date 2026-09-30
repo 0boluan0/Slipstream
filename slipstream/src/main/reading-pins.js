@@ -268,7 +268,7 @@ function readingDestination(settings) {
 
 function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMainWindow,
   captureRegion, getCaptureWindow = async () => null, performOCR, processReadingText, readScreenshot, recognizeReadingFormulas, requestCapturePermission, canCapture = () => true,
-  captureAppName = 'Slipstream', captureSupported = true,
+  captureAppName = 'Slipstream', captureSupported = true, localOcrSupported = true,
   copyText = () => {}, saveTermCard, findTermCard, referenceStore, onOpenLibrary = () => {}, onOpenSettings = () => {}, onError = () => {}, classifyError = () => '处理没有完成，请重试或检查设置。' }) {
   const pins = new Map();
   let selecting = null;
@@ -911,7 +911,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   async function capture({ owner } = {}) {
     if (disposed || !canCapture()) return { success: false, cancelled: true };
     if (!captureSupported) {
-      const error = 'Windows 预览暂不支持截图识字。请复制英文后使用剪贴板阅读，或粘贴文字开始阅读。';
+      const error = '当前系统暂不支持截图。请复制或粘贴英文开始阅读。';
       onError(error);
       return { success: false, error };
     }
@@ -920,7 +920,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       onError(`已经有 ${MAX_PINS} 张阅读卡片，请关闭不用的卡片后再截图。`);
       return { success: false, cancelled: true };
     }
-    try { settingsForReading(); } catch {
+    try {
+      const { settings } = settingsForReading();
+      if (!localOcrSupported && !(settings.screenshotReadingMode === 'image' && readScreenshot && imageReadingAvailable(settings))) {
+        onError('先在设置中配置支持图片的阅读服务，完成图片试读并启用截图阅读。也可以直接粘贴英文。');
+        onOpenSettings();
+        return { success: false, error: 'image-reading-required' };
+      }
+    } catch {
       onOpenSettings();
       return { success: false, cancelled: true };
     }
@@ -975,6 +982,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
           edgeNotice: touching.length ? `选区${touching.map(edge => names[edge]).join('、')}可能截断了文字。请再框完整这一段。` : '' });
         return { success: true, pinned: true };
       }
+      if (!localOcrSupported) throw new Error('image-reading-required');
       const ocr = await performOCR(file, { signal: controller.signal, onProgress: stage => {
         if (!alive(pin) || controller.signal.aborted) return;
         update(pin, { notice: stage === 'initializing'

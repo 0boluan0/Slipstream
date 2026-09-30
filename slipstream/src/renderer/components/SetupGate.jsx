@@ -218,7 +218,7 @@ export default function SetupGate({
           <span className="setup-eyebrow">首次使用</span>
           <h1 id="setup-title">从下一段英文开始</h1>
           <p>{platform === 'win32'
-            ? '复制或粘贴英文，读中文译文、查询概念并保存卡片。Windows 预览暂不支持截图识字。'
+            ? '配置支持图片的阅读服务后，框选不懂的词句、公式或小块图文，看中文、按需解释，查懂就继续读。'
             : '截图读译文，按需解释专业概念，把值得留下的理解存成本地卡片。'}</p>
         </header>
 
