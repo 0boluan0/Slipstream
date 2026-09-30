@@ -17,7 +17,8 @@ function sameMath(source, translation) {
     const ranges = [];
     for (const range of mathRanges(text)) {
       const previous = ranges.at(-1);
-      if (previous && /^\s*$/u.test(text.slice(previous.end, range.start))) {
+      if (previous && !previous.display && !range.display
+        && /^\s*$/u.test(text.slice(previous.end, range.start))) {
         previous.tex += ' ' + range.tex; previous.end = range.end;
       } else ranges.push({ ...range });
     }
