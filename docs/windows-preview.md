@@ -21,7 +21,7 @@
 Get-FileHash .\Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe -Algorithm SHA256
 ```
 
-预期结果（不区分大小写）：`a0812f0cb42af50a52f450f380457cc66e212c74708904412700d2f771c91623`。同一发行页提供 `SHA256SUMS.txt` 和构建清单。
+预期结果（不区分大小写）：`6b793a1363ebebbd2bb739a5113ef5cd3ad0ad11a9ea79acc8bd47989632c44b`。同一发行页提供 `SHA256SUMS.txt` 和构建清单。
 
 </details>
 
@@ -47,7 +47,7 @@ npm run check:windows-ui
 npm run build:windows
 ```
 
-固定回复界面检查验证图片试读、文字交接、概念查询、显式保存、卡片重开与 200% 缩放，使用临时资料目录。真实桌面截图和安装版运行另行验收。可选 `--output` 图像助手曾出现 `UnknownVizError`，必需功能检查不依赖该助手。
+检查使用自拟输入与临时资料目录；实际桌面操作和内容质量分别核对。
 
 产物位于 `slipstream/release/windows-preview/`，包含 `Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe` 和对应 `.manifest.json`。清单记录包内版本、源码提交、文件大小和 SHA-256。CI 上传两者，不会单端自动发布。
 

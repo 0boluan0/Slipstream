@@ -2,7 +2,7 @@
 
 **读懂原文，留下概念。** 给中文母语者的 macOS 专业英文阅读工具：截图或粘贴英文，打开独立中文阅读卡片，按需解释术语，并将解释与原文保存为本地 Markdown 概念卡片。
 
-[产品首页](../README.md) · [English](../README.en.md) · [产品规格](../SPEC.md) · [阅读行为与证据](../docs/reading-pins.md)
+[产品首页](../README.md) · [English](../README.en.md) · [产品规格](../SPEC.md) · [阅读功能说明](../docs/reading-pins.md)
 
 ## 环境与启动
 
@@ -22,7 +22,7 @@ npm run dev
 
 专业阅读可配置支持图片的本机 Ollama、DeepSeek、OpenAI、Anthropic 或兼容端点。macOS 首次设置实际提交随包图片并查询其中一个术语，使用同一模型、密钥和端点；推荐 `deepseek-flash`。成功后明确启用直接读图，旧配置保留本机识字直到启用。基础翻译使用 Google Translate，必要时回退至 MyMemory。试读不发送当前阅读材料。
 
-安装包自带本地公式 OCR，无需用户安装 Python 或下载模型。源码构建需先下载固定摘要的模型；模型许可见 `licenses/`，实现和真实论文测试见[公式识别说明](../docs/local-formula-ocr.md)。
+安装包自带本地公式 OCR，无需用户安装 Python 或下载模型。源码构建需先下载固定摘要的模型；模型许可见 `licenses/`，实现说明见[公式识别说明](../docs/local-formula-ocr.md)。
 
 Apple Vision 首次初始化可能超过普通识字的 15 秒时限。应用启动时使用程序生成的空白图，在本机预先准备模型缓存；准备阶段最多等待 60 秒，多张阅读卡共享这一步。关闭卡片立即取消该次阅读，退出应用会终止准备进程。`npm run check:ocr-startup` 覆盖准备、取消和重试，并用全新临时缓存执行真实 Vision 识别；开发 helper 的编译单独计入测试准备。
 
@@ -57,9 +57,7 @@ npm run check:reading-home
 - `check:reading-pins` 覆盖术语契约、本地存储、原生卡片与卡片盒、数学渲染和预览配置。
 - `check:reading-image` 使用固定回复验证图片协议、公式改变拦截、译文先显示、术语删除复核和选择器的边界／取消；它不证明真实模型语义质量或实际桌面鼠标操作。
 - `check:reading-math` 检查 LaTeX 保留、核对界面、渲染、复制和存储。
-- 显式在线检查和既有质量记录见[阅读验收说明](../docs/reading-pins.md)。测试和 Issue 只使用自拟或已授权材料。
-
-常规检查不覆盖仓库中的截图。需要更新界面证据时，在构建渲染器后显式运行 `npx electron scripts/check-reading-home-native.js --output ../docs/images`。
+- 阅读流程见[阅读验收说明](../docs/reading-pins.md)。测试和 Issue 只使用自拟或已授权材料。
 
 ## 构建阅读预览
 
@@ -81,4 +79,4 @@ npm run build:reading-preview
 
 ## Windows 与双端预览
 
-Windows 11 x64 的截图阅读通过已启用的图片 API；首次图片试读、局部翻译和解释与 Mac 共用链路，本机 Vision OCR 仍只在 Mac 可用。运行 `npm run build:windows` 构建独立 NSIS 预览；Mac 使用 `npm run build:reading-preview -- --dmg` 生成独立签名 DMG。两份包必须来自同一提交，复制安装包及清单后运行 `npm run release:pair -- /absolute/path/to/directory` 验证。发行与真机证据见[双端发行](../docs/paired-release.md)和[Windows 预览](../docs/windows-preview.md)。
+Windows 11 x64 的截图阅读通过已启用的图片 API；首次图片试读、局部翻译和解释与 Mac 共用链路，本机 Vision OCR 仍只在 Mac 可用。运行 `npm run build:windows` 构建独立 NSIS 预览；Mac 使用 `npm run build:reading-preview -- --dmg` 生成独立签名 DMG。两份包必须来自同一提交，复制安装包及清单后运行 `npm run release:pair -- /absolute/path/to/directory` 验证。发行流程见[双端发行](../docs/paired-release.md)和[Windows 预览](../docs/windows-preview.md)。
