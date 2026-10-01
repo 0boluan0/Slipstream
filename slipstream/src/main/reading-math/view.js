@@ -20,20 +20,20 @@ window.renderReadingMath = (element, value = '') => {
     node.dataset.sourceEnd = sourceEnd;
     node.title = value.slice(range.start, sourceEnd);
     try {
-      const tag = range.display ? /^(.*)\\tag\s*\{([^{}]+)\}\s*$/su.exec(range.tex) : null;
-      const body = tag ? tag[1] : range.tex;
+      const { body, label: equationNumber } = range.display
+        ? window.readingMath.displayEquationParts(range.tex) : { body: range.tex, label: null };
       const alignedEnd = punctuation ? /\\end\{aligned\}\s*$/u.exec(body) : null;
       const latex = !punctuation ? body : alignedEnd
         ? `${body.slice(0, alignedEnd.index).replace(/\s*\\\\\s*$/u, '')}\\;\\text{${punctuation}}${alignedEnd[0]}`
         : `${body}\\;\\text{${punctuation}}`;
-      const target = tag ? document.createElement('span') : node;
-      if (tag) { node.classList.add('math-tagged'); target.className = 'math-scroll'; }
+      const target = equationNumber !== null ? document.createElement('span') : node;
+      if (equationNumber !== null) { node.classList.add('math-tagged'); target.className = 'math-scroll'; }
       window.katex.render(latex, target, { displayMode: range.display, throwOnError: true,
         trust: false, strict: 'ignore', maxExpand: 500, maxSize: 10, output: 'htmlAndMathml' });
-      if (tag) {
+      if (equationNumber !== null) {
         const label = document.createElement('span');
         label.className = 'math-tag';
-        label.textContent = `(${tag[2]})`;
+        label.textContent = equationNumber;
         node.append(target, label);
       }
     } catch {

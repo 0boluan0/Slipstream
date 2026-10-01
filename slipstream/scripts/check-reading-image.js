@@ -85,6 +85,25 @@ async function run() {
     step += 1; return JSON.stringify(valid);
   })({ image, settingsSnapshot, onUsage: usage, onResponse: (_raw, info) => stages.push(info.stage) });
   assert.deepEqual(stages, ['transcription', 'text']); assert.equal(step, 2);
+  const labeledSource = String.raw`The relation is $$\text{posterior}=\frac{\text{likelihood}\times\text{prior}}{\text{marginal likelihood}}$$.`;
+  step = 0;
+  const protectedResult = await createImageReader(async (_s, _b, _m, _p, content) => {
+    if (++step === 1) return JSON.stringify({ source: labeledSource, uncertain: [] });
+    const input = JSON.parse(content);
+    assert.equal(input.excerpt, labeledSource, 'term evidence retains the actual source');
+    assert.equal(input.translationExcerpt, 'The relation is [[SLIPSTREAM_MATH_0]].');
+    return JSON.stringify({ translation: '该关系为 [[SLIPSTREAM_MATH_0]]。', terms: [], references: [] });
+  })({ image, settingsSnapshot });
+  assert.equal(protectedResult.translation, labeledSource.replace('The relation is ', '该关系为 ').replace(/\.$/u, '。'),
+    'labeled formulas stay intact while surrounding prose is translated');
+  for (const translation of ['关系为。', '[[SLIPSTREAM_MATH_0]] [[SLIPSTREAM_MATH_0]]',
+    '[[SLIPSTREAM_MATH_0]] [[SLIPSTREAM_MATH_99]]', '$$\\text{后验}=1$$']) {
+    step = 0;
+    await assert.rejects(createImageReader(async () => ++step === 1
+      ? JSON.stringify({ source: labeledSource, uncertain: [] })
+      : JSON.stringify({ translation, terms: [], references: [] }))({ image, settingsSnapshot }), /reading-image-math-mismatch/u,
+    'missing, duplicated, invented tokens and regenerated equations stay blocked');
+  }
   console.log('image reading transport, cancellation, formula integrity and term review checks passed');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

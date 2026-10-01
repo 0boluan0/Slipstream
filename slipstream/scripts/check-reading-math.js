@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('node:assert/strict');
-const { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, firstBareFontCommand } = require('../src/shared/reading-math.cjs');
+const { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, firstBareFontCommand, displayEquationParts } = require('../src/shared/reading-math.cjs');
 const { readingTextFromOcr, readingSegments, joinVisualHyphenation } = require('../src/main/reading-document');
 const { createFormulaRecognizer, FORMULA_MODEL } = require('../src/main/formula-recognition');
 const { characterCandidates, confirmedConditionalAccent, completeGlyphBox } = require('../src/main/local-formula-ocr');
@@ -9,6 +9,13 @@ const { mergeFormulaDocument, repairUnpairedEvaluationBars, conditionalAccentCan
 const { missingInteriorRows, orderedAgreement } = require('../src/main/interior-prose-recheck');
 
 async function main() {
+  for (const [source, label] of [[String.raw`x+y \eqno(7.3)`, '(7.3)'],
+    [String.raw`x+y \eqno{A-2}`, 'A-2'], [String.raw`x+y \tag{7.3}`, '(7.3)']]) {
+    const parts = displayEquationParts(source);
+    assert.equal(parts.label, label);
+    assert.doesNotThrow(() => require('katex').renderToString(parts.body, { displayMode: true, throwOnError: true }));
+    assert.equal(mathRanges(`$$${source}$$`)[0].tex, source, 'display adaptation must not alter copied source');
+  }
   const glyphPixels = Buffer.alloc(40 * 24 * 4, 255);
   for (let y = 5; y <= 18; y++) for (let x = 13; x <= 24; x++) {
     const at = (y * 40 + x) * 4; glyphPixels.fill(0, at, at + 3);

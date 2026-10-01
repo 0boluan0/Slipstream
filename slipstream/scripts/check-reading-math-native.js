@@ -105,6 +105,16 @@ app.whenReady().then(async () => {
   await until(() => js('document.querySelectorAll("#source-preview .katex").length === 2'), 'local equation preview');
   await js('document.getElementById("confirm").click()');
   await until(async () => (await state()).phase === 'done', 'LaTeX translation');
+  const numberedSource = String.raw`$$f(x)=x^2\eqno(7.3)$$.`;
+  const numbered = await js(`(() => {
+    const element = document.createElement('div');
+    window.renderReadingMath(element, ${JSON.stringify(numberedSource)});
+    return { source: element.dataset.mathSource, label: element.querySelector('.math-tag')?.textContent,
+      rendered: !!element.querySelector('.katex'), fallback: !!element.querySelector('.math-fallback'),
+      title: element.querySelector('.math-block')?.title };
+  })()`);
+  assert.equal(numbered.source, numberedSource); assert.equal(numbered.title, numberedSource);
+  assert.equal(numbered.label, '(7.3)'); assert.equal(numbered.rendered, true); assert.equal(numbered.fallback, false);
   await js('document.getElementById("tab-parallel").click()');
   assert.equal(await js('document.querySelectorAll(".source-paragraph .katex").length'), 2, 'the original formulas must be readable in the parallel view');
   const selectionSource = String.raw`The mean $\bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i$ is a sample statistic. Its scale is $1$.`;

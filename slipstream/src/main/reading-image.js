@@ -53,10 +53,22 @@ function validateReadingImage(image) {
   return image.slice(PNG_PREFIX.length);
 }
 
-function createImageReader(processBackend) {
+function prepareReadingImage(image, nativeImage) {
+  if (!nativeImage) return image;
+  const decoded = nativeImage.createFromDataURL(image);
+  const { width, height } = decoded.getSize();
+  // Small screenshot glyphs benefit from a larger raster in the image model.
+  // Keep this bounded; large selections already have sufficient pixel detail.
+  return width > 0 && height > 0 && Math.max(width, height) <= 1600
+    ? decoded.resize({ width: width * 2, quality: 'best' }).toDataURL() : image;
+}
+
+function createImageReader(processBackend, { nativeImage = require('electron').nativeImage } = {}) {
   return async ({ image, settingsSnapshot, signal, onUsage, onTranslation, onResponse }) => {
     if (!imageReadingAvailable(settingsSnapshot)) throw new Error('reading-image-provider-unavailable');
-    const data = validateReadingImage(image);
+    validateReadingImage(image);
+    const submittedImage = prepareReadingImage(image, nativeImage);
+    const data = validateReadingImage(submittedImage);
     if (signal?.aborted) throw new Error('reading-cancelled');
     const settings = { ...settingsSnapshot };
     const backend = settings.activeBackend;
@@ -72,7 +84,7 @@ function createImageReader(processBackend) {
     const content = [{ type: 'text', text: 'Transcribe the selected image exactly.' },
       backend === 'anthropic'
         ? { type: 'image', source: { type: 'base64', media_type: 'image/png', data } }
-        : { type: 'image_url', image_url: { url: image, detail: 'original' } }];
+        : { type: 'image_url', image_url: { url: submittedImage, detail: 'original' } }];
     const raw = await request(settings, backend, settings.activeModel,
       IMAGE_READING_PROMPT, content, 'en', undefined, signal, true,
       { maxTokens: 8192, retries: 1, timeoutMs: 90000, onUsage });
@@ -91,7 +103,7 @@ function createImageReader(processBackend) {
     const withSource = result => ({ ...result, text, uncertain: value.uncertain, terms: (result.terms || []).slice(0, 3) });
     // Image fidelity and translation are separate requests to the same service.
     // Internal formula agreement is only a display guard, never image verification.
-    const result = await createReadingProcessor(request)({ text, kind: 'translate', withTerms: true,
+    const result = await createReadingProcessor(request)({ text, kind: 'translate', withTerms: true, preserveMath: true,
       withReferences: true, settingsSnapshot: settings, signal,
       onTranslation: result => { if (intact(result)) onTranslation?.(withSource(result)); } });
     if (signal?.aborted) throw new Error('reading-cancelled');
@@ -100,4 +112,4 @@ function createImageReader(processBackend) {
   };
 }
 
-module.exports = { createImageReader, imageReadingAvailable, validateReadingImage, sameMath, IMAGE_READING_PROMPT };
+module.exports = { createImageReader, imageReadingAvailable, validateReadingImage, sameMath, IMAGE_READING_PROMPT, prepareReadingImage };

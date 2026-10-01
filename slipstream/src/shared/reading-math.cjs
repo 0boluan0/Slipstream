@@ -83,7 +83,16 @@
     return tex.replace(/(?<![\\A-Za-z])(?:boldsymbol|mathbf|mathbb|mathcal|mathscr|mathsf|mathtt|mathit|mathrm)\b(?=\s*(?:\{|[A-Za-z\\]))/gu,
       (command) => `\\${command}`);
   }
-  const api = { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly,
+  function displayEquationParts(tex) {
+    const tag = /^(.*)\\tag\s*\{([^{}]+)\}\s*$/su.exec(tex);
+    if (tag) return { body: tag[1], label: `(${tag[2]})` };
+    // Plain TeX puts a right-hand number after \eqno. Interpret it for
+    // display only; source offsets and the copied expression stay untouched.
+    const eqno = /^(.*)\\eqno\s*(\([^{}\\\n]+\)|\{[^{}\\\n]+\}|[\w.-]+)\s*$/su.exec(tex);
+    if (eqno) return { body: eqno[1], label: eqno[2].replace(/^\{(.*)\}$/su, '$1') };
+    return { body: tex, label: null };
+  }
+  const api = { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, displayEquationParts,
     firstBareFontCommand, repairBareFontCommands };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.readingMath = api;

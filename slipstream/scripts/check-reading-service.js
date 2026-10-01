@@ -428,6 +428,20 @@ async function main() {
   assert.match(readingDestination(settings), /本机兼容服务/);
   assert.match(readingDestination({ activeBackend: 'free_translate' }), /Google Translate.*MyMemory/);
   assert.throws(() => readingDestination({ activeBackend: 'ollama', ollamaBaseUrl: 'https://example.com' }));
+  for (const tail of ['greater than', 'such as', 'is of the same', 'depends on']) {
+    const incompleteSource = `An earlier sentence is complete. A boundary term ${tail}`;
+    const incomplete = createReadingProcessor(async (_s, _b, _m, _p, input) => {
+      const message = JSON.parse(input);
+      assert.equal(message.excerpt, 'An earlier sentence is complete.');
+      assert.ok(message.selectionBoundary, 'missing clause is excluded before generation');
+      return JSON.stringify({ quote: 'boundary term', meaning: '一个通用概念。', note: '模型补造的本段结论。',
+        basis: 'contextual', sourceQuote: incompleteSource });
+    });
+    const result = (await incomplete({ text: incompleteSource, kind: 'lookup', selection: 'boundary term', settingsSnapshot: settings })).lookup;
+    assert.equal(result.basis, 'general'); assert.equal(result.contextual, false);
+    assert.equal(result.sourceQuote, ''); assert.match(result.note, /下一行/u);
+    assert.doesNotMatch(result.note, /补造/u, 'an unfinished clause cannot support a contextual conclusion');
+  }
   console.log('Reading service checks passed: isolated translation, anchored explanations, limits, cancellation, truncation, destination and display bounds.');
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });
