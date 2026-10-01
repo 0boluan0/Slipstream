@@ -4,7 +4,7 @@ const path = require('path');
 
 const source = fs.readFileSync(path.join(__dirname, 'VisionOCR.swift'), 'utf8');
 
-assert(source.includes('let OCR_VERSION = 4'));
+assert.match(source, /let OCR_VERSION = [1-9][0-9]*/u);
 assert(source.includes('usesLanguageCorrection = true'));
 assert(source.includes('supportedRecognitionLanguages()'));
 

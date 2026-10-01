@@ -6,6 +6,7 @@ let previousPhase = '';
 let mode = 'translation';
 let fontSize = 16;
 let selected = null;
+let lookupOrigin = null;
 let fitRequested = false;
 let copyTimer;
 const scrollPositions = { translation: 0, parallel: 0, image: 0 };
@@ -16,14 +17,19 @@ function renderSourcePreview() {
   const text = byId('source-editor').value;
   window.renderReadingMath(byId('source-preview'), text);
   const ranges = window.readingMath.mathRanges(text);
+  const uncertain = new Set(text === state?.sourceText ? state.formulaUncertainStarts || [] : []);
+  if (state?.formulaNotice) byId('formula-notice').textContent = text === state.sourceText
+    ? state.formulaNotice : state.formulaNotice.replace('，已在公式预览标出', '');
   byId('formula-edit-hint').hidden = !ranges.length;
   const nodes = [...byId('source-preview').children];
   nodes.forEach((node, index) => {
     const range = ranges[index];
+    const needsReview = uncertain.has(range.start);
+    node.classList.toggle('math-needs-review', needsReview);
     node.setAttribute('role', 'button');
     node.tabIndex = 0;
-    node.setAttribute('aria-label', `校正公式：${range.tex}`);
-    node.title = '点击校正这一处公式';
+    node.setAttribute('aria-label', `${needsReview ? '需核对并校正' : '校正'}公式：${range.tex}`);
+    node.title = needsReview ? '这处公式识别不够确定。点击并对照原图核对。' : '点击校正这一处公式';
     node.onclick = () => {
       const editor = byId('source-editor');
       byId('source-correction').open = true;
@@ -88,24 +94,33 @@ function createSegment(segment) {
   source.className = 'source-paragraph';
   source.lang = 'en';
   source.dataset.segmentId = segment.id;
-  source.textContent = segment.source;
+  window.renderReadingMath(source, segment.source);
   const translation = document.createElement('p');
   translation.className = 'translation-paragraph';
   const terms = document.createElement('div');
   terms.className = 'term-list';
+  const termsNotice = document.createElement('p');
+  termsNotice.className = 'muted terms-notice';
   const referenceHits = document.createElement('div');
   referenceHits.className = 'reference-hit-list';
-  section.append(tools, source, translation, terms, referenceHits);
+  section.append(tools, source, translation, terms, termsNotice, referenceHits);
   byId('translation').append(section);
-  const node = { section, source, translation, toggle, terms, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  const node = { section, source, translation, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
   segmentNodes.set(segment.id, node);
   return node;
 }
 
 function requestLookup(selection) {
+  if (!byId('lookup-panel').contains(document.activeElement)) lookupOrigin = document.activeElement;
+  byId('lookup-panel').scrollTop = 0;
   selected = selection;
   byId('selection-bar').hidden = true;
   return act('lookup', { ...selection, revision: state?.revision });
+}
+
+async function dismissLookup() {
+  await act('dismiss-lookup');
+  if (lookupOrigin?.isConnected && lookupOrigin.getClientRects().length) lookupOrigin.focus({ preventScroll: true });
 }
 
 function renderSegments(segments) {
@@ -127,15 +142,16 @@ function renderSegments(segments) {
       : segment.status === 'error' ? segment.error
         : segment.status === 'translating' ? '正在翻译这一段…' : '等待翻译…';
     window.renderReadingMath(node.translation, value);
-    const termsKey = JSON.stringify(segment.terms || []);
+    const visibleTerms = segment.terms || [];
+    const termsKey = JSON.stringify(visibleTerms);
     if (node.termsKey !== termsKey) {
       node.termsKey = termsKey;
       node.terms.replaceChildren();
-      if (segment.terms?.length) {
+      if (visibleTerms.length) {
         const label = document.createElement('span');
         label.textContent = '术语';
         node.terms.append(label);
-        for (const term of segment.terms) {
+        for (const term of visibleTerms) {
           const button = document.createElement('button');
           button.className = 'term-chip';
           button.dataset.quote = term.quote;
@@ -153,7 +169,9 @@ function renderSegments(segments) {
         }
       }
     }
-    node.terms.hidden = !segment.terms?.length;
+    node.terms.hidden = !visibleTerms.length;
+    node.termsNotice.hidden = segment.termsStatus !== 'unavailable';
+    node.termsNotice.textContent = segment.termsStatus === 'unavailable' ? '术语推荐暂未完成，可展开原文选词查询。' : '';
     node.terms.querySelectorAll('button').forEach((button) => {
       button.setAttribute('aria-pressed', String(state.lookup?.quote === button.dataset.quote));
     });
@@ -169,7 +187,7 @@ function renderSegments(segments) {
           const button = document.createElement('button');
           button.setAttribute('aria-label', `查本文定义：${hit.symbol}`);
           window.renderReadingMath(button, window.readingReferences.symbolText(hit.symbol));
-          button.onclick = () => requestLookup({ segmentId: segment.id, start: hit.start, end: hit.end });
+          button.onclick = () => requestLookup({ segmentId: segment.id, start: hit.start, end: hit.end, referenceSymbol: hit.symbol });
           node.referenceHits.append(button);
         }
       }
@@ -179,6 +197,7 @@ function renderSegments(segments) {
 }
 
 function render(next) {
+  const previousLookup = state?.lookup;
   state = next;
   const segments = state.segments || [];
   const completed = segments.filter((segment) => segment.status === 'done').length;
@@ -224,7 +243,8 @@ function render(next) {
   byId('correction-reference').hidden = !state.image;
   byId('source-text').textContent = state.sourceText || '';
   byId('edit-source').disabled = working;
-  byId('copy').disabled = state.phase !== 'done' || !state.translation;
+  byId('copy').disabled = !['done', 'translating'].includes(state.phase) || !state.translation
+    || !segments.length || segments.some((segment) => segment.status !== 'done');
   byId('formula-tools').hidden = !state.image || (!['review', 'recognizing', 'error'].includes(state.phase) && mode !== 'image');
   byId('recognize-formulas').hidden = !state.formulaSupported;
   byId('recognize-formulas').disabled = working;
@@ -236,15 +256,33 @@ function render(next) {
   const lookup = state.lookup;
   byId('lookup-panel').hidden = !lookup && !state.lookupNotice;
   if (lookup || state.lookupNotice) {
+    if (!previousLookup || previousLookup.quote !== lookup?.quote) {
+      byId('lookup-panel').scrollTop = 0;
+      byId('lookup-evidence').open = false;
+    }
     const contextual = lookup?.contextual ?? state.explainSupported;
-    byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : contextual ? '术语与词句解释' : '词句翻译';
+    byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : lookup?.localCard ? '已存卡片 · 本地解释'
+      : contextual ? '术语与词句解释' : '词句翻译';
     window.renderReadingMath(byId('lookup-quote'), lookup?.reference ? window.readingReferences.symbolText(lookup.quote) : lookup?.quote || '');
+    const showBasis = Boolean(contextual && !lookup?.reference && !lookup?.localCard && state.lookupStatus === 'done');
+    const basisLabels = {
+      defined: '原文给出定义（模型判断）',
+      contextual: '根据本段用法解释',
+      general: '通用释义 · 模型未找到原文定义',
+      unverified: '模型解释 · 原文依据未确认',
+    };
+    byId('lookup-basis').hidden = !showBasis;
+    byId('lookup-basis').textContent = showBasis ? basisLabels[lookup?.basis] || basisLabels.unverified : '';
     window.renderReadingMath(byId('lookup-meaning'), state.lookupStatus === 'loading' ? '正在结合这段原文解释…' : lookup?.meaning || '');
     byId('meaning-label').hidden = lookup?.reference || !contextual || state.lookupStatus !== 'done';
     byId('lookup-meaning').hidden = Boolean(lookup?.reference);
     byId('lookup-note').hidden = Boolean(lookup?.reference);
     window.renderReadingMath(byId('lookup-note'), lookup?.note || '');
     byId('note-label').hidden = lookup?.reference || !lookup?.note;
+    const showEvidence = showBasis && Boolean(lookup?.sourceQuote);
+    byId('lookup-evidence').hidden = !showEvidence;
+    byId('lookup-evidence').querySelector('summary').textContent = lookup?.basis === 'defined' ? '查看原文定义句' : '查看相关原文';
+    window.renderReadingMath(byId('lookup-evidence-quote'), showEvidence ? lookup.sourceQuote : '');
     byId('lookup-notice').hidden = !state.lookupNotice;
     byId('lookup-notice').textContent = state.lookupNotice || '';
     byId('lookup-retry').hidden = state.lookupStatus !== 'error' || !selected;
@@ -273,13 +311,10 @@ function captureSelection() {
   const element = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
   const paragraph = element?.closest('.source-paragraph');
   if (!paragraph || !paragraph.contains(range.endContainer)) { byId('selection-bar').hidden = true; return; }
-  const prefix = range.cloneRange();
-  prefix.selectNodeContents(paragraph);
-  prefix.setEnd(range.startContainer, range.startOffset);
-  const start = prefix.toString().length;
-  const text = range.toString();
-  if (!text.trim() || text.length > 1500) { byId('selection-bar').hidden = true; return; }
-  selected = { segmentId: Number(paragraph.dataset.segmentId), start, end: start + text.length };
+  const sourceSelection = window.readingMathSelection(paragraph, range);
+  if (!sourceSelection?.text.trim() || sourceSelection.text.length > 1500) { byId('selection-bar').hidden = true; return; }
+  const { start, end, text } = sourceSelection;
+  selected = { segmentId: Number(paragraph.dataset.segmentId), start, end };
   byId('selection-preview').textContent = text;
   byId('lookup-selection').lastChild.textContent = state.explainSupported ? '解释所选' : '翻译所选';
   byId('selection-bar').hidden = false;
@@ -314,7 +349,7 @@ byId('edit-source').onclick = async () => {
   byId('source-correction').scrollIntoView({ block: 'start' });
 };
 byId('review-image').onclick = () => setMode('image');
-byId('lookup-close').onclick = () => act('dismiss-lookup');
+byId('lookup-close').onclick = dismissLookup;
 byId('save-term').onclick = () => act(state?.saveStatus === 'saved' ? 'library' : 'save-term');
 byId('library').onclick = () => act('library');
 byId('lookup-retry').onclick = () => selected && requestLookup(selected);
@@ -359,7 +394,8 @@ document.addEventListener('keydown', (event) => {
     if (byId('processing-info').open) byId('processing-info').open = false;
     else if (window.readingReferences.isEditing()) window.readingReferences.closeEditor();
     else if (!byId('selection-bar').hidden) { window.getSelection()?.removeAllRanges(); byId('selection-bar').hidden = true; }
-    else act(state?.lookup || state?.lookupNotice ? 'dismiss-lookup' : 'close');
+    else if (state?.lookup || state?.lookupNotice) dismissLookup();
+    else act('close');
   }
 });
 window.readingReferences.init(act);

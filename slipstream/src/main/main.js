@@ -583,7 +583,7 @@ function dispatchCaptureIngress(event) {
     && store.getAllSettings().setupMode !== 'unconfigured'
     && !quitRequestRegistry.hasPending(mainWindow?.webContents?.id)
     && !userDataResetRegistry.isLocked(mainWindow?.webContents?.id)) {
-    void readingPins.capture();
+    void readingPins.capture({ owner: mainWindow?.webContents?.id });
     return true;
   }
   if (explicitShortcut && (!mainWindow || mainWindow.isDestroyed())) {
@@ -2567,11 +2567,13 @@ function registerIpcHandlers() {
     if (discardResult) {
       verificationApprovalRegistry.revokeSender(event.sender.id);
     }
+    const readingCaptureSettlement = readingPins?.cancelCapture(event.sender.id);
     const activeTasks = [
       providerConnectionInFlight ? providerConnectionTask : null,
       llmRequestInFlight ? llmRequestSettlement?.promise : null,
       verificationRequestInFlight ? verificationRequestSettlement?.promise : null,
       captureRequestInFlight ? captureRequestSettlement?.promise : null,
+      readingCaptureSettlement,
     ];
     providerConnectionAbortController?.abort();
     llmAbortController?.abort();
@@ -2873,7 +2875,7 @@ function registerIpcHandlers() {
       return { success: false, errorCode: 'screenshot-unsupported', error: 'Windows 预览暂不支持截图识字，请复制或粘贴文字开始阅读。' };
     }
     if (readingPins && store.getAllSettings().setupMode !== 'unconfigured') {
-      return readingPins.capture();
+      return readingPins.capture({ owner: event.sender.id });
     }
     if (providerConnectionInFlight || llmRequestInFlight || verificationRequestInFlight) {
       return userError(USER_ERRORS.SCREENSHOT_BUSY);
@@ -2915,11 +2917,13 @@ app.on('ready', () => {
       clipboard.writeText(text);
     },
     saveTermCard: (input) => termCardStore.save(input),
+    findTermCard: (input) => termCardStore.findMatching(input),
     referenceStore: createReadingReferenceStore(path.join(app.getPath('documents'), 'Slipstream', '本文速查')),
     onOpenLibrary: (id) => termLibrary.open(id),
     getSettings: () => store.isStoreReady() ? store.getAllSettings() : null,
     getMainWindow: () => mainWindow,
     captureRegion: ScreenshotService.captureSelectedRegion,
+    getCaptureWindow: OCRService.frontmostDocumentWindow,
     performOCR: OCRService.performReadingOCR,
     processReadingText: LLMService.processReadingText,
     recognizeReadingFormulas: LLMService.recognizeReadingFormulas,

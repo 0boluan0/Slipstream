@@ -27,8 +27,10 @@
       while (end >= 0 && escaped(text, end)) end = text.indexOf(pair[1], end + pair[1].length);
       if (end < 0) continue;
       const tex = text.slice(i + pair[0].length, end);
+      const number = /^\d+(?:[.,]\d+)?$/u.test(tex);
       if (!tex.trim() || (pair[0] === '$' && (/\n|\s$/u.test(tex)
-        || (/^\d/u.test(tex) && !/[\\_^=+*/<>|{}]/u.test(tex))))) continue;
+        || (/^\d/u.test(tex) && !number && !/[\\_^=+*/<>|{}]/u.test(tex))
+        || (number && /\d/u.test(text[end + 1] || ''))))) continue;
       ranges.push({ start: i, end: end + pair[1].length, tex, display: pair[2] });
       i = end + pair[1].length - 1;
     }
