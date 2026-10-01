@@ -1,5 +1,7 @@
 # Changelog
 
+## 1.3.0-preview.2 — 2026-10-01
+
 ## Unreleased
 
 - 教材截图中的 Python 循环和 REPL 示例按代码保留换行、缩进，不再误排为数学公式或交给译文模型改写；Vision 漏字时仍提示对照截图校正。

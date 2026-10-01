@@ -10,7 +10,7 @@
 
 > **阅读版 v1.2.1** · macOS 12+ · [下载安装包](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · 已安装正式版可从菜单选择“检查更新”。
 
-**[下载 Windows 未签名版（约 160 MB）](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.1/Slipstream-Windows-Preview-1.3.0-preview.1-x64-Setup.exe)** · [安装步骤与系统提示](./docs/windows-preview.md#下载与安装)
+**[下载 Windows 未签名版（约 160 MB）](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe)** · [安装步骤与系统提示](./docs/windows-preview.md#下载与安装)
 
 ## 不离开正在读的那一页
 

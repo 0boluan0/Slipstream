@@ -1,12 +1,12 @@
 # Windows 阅读预览
 
-目标平台：Windows 11 x64。`1.3.0-preview.1` 对齐 Mac 的局部随手查：框选不懂的词句、公式或小块图文 → 原文旁读中文 → 按需解释 → 关闭继续阅读。保存卡片和本文速查是可选动作。双端发行必须使用同一版本、同一完整源码提交，见[双端发行](paired-release.md)。
+目标平台：Windows 11 x64。`1.3.0-preview.2` 对齐 Mac 的局部随手查：框选不懂的词句、公式或小块图文 → 原文旁读中文 → 按需解释 → 关闭继续阅读。保存卡片和本文速查是可选动作。双端发行必须使用同一版本、同一完整源码提交，见[双端发行](paired-release.md)。
 
 ## 下载与安装
 
-**[下载 Windows 11 x64 安装包 · v1.3.0-preview.1](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.1/Slipstream-Windows-Preview-1.3.0-preview.1-x64-Setup.exe)**（约 160 MB，未签名）。Mac 同版本安装包见[双端发行页](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0-preview.1)。
+**[下载 Windows 11 x64 安装包 · v1.3.0-preview.2](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe)**（约 160 MB，未签名）。Mac 同版本安装包见[双端发行页](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0-preview.2)。
 
-1. 下载后双击 `Slipstream-Windows-Preview-1.3.0-preview.1-x64-Setup.exe`。
+1. 下载后双击 `Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe`。
 2. 若出现“Windows 已保护你的电脑”，确认文件来自上方项目发行页后，可点“更多信息”→“仍要运行”。未签名包会显示“未知发布者”，按提示完成安装。
 3. 从开始菜单打开 **Slipstream Windows Preview**。专业阅读需配置支持图片的 API，完成图片试读并启用；基础翻译可直接粘贴文字。
 
@@ -18,7 +18,7 @@
 在安装包所在目录打开 PowerShell：
 
 ```powershell
-Get-FileHash .\Slipstream-Windows-Preview-1.3.0-preview.1-x64-Setup.exe -Algorithm SHA256
+Get-FileHash .\Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe -Algorithm SHA256
 ```
 
 预期结果（不区分大小写）：`a0812f0cb42af50a52f450f380457cc66e212c74708904412700d2f771c91623`。同一发行页提供 `SHA256SUMS.txt` 和构建清单。
@@ -49,6 +49,6 @@ npm run build:windows
 
 固定回复界面检查验证图片试读、文字交接、概念查询、显式保存、卡片重开与 200% 缩放，使用临时资料目录。真实桌面截图和安装版运行另行验收。可选 `--output` 图像助手曾出现 `UnknownVizError`，必需功能检查不依赖该助手。
 
-产物位于 `slipstream/release/windows-preview/`，包含 `Slipstream-Windows-Preview-1.3.0-preview.1-x64-Setup.exe` 和对应 `.manifest.json`。清单记录包内版本、源码提交、文件大小和 SHA-256。CI 上传两者，不会单端自动发布。
+产物位于 `slipstream/release/windows-preview/`，包含 `Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe` 和对应 `.manifest.json`。清单记录包内版本、源码提交、文件大小和 SHA-256。CI 上传两者，不会单端自动发布。
 
 预览使用现有独立身份 `com.slipstream.windows-preview`，配置和会话位于 `%APPDATA%\Slipstream Windows Preview`；按当前用户安装到 `%LOCALAPPDATA%\Programs\Slipstream Windows Preview`。升级前保留旧资料；卸载配置为不删除应用数据。API 凭据仅由主进程通过 Electron safeStorage 使用，禁止复制到报告或测试素材。
