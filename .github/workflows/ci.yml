@@ -36,5 +36,19 @@ jobs:
         run: npm run build:renderer
       - if: ${{ !cancelled() }}
         run: xcrun swiftc -typecheck scripts/VisionOCR.swift
-      - if: ${{ !cancelled() }}
-        run: npm run check:formula-ocr
+  native-formulas:
+    runs-on: macos-14
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: slipstream
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: slipstream/package-lock.json
+      - run: npm ci
+      - run: npm run setup:formula-models
+      - run: npm run check:formula-ocr

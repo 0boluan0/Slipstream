@@ -34,12 +34,14 @@ async function readingOCR(file, options) {
   return result;
 }
 // This authored image suite includes disputed-row rereads. The watchdog is
-// a suite limit, not a product recognition deadline.
+// a suite limit, not a product recognition deadline. Shared CI CPUs take
+// longer across the sequential cases; individual recognition deadlines stay unchanged.
+const suiteTimeoutMs = process.env.CI === 'true' ? 600000 : 240000;
 setTimeout(() => {
-  console.error(JSON.stringify({ error: 'Local formula OCR exceeded 240 seconds', currentStage,
+  console.error(JSON.stringify({ error: `Local formula OCR exceeded ${suiteTimeoutMs / 1000} seconds`, currentStage,
     stageMs: Date.now() - stageStarted, elapsedMs: Date.now() - suiteStarted }));
   app.exit(1);
-}, 240000).unref();
+}, suiteTimeoutMs).unref();
 
 async function fixture(name, html, { width = 900, height = 360,
   bodyStyle = 'padding:30px;font:24px/1.6 Georgia;background:white;color:black' } = {}) {
