@@ -2,7 +2,7 @@
 
 **读懂原文，留下概念。** 给中文母语者的 macOS 专业英文阅读工具：截图或粘贴英文，打开独立中文阅读卡片，按需解释术语，并将解释与原文保存为本地 Markdown 概念卡片。
 
-[产品首页](../README.md) · [English](../README.en.md) · [产品规格](../SPEC.md) · [阅读行为与证据](../docs/reading-pins.md)
+[产品首页](../README.md) · [English](../README.en.md) · [产品规格](../SPEC.md) · [阅读功能说明](../docs/reading-pins.md)
 
 ## 环境与启动
 
@@ -22,7 +22,7 @@ npm run dev
 
 专业阅读可配置本机 Ollama、DeepSeek、OpenAI、Anthropic 或兼容端点。基础翻译使用 Google Translate，必要时回退至 MyMemory。模型配置的兼容性探测仍使用固定虚构材料和现有结构化校验，界面会说明测试内容；不发送当前阅读材料。
 
-安装包自带本地公式 OCR，无需用户安装 Python 或下载模型。源码构建需先下载固定摘要的模型；模型许可见 `licenses/`，实现和真实论文测试见[公式识别说明](../docs/local-formula-ocr.md)。
+安装包自带本地公式 OCR，无需用户安装 Python 或下载模型。源码构建需先下载固定摘要的模型；模型许可见 `licenses/`，实现说明见[公式识别说明](../docs/local-formula-ocr.md)。
 
 ## 核心模块
 
@@ -52,9 +52,7 @@ npm run check:reading-home
 - `check:reading-home` 使用真实 Electron、生产渲染构建和临时目录，覆盖首页 → 粘贴示例 → 独立阅读卡片 → 解释 → 保存 → 首页卡片盒，并检查首次设置及 200% 排版。回复为固定示例，不调用模型或读取屏幕。
 - `check:reading-pins` 覆盖术语契约、本地存储、原生卡片与卡片盒、数学渲染和预览配置。
 - `check:reading-math` 检查 LaTeX 保留、核对界面、渲染、复制和存储。
-- 显式在线检查和既有质量记录见[阅读验收说明](../docs/reading-pins.md)。测试和 Issue 只使用自拟或已授权材料。
-
-常规检查不覆盖仓库中的截图。需要更新界面证据时，在构建渲染器后显式运行 `npx electron scripts/check-reading-home-native.js --output ../docs/images`。
+- 阅读流程见[阅读验收说明](../docs/reading-pins.md)。测试和 Issue 只使用自拟或已授权材料。
 
 ## 构建阅读预览
 

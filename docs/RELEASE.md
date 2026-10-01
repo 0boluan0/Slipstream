@@ -1,34 +1,23 @@
 # macOS release checklist
 
-## Apple connection recovery
+## Source and build
 
-Apple tool calls retry recognized temporary timestamp and network failures up to four attempts. When a notarization upload has completed, a dropped status connection resumes with `notarytool wait` on the existing submission ID. Incomplete uploads retry submission; permanent failures still stop the release. Signing, notarization tickets and distribution checks remain required. `npm run check:apple-tool-retry` replays these failure boundaries without contacting Apple.
+Release from a reviewed, clean commit with the intended package version. Run the source checks, lint and renderer build before packaging. Source builds require the fixed formula models and their licenses.
 
-## Source gate
+`npm run release:signed` stages both architectures outside synced folders. It requires a Developer ID Application identity and Apple notarization credentials. Credentials may come from a validated Keychain profile or the supported environment variables; keep them outside the repository.
 
-## Signing and notarization
+## Distribution checks
 
-- Install a valid `Developer ID Application` identity.
-- Provide App Store Connect API credentials, `APPLE_ID` plus an app-specific password and Team ID, or a validated `notarytool` Keychain profile.
-- Run `npm run release:signed`.
-- Never replace a failed Developer ID signature with an ad-hoc signature.
-- The final DMGs are Developer ID signed and verified, submitted to Apple, stapled and validated. DMGs are excluded from update metadata; signed ZIPs and their blockmaps are the software-update payloads.
-- Both release commands stage the complete build under the system temporary directory, outside synced/File Provider folders, and publish artifacts only after both architectures finish. As soon as each architecture's archives exist, the builder removes only its basename-guarded reproducible unpacked app directory to bound peak disk use; every `.pending` destination is registered for cleanup before its copy starts, so an interrupted or ENOSPC copy cannot leave a partial candidate behind.
-- Ad-hoc builds use a local-only library-validation exception so Electron can launch without a Team ID. The signed distribution gate rejects that exception.
+- Provide arm64/x64 DMGs and update ZIPs, both ZIP blockmaps, `latest-mac.yml` and `SHA256SUMS.txt`.
+- Verify package versions, architecture, hardened runtime, signatures, notarization tickets and Gatekeeper acceptance.
+- Verify that update metadata binds the ZIPs to their exact size and SHA-512; recompute checksums after packaging.
+- Inspect archives and mounted disk images for expected contents, then detach every mounted image.
+- Compare packaged application source and resources with the frozen build inputs.
 
-## Artifact gate
+`npm run release:unsigned` is for local builds. Published stable releases require the signed distribution checks. Mac / Windows previews follow the [paired release process](./paired-release.md) and disclose their signing status.
 
-- arm64 and x64 DMG/ZIP files, both ZIP blockmaps, and `latest-mac.yml` exist and match `SHA256SUMS.txt`. The update metadata must bind the two ZIPs to their exact size and SHA-512, and each packaged app must contain the fixed public GitHub feed in `app-update.yml`.
-- Packaging inputs and the release directory must be free of lexical File Provider conflict-copy names. `afterPack` scans the complete app tree and ASAR; release inspection independently scans raw ZIP central-directory entries, each extracted ZIP/app/ASAR, each read-only mounted DMG/app/ASAR, and the final release directory. Architectures are extracted and removed one at a time, and the gate finishes by recomputing artifact hashes and rescanning the release directory.
-- DMG inspection detaches every mounted image before continuing. `scripts/check-release-artifacts.js` allows only four detach attempts, 250 ms apart, and accepts a disappeared mount point as already detached; a mount that remains after the bounded retry still fails the gate.
-- Both apps have hardened runtime and a Developer ID authority/team identifier.
-- The app and DMG both contain valid stapled notarization tickets.
-- Gatekeeper accepts both architectures.
-- Packaged OCR acceptance statically verifies the exact arm64 or x86_64 Mach-O slice in both packages. On the host architecture only, `check-release-info` must execute the reviewed fixed fictional image and require its exact text, source hash, ordered 4-block contract, and confidence floor, then separately execute the missing-image negative case. Do not describe this as runtime execution on both target architectures.
+## Publication
 
-## Publish
+Create the version tag from the build commit and attach the installer assets, update metadata and checksums. Release notes describe changes, installation and user-relevant limitations. Verify the actual uploaded assets and description after publication.
 
-- Publish only from a reviewed, clean exact-version commit after `release:signed` and `check:distribution` pass with a valid Developer ID identity and notarization credentials. Never upload the local-ad-hoc artifacts as the public production release.
-- Create a version tag from the exact commit used to build.
-- Attach both user-facing DMGs, both ZIPs, both ZIP blockmaps, `latest-mac.yml`, and `SHA256SUMS.txt` to the published release. Do not upload DMG blockmaps or the app-internal `app-update.yml` separately.
-- Include known limitations and privacy-impacting changes in the notes. In V1, GOV.UK is the only built-in search-discovery provider; other publishers require an eligible candidate URL and retrieved pages remain claim-neutral unless an explicit semantic assessor verifies support.
+Apple tools retry recognized temporary network failures. After a completed notarization upload, resume waiting on its submission ID instead of starting a duplicate upload. Permanent failures stop the release.

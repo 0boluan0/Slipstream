@@ -1,104 +1,54 @@
 <p align="right"><strong>简体中文</strong> · <a href="./README.en.md">English</a></p>
 
-<div align="center">
-  <img src="./slipstream/build/icon.png" width="88" alt="Slipstream 应用图标">
-  <h1>Slipstream</h1>
-  <p><strong>读懂原文，留下概念。</strong></p>
-  <p>给中文母语者的专业英文阅读工具。<br>框选教材、论文或专业文章，把中文译文贴在屏幕旁；<br>遇到不懂的术语，结合原文解释，再存进自己的本地卡片盒。</p>
-  <p><a href="#开始使用">开始使用</a> · <a href="./docs/reading-pins.md">阅读功能说明</a> · <a href="https://github.com/0boluan0/Slipstream/issues">反馈问题</a></p>
-</div>
+# Slipstream
 
-> **阅读版 v1.2.1** · macOS 12+ · [下载安装包](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · 已安装正式版可从菜单选择“检查更新”。
+**卡住哪一块，就划哪一块。**
 
-## 不离开正在读的那一页
+阅读英文教材、论文和专业文章时，框选不懂的词句、短段落、公式或小块图文，在原文旁看中文与按需解释，看懂后继续读。有用的概念可以另存为本地 Markdown 卡片。
 
-读英文原版时，卡住你的可能是一句话，也可能是一个熟悉译名、却还没理解的概念。Slipstream 把帮助放在阅读位置旁：先让你读下去，再展开需要弄懂的内容。
+## 下载
 
-1. **框选原文**：按 `Option + Shift + S`，截取正在读的一两段英文。
-2. **先看中文**：译文出现在独立浮窗里，可移动、缩放、置顶，随时切换中英对照。
-3. **按需解释术语**：点击推荐术语，看“概念是什么”和“放在这段里”。也可以在英文原文中选中词句查询。
-4. **留下有用的概念**：点击“存为卡片”，保留解释和原文，之后补上自己的理解、关联其他卡片。
-5. **继续阅读**：临时浮窗用完就关，主动保存的卡片仍留在本地。
+[当前预览 · v1.3.0-preview.2](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0-preview.2)
 
-也可以粘贴英文后点击“开始阅读”，或复制文字后按 `Option + C`。文字输入不需要屏幕录制权限。
+| 系统 | 安装包 | 安装提示 |
+| --- | --- | --- |
+| macOS 12+，Apple 芯片 | [下载 DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Reading-Preview-1.3.0-preview.2-arm64.dmg) | Developer ID 签名，未公证；拖入“应用程序” |
+| Windows 11 x64 | [下载安装程序](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe) | 未签名，系统可能显示来源提示；见 [安装说明](./docs/windows-preview.md#下载与安装) |
 
-## 中文译文之外，把概念弄明白
-
-| 阅读时的需要 | Slipstream 的处理方式 |
-| --- | --- |
-| 一段英文读得慢 | 先显示通顺的中文译文，按段查看原文 |
-| 认识译名，却不知道概念是什么 | 结合当前段落解释专业含义及它在文中的作用 |
-| 没有需要解释的术语 | 只显示译文；术语推荐可以为空，不凑数量 |
-| 想查询没有被推荐的词句 | 在英文原文中选中后主动查询 |
-| 想把概念变成自己的知识 | 保存为 Markdown 卡片，编辑解释、补充笔记、建立关联和反向关联 |
-| 原文带数学公式 | 保留并渲染 LaTeX；疑似数学识别内容先核对，再继续翻译 |
-
-截图使用自拟阅读材料和固定示例回复，用于展示真实界面与操作流程；它们不是模型质量测评。
-
-## 卡片存在你自己的文件夹里
-
-默认位置是系统“文稿”文件夹下的 `Slipstream/术语卡片/`。每张卡片都是可以直接打开的 Markdown 文件，包含英文术语、中文名称、概念解释、本段用法、原文和个人笔记。
-
-卡片盒支持搜索、编辑、关联卡片与反向关联。仅在你点击保存时写入，关闭临时阅读浮窗不会删除已保存的卡片。系统是否同步“文稿”文件夹，取决于你的 macOS 设置。
-
-## 本文速查
-
-[「本文速查」](./docs/reading-references.md)：按论文记住符号、缩写和本文约定，保留原文依据，跨截图查询、隔天继续阅读。候选定义由你决定是否留下；本地查询与长期概念卡片盒各有入口。
-
-## 数学公式
-
-译文、术语解释和本地卡片支持行内与独立 LaTeX 公式渲染，复制时保留 LaTeX。独立公式沿用原文，疑似数学 OCR 结果先进入可编辑核对界面。
-
-安装包自带[本地公式识别](./docs/local-formula-ocr.md)：截图时自动识别公式区域，恢复 LaTeX 并放回原句，再对照原图核对。不需要 API Key 或通用大模型，使用时无需另装组件。
-
-点击核对页中的公式，可以直接定位到对应 LaTeX。校正时原始截图就在编辑框上方，可放大查看；切换截图与核对页会保留尚未提交的修改。
-
-使用支持的 DeepSeek 配置时，可以主动选择“识别公式”，将当前截图交给视觉模型转写；转写后仍需对照截图确认。该操作会单独说明图片去向。公式支持用于保留和阅读数学内容，复杂排版与识别结果仍需要人工核对。
+预览使用独立应用身份。安装包校验和与构建信息在同一发行页提供。[macOS 正式版 v1.2.1](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) 另提供 Apple 芯片与 Intel 安装包，使用本机文字与公式识别，核对后翻译。
 
 ## 开始使用
 
-支持 **macOS 12 及以上**。下载与你的 Mac 对应的安装包，将 Slipstream 拖入“应用程序”：
+1. 打开应用，选择“专业阅读”，配置一套**支持图片的 API**。服务、模型与 Key 只需配置一次。
+2. 按引导试读内置图片，成功后点击“启用截图阅读”。Mac 首次截图需允许屏幕录制；系统要求重启时，退出并重新打开应用。
+3. 按首页显示的截图快捷键，拖出当前不懂的这一小块。屏幕变暗，选区保持高亮；松开开始阅读，Esc 取消。
+4. 看中文，按需点击术语，或在英文对照里选词查询。看懂后关闭浮窗继续读。
 
-- [Apple 芯片版](https://github.com/0boluan0/Slipstream/releases/download/v1.2.1/Slipstream-1.2.1-arm64.dmg)
-- [Intel 版](https://github.com/0boluan0/Slipstream/releases/download/v1.2.1/Slipstream-1.2.1-x64.dmg)
+默认截图快捷键：Mac `Option + Shift + S`，Windows `Alt + Shift + S`。也可以粘贴局部英文，点击“开始阅读”。
 
-已安装正式版可从 Slipstream 菜单检查更新，下载完成后确认重启安装。独立“Slipstream 阅读预览”使用单独的配置与权限，请安装正式版并完成其首次配置。
+## 可以做什么
 
-从源码启动需要 **Node.js 22.12+** 和 **Xcode Command Line Tools**：
+- **读中文与英文对照**：译文贴在原文旁，窗口可移动、缩放、置顶或收起。
+- **查当前概念**：解释“概念是什么”和“放在这段里”，原文依据按需展开；推荐术语允许为空。
+- **读公式**：保留并渲染 LaTeX，可在“截图”页核对原图、重新框选。
+- **留下有用的内容**：主动保存为本地 Markdown 卡片，补充个人笔记、搜索及关联；本文速查可按论文记符号与缩写。
 
-```bash
-git clone https://github.com/0boluan0/Slipstream.git
-cd Slipstream/slipstream
-npm ci
-npm run setup:formula-models
-npm run dev
-```
+保存卡片和管理本文速查都按需使用。主要流程是解决眼前这一小块阅读疑问；整篇翻译与深入研读不属于主要用途。
 
-首次启动选择适合自己的模式：
+## 数据与服务
 
-| 专业阅读 | 基础翻译 |
-| --- | --- |
-| 中文译文、上下文术语解释、本地概念卡片 | 中文译文与选词翻译 |
-| 配置 DeepSeek、OpenAI、Anthropic、兼容服务或本机 Ollama | 无需 API Key，使用在线翻译服务 |
-| 云模型可能产生调用费用；本地模型质量取决于配置 | 文本先发往 Google Translate，必要时使用 MyMemory |
+截图、中文翻译和解释共用你配置的服务。启用图片阅读后，只发送主动选中的区域；服务可能记录请求并收费。API Key 只填入应用设置，由主进程通过系统安全存储使用。
 
-首次截图按 macOS 提示允许屏幕录制。如果系统要求退出并重新打开应用，请完成后再截图。开发运行和安装包的权限归属可能不同；使用固定应用身份的预览构建可减少重复授权。构建、验证和权限排查见[开发说明](./slipstream/README.md)。
+卡片默认保存在系统文稿目录的 `Slipstream/术语卡片/`，仅在点击保存后写入。应用没有账户、广告或产品分析埋点；剪贴板监听默认关闭。
 
-## 数据如何处理
+详见 [隐私与数据流](./docs/PRIVACY.md)、[Windows 隐私说明](./docs/windows-privacy.md) 和 [签名说明](./docs/code-signing.md)。
 
-- **截图识字在本机**：文字使用 Apple Vision；公式使用随应用附带的专用识别组件。主动选择云端重新识别时，当前截图才会发送给所说明的视觉服务。
-- **处理位置可见**：原文发给你选定的服务翻译；点击词句后，再发送词句与本次阅读上下文请求解释。本机 Ollama 使用本地端点。
-- **保存由你决定**：临时阅读卡片不自动成为历史记录；主动保存的概念卡片包含解释和原文。
-- **剪贴板监听默认关闭**，开启前确认处理去向，开启后界面和菜单栏持续显示去向及关闭入口；API Key 使用 macOS 加密存储；应用没有账户、广告或产品分析埋点。
+## 使用限制
 
-详见[隐私与数据流](./docs/PRIVACY.md)。
+模型可能误读文字、遗漏符号或误解上下文，密集公式仍可能无法读取。关键符号与结论请对照原图。截断句或上下文不足时，带上附近几行必要说明重新框选。预览的 Windows 自动更新与开机启动尚未开放。
 
-## 项目状态与参与
+## 开源与参与
 
-当前重点是把“截图 → 阅读 → 理解术语 → 留下卡片”做顺。术语由所配置的模型筛选和解释，质量仍会波动；原文始终可供核对。自动推荐并不知道你已经掌握了哪些概念。
+[阅读功能说明](./docs/reading-pins.md) · [产品规格](./SPEC.md) · [开发与构建](./slipstream/README.md) · [贡献指南](./CONTRIBUTING.md) · [更新记录](./CHANGELOG.md)
 
-- [产品规格](./SPEC.md) · [阅读行为与验收](./docs/reading-pins.md)
-- [开发与构建](./slipstream/README.md) · [贡献指南](./CONTRIBUTING.md)
-- [历史版本](https://github.com/0boluan0/Slipstream/releases) · [更新记录](./CHANGELOG.md)
-
-采用 [MIT License](./LICENSE) 开源。欢迎带着具体段落和使用体验[提交反馈](https://github.com/0boluan0/Slipstream/issues)，请移除私人内容。
+采用 [MIT License](./LICENSE)。[反馈问题](https://github.com/0boluan0/Slipstream/issues) 时请说明系统版本、操作步骤和遇到的提示；示例图片只附与问题有关的区域。

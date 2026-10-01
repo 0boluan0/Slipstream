@@ -2,68 +2,44 @@
 
 # Slipstream
 
-**Read the original. Keep the concepts.**
+**Select the part that stops you, understand it, and keep reading.**
 
-A macOS reading companion for native Chinese speakers working through English textbooks, research papers, and specialist articles. Capture a passage, keep a Chinese translation beside it, explore unfamiliar concepts in context, and save useful explanations as local Markdown cards.
+Slipstream helps Chinese readers with English textbooks, papers and professional articles. Select a word, short passage, formula or small image region to see Chinese beside the source, then request a contextual explanation when needed. Useful concepts can be saved as local Markdown cards.
 
-> **Reading release v1.2.1** · macOS 12+ · [Download](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · Existing production installations can check for updates from the Slipstream menu.
+## Download
 
-## Stay with the page
+[Current preview: v1.3.0-preview.2](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0-preview.2)
 
-1. Press `Option + Shift + S` and select a paragraph or two.
-2. Read the Chinese translation in an independent, movable, resizable window. Switch to parallel English and Chinese when needed.
-3. Click a suggested term for its conceptual meaning and its role in this passage. Select any English phrase to look it up yourself.
-4. Save an explanation and its source as a concept card. Add your own understanding and link related cards later.
-5. Close the temporary window when finished. Saved cards remain on disk.
+- [macOS 12+, Apple silicon DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Reading-Preview-1.3.0-preview.2-arm64.dmg): Developer ID signed, not notarized. Drag the app into Applications.
+- [Windows 11 x64 installer](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe): unsigned; Windows may show a warning. See the [installation guide](./docs/windows-preview.md#下载与安装).
 
-Pasting text and choosing “开始阅读”, or copying text and pressing `Option + C`, opens the same reading workflow without screen-recording permission.
-
-## Translation, concepts, and a local card box
-
-Slipstream includes [paper-specific references](./docs/reading-references.md): retain notation and local definitions with their source sentences, retrieve them across captures, and resume the same paper after restarting. Definitions are saved explicitly and kept separately from the concept library.
-
-- **Translation appears first.** Explanations expand on demand.
-- **Suggestions are optional.** A passage may have no recommended terms. There is no minimum quota, and the model does not know which concepts you already understand.
-- **Context matters.** Explanations distinguish what a concept means from how the passage uses it.
-- **Cards are ordinary Markdown.** They live under `Slipstream/术语卡片/` in the system Documents directory. Search, edit, add notes, and create links and backlinks in the app, or open the files directly.
-- **LaTeX stays readable.** Inline and display math render locally in translations, explanations, and saved cards. Copying retains LaTeX; standalone equations retain their source. Click a formula in the review view to select its LaTeX, compare it with the zoomable original screenshot, and correct it before translation. Draft edits survive view changes.
-
-Screenshots use authored passages and fixed illustrative responses in the actual application UI. They demonstrate the workflow, not model quality.
+Preview apps have separate identities. Checksums and build manifests accompany the installers. [macOS v1.2.1](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) also provides Apple silicon and Intel builds with local text/formula recognition and review before translation.
 
 ## Get started
 
-Requires **macOS 12+**. Download the [Apple silicon installer](https://github.com/0boluan0/Slipstream/releases/download/v1.2.1/Slipstream-1.2.1-arm64.dmg) or [Intel installer](https://github.com/0boluan0/Slipstream/releases/download/v1.2.1/Slipstream-1.2.1-x64.dmg), then drag Slipstream into Applications. Existing production installations can check for updates in the app and confirm a restart after downloading.
+1. Choose professional reading and configure one **image-capable API** with its endpoint, model and key.
+2. Read the built-in sample, then enable screenshot reading. On Mac, allow Screen Recording and restart the app if requested.
+3. Press the capture shortcut shown on the home screen and drag around the part you need. The screen dims and the selected rectangle stays bright. Release to read; Esc cancels.
+4. Read the Chinese translation, click a suggested concept or select words in the English view. Close the card to return to the source.
 
-The separate “Slipstream 阅读预览” app has its own settings and permissions. Install and configure the production app to use the public update channel.
+Default capture shortcuts are `Option + Shift + S` on Mac and `Alt + Shift + S` on Windows. Pasting a short passage is also supported.
 
-Building from source additionally requires **Node.js 22.12+** and **Xcode Command Line Tools**:
+## Reading tools
 
-```bash
-git clone https://github.com/0boluan0/Slipstream.git
-cd Slipstream/slipstream
-npm ci
-npm run setup:formula-models
-npm run dev
-```
+Chinese translation appears beside the source. Cards can move, resize, stay on top or collapse. Explanations describe a concept and its role in the selected passage, with source evidence available on demand. Concept suggestions may be empty.
 
-Choose **专业阅读** for translation and contextual concept explanations using configured DeepSeek, OpenAI, Anthropic, a compatible service, or local Ollama. Choose **基础翻译** for online translation and selected-phrase translation without an API key. Cloud providers may charge for requests; local quality depends on the model.
+LaTeX is preserved and rendered locally. The screenshot tab lets you compare the original or select another region. Saving cards and maintaining paper-specific symbol references are optional. The main workflow handles a local reading question.
 
-Allow screen recording when macOS requests it for capture. If macOS asks for a restart, quit and reopen the app. Development and installed builds can have different permission identities; see the [developer guide](./slipstream/README.md) for a stable preview build.
+## Data and limitations
 
-## Math and data flow
+Screenshot reading, translation and explanation share your configured service. Only the selected image region is submitted after image reading is enabled; the service may retain requests and charge for them. API keys remain in the main process and use system secure storage.
 
-The installers include [local formula OCR](./docs/local-formula-ocr.md): specialized models recover LaTeX from screenshot pixels and place it back into the prose before review. It needs no API key, Python installation, or general-purpose LLM. No additional installation is needed.
+Saved cards are local Markdown files. Clipboard monitoring is off by default. The app has no accounts, advertising or product analytics. See [privacy and data flow](./docs/PRIVACY.md), [Windows privacy](./docs/windows-privacy.md) and [code signing](./docs/code-signing.md).
 
-Apple Vision normally recognizes screenshots on your Mac. Suspected mathematical OCR enters an editable review. A supported DeepSeek configuration additionally offers explicit image-based formula transcription: the app names the destination, sends the current screenshot only on that action, and asks you to check the transcription before translation.
+Models can misread text, omit symbols or misunderstand context. Dense formulas may fail. Check important notation against the screenshot and include a few necessary surrounding lines when selecting again. Windows preview auto-update and launch-at-login are not available.
 
-The selected provider receives submitted text for translation and selected phrases with the current reading context for explanations. Local Ollama uses a loopback endpoint; a custom local service may independently forward requests. Temporary reading windows do not create automatic source history. Explicitly saved cards include their source passage, and macOS controls any Documents-folder synchronization.
+## Open source
 
-Clipboard monitoring is off by default and requires destination-specific confirmation. While enabled, the interface and macOS menu keep the destination and an off action visible. API keys use macOS encrypted storage. Slipstream has no accounts, ads, or product analytics. Read the [privacy and data-flow guide](./docs/PRIVACY.md).
+[Development](./slipstream/README.md) · [Contributing](./CONTRIBUTING.md) · [Changelog](./CHANGELOG.md) · [Report an issue](https://github.com/0boluan0/Slipstream/issues)
 
-## Project
-
-The current focus is the complete capture → read → understand → save loop. Model-selected terms and explanations can vary in quality; the original remains available for comparison. Complex layouts and formula transcription still need checking.
-
-[中文产品规格](./SPEC.md) · [Reading behavior](./docs/reading-pins.md) · [Development](./slipstream/README.md) · [Contributing](./CONTRIBUTING.md) · [Releases](https://github.com/0boluan0/Slipstream/releases)
-
-Open source under the [MIT License](./LICENSE). [Report an issue](https://github.com/0boluan0/Slipstream/issues) with a concrete passage and description of the problem, after removing private content.
+Released under the [MIT License](./LICENSE). Include the operating system, reproduction steps and displayed message when reporting a problem; share only the relevant image region.
