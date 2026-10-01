@@ -1,7 +1,7 @@
 {
   "name": "slipstream",
-  "version": "1.2.1",
-  "description": "A macOS English reading companion for Chinese speakers, with contextual term explanations and local concept cards.",
+  "version": "1.3.0-preview.1",
+  "description": "A macOS and Windows companion for local lookups during professional reading.",
   "author": "Slipstream",
   "license": "MIT",
   "repository": {
@@ -18,10 +18,10 @@
   "packageManager": "npm@11.7.0",
   "main": "src/main/main.js",
   "overrides": {
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.8",
     "js-yaml": "4.3.2",
     "nanoid": "3.3.18",
-    "undici@>=7 <8": "7.29.0"
+    "undici@>=7 <8": "7.30.0"
   },
   "scripts": {
     "dev": "concurrently \"vite\" \"electron . --dev\"",
@@ -163,7 +163,9 @@
     "check:formula-ocr": "electron scripts/check-local-formula-ocr.js",
     "check:formula-models": "node scripts/check-formula-models.js",
     "check:ocr-startup": "node scripts/check-ocr-startup.js && electron scripts/check-ocr-startup-native.js",
-    "check:reading-image": "node scripts/check-reading-image.js && node scripts/check-capture-overlay.js"
+    "check:reading-image": "node scripts/check-reading-image.js && node scripts/check-capture-overlay.js",
+    "check:paired-release": "node scripts/check-paired-release.js",
+    "release:pair": "node scripts/paired-release.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
@@ -274,7 +276,7 @@
     "@phosphor-icons/react": "2.1.10",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^8.2.0",
-    "electron": "^43.1.0",
+    "electron": "^43.7.6",
     "electron-builder": "^26.15.3",
     "eslint": "^8.50.0",
     "eslint-plugin-react": "^7.33.0",

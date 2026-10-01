@@ -2872,10 +2872,7 @@ function registerIpcHandlers() {
   // Screenshot capture flow: capture region -> OCR -> reading card
   ipcMain.handle(IPC_CHANNELS.SCREENSHOT_CAPTURE, async (event) => {
     assertTrustedIpc(event);
-    if (process.platform === 'win32') {
-      return { success: false, errorCode: 'screenshot-unsupported', error: 'Windows 预览暂不支持截图识字，请复制或粘贴文字开始阅读。' };
-    }
-    if (readingPins && store.getAllSettings().setupMode !== 'unconfigured') {
+    if (readingPins && (process.platform === 'win32' || store.getAllSettings().setupMode !== 'unconfigured')) {
       return readingPins.capture({ owner: event.sender.id });
     }
     if (providerConnectionInFlight || llmRequestInFlight || verificationRequestInFlight) {
@@ -2912,7 +2909,8 @@ app.on('ready', () => {
   readingPins = createReadingPins({
     BrowserWindow, ipcMain, screen,
     captureAppName: isReadingPreview ? 'Slipstream 阅读预览' : 'Slipstream',
-    captureSupported: process.platform === 'darwin',
+    captureSupported: ['darwin', 'win32'].includes(process.platform),
+    localOcrSupported: process.platform === 'darwin',
     copyText: (text) => {
       if (app.isQuitting || userDataResetRegistry.isLocked(mainWindow?.webContents?.id)) throw new Error('reading-copy-unavailable');
       clipboardMonitor?.suppressNextText(text);

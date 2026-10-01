@@ -390,7 +390,7 @@ const SCREENSHOT_CAPTURE_PRIVACY_DISCLOSURE = Object.freeze({
   activeDetail: '系统框选和文字识别不会发送给模型；识别完成后才会进入所选处理方式。',
 });
 const USER_ERROR_MESSAGES = Object.freeze({
-  'screenshot-unsupported': 'Windows 预览暂不支持截图识字，请复制或粘贴文字开始阅读。',
+  'screenshot-unsupported': '当前系统暂不支持截图，请复制或粘贴文字开始阅读。',
   'processing-busy': '已有任务正在处理，请稍候。',
   'processing-cancelled': '处理已取消。',
   'processing-invalid': '模型返回的内容未通过结构与证据校验。原文和上一份有效结果已保留，请重试或更换模型。',
@@ -771,7 +771,7 @@ export default function FloatingPanel({
   }, [setClipboardNotice]);
 
   const { invoke, on, platform } = useIpc();
-  const screenshotSupported = platform === 'darwin';
+  const screenshotSupported = ['darwin', 'win32'].includes(platform);
   const { clipboardEvent, clearClipboard } = useClipboard();
 
   const updateSavedTerms = useCallback((nextOrUpdater) => {
@@ -5456,7 +5456,7 @@ export default function FloatingPanel({
                   <p>{isEditingSource
                     ? '上一份结果仍在内存保留；只有修正后的原文生成成功，才会替换它。'
                     : !screenshotSupported
-                      ? '复制或粘贴英文，看中文译文；按需解释概念并保存卡片。Windows 预览暂不支持截图识字。'
+                      ? '复制或粘贴英文，看中文译文；按需解释概念。'
                       : isFreeTranslate
                       ? '框选一段英文，把中文译文贴在阅读位置旁。'
                       : '遇到不懂的词句、公式或小块图文，框选后看中文；查懂就关掉浮窗，继续读。'}</p>
@@ -5475,7 +5475,8 @@ export default function FloatingPanel({
                 <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                   按 Esc 取消。{readingImageEnabled
                     ? `框选的图片与文字发送给 ${settings.activeBackend === 'deepseek' ? 'DeepSeek' : settings.activeBackend === 'custom' ? '你配置的服务' : settings.activeBackend}。`
-                    : '截图先在本机识字；在设置中试读一张图片，即可启用直接读图。'}
+                    : platform === 'win32' ? '在设置中配置支持图片的服务，完成图片试读并启用后，即可截图阅读。'
+                      : '截图先在本机识字；在设置中试读一张图片，即可启用直接读图。'}
                 </p>
               </>)}
 
@@ -5774,7 +5775,7 @@ export default function FloatingPanel({
                 </div>
               )}
 
-              {!ocrReviewCopy && screenshotSupported && (
+              {!ocrReviewCopy && platform === 'darwin' && (
                 <p className="capture-permission-note" role="note">
                   <ShieldCheck size={16} weight="fill" aria-hidden="true" />
                   <span>{readingImageEnabled

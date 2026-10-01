@@ -10,6 +10,8 @@
 
 > **阅读版 v1.2.1** · macOS 12+ · [下载安装包](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) · 已安装正式版可从菜单选择“检查更新”。
 
+**[下载 Windows 未签名版（约 160 MB）](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.1/Slipstream-Windows-Preview-1.3.0-preview.1-x64-Setup.exe)** · [安装步骤与系统提示](./docs/windows-preview.md#下载与安装)
+
 ## 不离开正在读的那一页
 
 读英文原版时，卡住你的可能是一句话、一个概念或一条公式。Slipstream 把帮助放在阅读位置旁，解决眼前这一小块疑问，让你继续读。它的主要用途是局部查阅；整篇翻译和深入研读不属于这条主要流程。
@@ -93,7 +95,11 @@ npm run dev
 - **保存由你决定**：临时阅读卡片不自动成为历史记录；主动保存的概念卡片包含解释和原文。
 - **剪贴板监听默认关闭**，开启前确认处理去向，开启后界面和菜单栏持续显示去向及关闭入口；API Key 使用 macOS 加密存储；应用没有账户、广告或产品分析埋点。
 
-详见[隐私与数据流](./docs/PRIVACY.md)。
+详见[隐私与数据流](./docs/PRIVACY.md)与 [Windows 预览隐私说明](./docs/windows-privacy.md)。
+
+## Code signing policy
+
+Windows 预览以未签名安装包提供。首次安装可能出现“未知发布者”或 SmartScreen 提示，见[安装说明](./docs/windows-preview.md#下载与安装)。签名状态、构建来源与发行要求见 [Code signing policy](./docs/code-signing.md)。
 
 ## 项目状态与参与
 

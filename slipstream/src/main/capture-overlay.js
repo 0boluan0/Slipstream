@@ -96,8 +96,10 @@ async function selectRegion({ signal } = {}) {
       for (const display of displays) {
         const source = sources.find(item => item.display_id === String(display.id));
         if (!source || source.thumbnail.isEmpty()) { finish(new Error('Screen snapshot unavailable')); return; }
-        const window = new BrowserWindow({ ...display.bounds, show: false, frame: false, resizable: false,
-          movable: false, minimizable: false, maximizable: false, skipTaskbar: true, hasShadow: false,
+        // Windows constrains ordinary windows to the work area, which would
+        // shrink the screenshot behind the selector and misalign crop pixels.
+        const window = new BrowserWindow({ ...display.bounds, fullscreen: process.platform === 'win32', show: false, frame: false, resizable: process.platform === 'win32',
+          movable: false, minimizable: false, maximizable: process.platform === 'win32', skipTaskbar: true, hasShadow: false,
           backgroundColor: '#152025', alwaysOnTop: true,
           webPreferences: { preload: path.join(__dirname, 'capture-overlay', 'preload.js'),
             nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true } });
