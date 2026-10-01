@@ -1,15 +1,24 @@
 const fs = require('node:fs');
 const path = require('node:path');
-const { BrowserWindow } = require('electron');
+const assert = require('node:assert/strict');
+const { BrowserWindow, screen } = require('electron');
 const katex = require('katex');
 const definitions = [
   ['fraction', String.raw`F=\frac{QK^{T}}{\sqrt{d}}`],
   ['accent', String.raw`\widehat{m}_{t}=\frac{m_t}{1-\beta^{t}}`],
   ['expectation', String.raw`E[U\mid X]=0,\quad \theta_0=1`],
 ];
+function createFormulaFixtureWindow(width, height) {
+  const zoomFactor = 2 / screen.getPrimaryDisplay().scaleFactor;
+  // Keep both the CSS layout and output pixel density stable across displays.
+  // This affects authored inputs only, not the reader's actual capture windows.
+  return new BrowserWindow({ show: false, frame: false, useContentSize: true,
+    width: Math.round(width * zoomFactor), height: Math.round(height * zoomFactor),
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false,
+      backgroundThrottling: false, zoomFactor } });
+}
 async function createFormulaFixtures(directory) {
-  const win = new BrowserWindow({ show: false, width: 920, height: 240,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  const win = createFormulaFixtureWindow(920, 208);
   try {
     const files = [];
     for (const [name, tex] of definitions) {
@@ -24,15 +33,20 @@ async function createFormulaFixtures(directory) {
       fs.writeFileSync(htmlFile, html); await win.loadFile(htmlFile);
       // Request the fonts used by this layout before waiting for them; hidden
       // windows can otherwise capture a font-display block with missing glyphs.
-      await win.webContents.executeJavaScript(`(async () => {
+      const layout = await win.webContents.executeJavaScript(`(async () => {
         document.body.getBoundingClientRect();
         await document.fonts.ready;
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        return { width: innerWidth, height: innerHeight };
       })()`);
+      assert.deepEqual(layout, { width: 920, height: 208 });
       const file = path.join(directory, name + '.png');
-      fs.writeFileSync(file, (await win.webContents.capturePage()).toPNG()); files.push({ name, file });
+      const png = (await win.webContents.capturePage()).toPNG();
+      assert.equal(png.readUInt32BE(16), 1840, 'formula fixture must have a fixed 2x pixel width');
+      assert.equal(png.readUInt32BE(20), 416, 'formula fixture must preserve its recorded pixel height');
+      fs.writeFileSync(file, png); files.push({ name, file });
     }
     return files;
   } finally { win.destroy(); }
 }
-module.exports = { createFormulaFixtures };
+module.exports = { createFormulaFixtures, createFormulaFixtureWindow };

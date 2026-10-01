@@ -15,7 +15,7 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), 'slipstream-local-formula-che
 app.setPath('userData', path.join(work, 'profile'));
 app.setPath('sessionData', path.join(work, 'session'));
 app.on('window-all-closed', () => {});
-const { createFormulaFixtures } = require('./formula-ocr-fixtures.cjs');
+const { createFormulaFixtures, createFormulaFixtureWindow } = require('./formula-ocr-fixtures.cjs');
 const compact = (value) => value.replace(/\s+/g, '');
 const results = [];
 let manager, service;
@@ -25,15 +25,26 @@ setTimeout(() => { console.error('Local formula OCR exceeded 240 seconds'); app.
 
 async function fixture(name, html, { width = 900, height = 360,
   bodyStyle = 'padding:30px;font:24px/1.6 Georgia;background:white;color:black' } = {}) {
-  const win = new BrowserWindow({ width, height, show: false,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  // Preserve the recorded fixture content: these case heights originally
+  // included a 32px titlebar. Do not add whitespace when removing native chrome.
+  const contentHeight = height - 32;
+  const win = createFormulaFixtureWindow(width, contentHeight);
   const css = pathToFileURL(path.join(path.dirname(require.resolve('katex/package.json')), 'dist/katex.min.css')).href;
   const file = path.join(work, `${name}.html`);
   fs.writeFileSync(file, `<html><meta charset="utf-8"><link rel="stylesheet" href="${css}"><body style="${bodyStyle}">${html}</body></html>`);
   await win.loadFile(file);
-  await win.webContents.executeJavaScript('document.fonts.ready');
+  const layout = await win.webContents.executeJavaScript(`(async () => {
+    document.body.getBoundingClientRect();
+    await document.fonts.ready;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return { width: innerWidth, height: innerHeight };
+  })()`);
+  assert.deepEqual(layout, { width, height: contentHeight }, 'authored OCR input must preserve its CSS viewport');
   const imagePath = path.join(work, `${name}.png`);
-  fs.writeFileSync(imagePath, (await win.webContents.capturePage()).toPNG());
+  const png = (await win.webContents.capturePage()).toPNG();
+  assert.equal(png.readUInt32BE(16), width * 2, 'authored OCR input must keep its fixed 2x pixel width');
+  assert.equal(png.readUInt32BE(20), contentHeight * 2, 'authored OCR input must keep its fixed pixel height');
+  fs.writeFileSync(imagePath, png);
   win.destroy(); return imagePath;
 }
 
