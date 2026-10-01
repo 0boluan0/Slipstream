@@ -8,14 +8,15 @@
 
 ## 下载
 
-[当前预览 · v1.3.0-preview.2](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0-preview.2)
+[正式版 · v1.3.0](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0)
 
 | 系统 | 安装包 | 安装提示 |
 | --- | --- | --- |
-| macOS 12+，Apple 芯片 | [下载 DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Reading-Preview-1.3.0-preview.2-arm64.dmg) | Developer ID 签名，已通过 Apple 公证；拖入“应用程序” |
-| Windows 11 x64 | [下载安装程序](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe) | 未签名，系统可能显示来源提示；见 [安装说明](./docs/windows-preview.md#下载与安装) |
+| macOS 12+，Apple 芯片 | [下载 DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0/Slipstream-1.3.0-arm64.dmg) | Developer ID 签名，Apple 公证；拖入“应用程序” |
+| macOS 12+，Intel | [下载 DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0/Slipstream-1.3.0-x64.dmg) | Developer ID 签名，Apple 公证；拖入“应用程序” |
+| Windows 11 x64 预览 | [下载安装程序](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0/Slipstream-Windows-Preview-1.3.0-x64-Setup.exe) | 未签名，系统可能显示来源提示；见 [安装说明](./docs/windows-preview.md#下载与安装) |
 
-预览使用独立应用身份。安装包校验和与构建信息在同一发行页提供。[macOS 正式版 v1.2.1](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) 另提供 Apple 芯片与 Intel 安装包，使用本机文字与公式识别，核对后翻译。
+Mac 正式版沿用 Slipstream 的配置和应用内更新渠道。此前的“Slipstream 阅读预览”是独立应用，配置独立；两者主动保存的本地卡片可以从卡片盒打开。安装包校验和在同一发行页提供。
 
 ## 开始使用
 

@@ -13,6 +13,7 @@ function createTermLibrary({ BrowserWindow, ipcMain, shell, dialog, store }) {
   function open(id = null) {
     selectedId = id;
     if (window && !window.isDestroyed()) {
+      if (window.isMinimized()) window.restore();
       window.show();
       window.focus();
       window.webContents.send('term-library:refresh', selectedId);
@@ -33,7 +34,7 @@ function createTermLibrary({ BrowserWindow, ipcMain, shell, dialog, store }) {
     window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     const allowed = ['index.html', 'style.css', 'view.js'].map((file) => pathToFileURL(path.join(directory, file)).href);
     window.webContents.session.webRequest.onBeforeRequest((details, callback) => callback({ cancel: !allowed.includes(details.url) && !mathAssetUrls.includes(details.url) }));
-    window.once('ready-to-show', () => window?.show());
+    window.once('ready-to-show', () => { window?.show(); window?.focus(); });
     window.on('closed', () => { window = null; });
     void window.loadFile(entry);
   }

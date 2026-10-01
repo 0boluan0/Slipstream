@@ -1,4 +1,5 @@
 const store = require('./store');
+const { recordReadingUsage } = require('./reading-usage');
 const { buildActionBriefPrompt } = require('./analysis');
 const {
   TASK_REVIEW_MAX_TOKENS,
@@ -615,6 +616,8 @@ async function processAnthropic(settings, model, systemPrompt, userMessage, pare
         system: systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
       }, { signal });
+      recordReadingUsage('anthropic', response.model || model, response.usage);
+      requestOptions.onUsage?.({ model: response.model || model, usage: response.usage });
 
       const result = Array.isArray(response.content)
         ? response.content
@@ -663,6 +666,8 @@ async function processOpenAI(settings, model, systemPrompt, userMessage, parentS
           temperature: 0,
         } : {}),
       }, { signal });
+      recordReadingUsage('openai', response.model || model, response.usage);
+      requestOptions.onUsage?.({ model: response.model || model, usage: response.usage });
 
       const result = response.choices[0].message.content;
 
@@ -706,6 +711,8 @@ async function processDeepSeek(settings, model, systemPrompt, userMessage, paren
           temperature: 0,
         } : {}),
       }, { signal });
+      recordReadingUsage('deepseek', response.model || model, response.usage);
+      requestOptions.onUsage?.({ model: response.model || model, usage: response.usage });
 
       const result = response.choices[0].message.content;
 
@@ -732,6 +739,10 @@ async function processOllama(settings, model, systemPrompt, userMessage, parentS
   const endpointFetch = createCustomEndpointFetch(baseUrl, {
     fetchImpl: globalThis.fetch,
   });
+  const imageMessage = Array.isArray(userMessage);
+  const prompt = imageMessage ? userMessage.filter(part => part.type === 'text').map(part => part.text).join('\n') : userMessage;
+  const images = imageMessage ? userMessage.filter(part => part.type === 'image_url')
+    .map(part => part.image_url.url.replace(/^data:image\/png;base64,/u, '')) : [];
 
   return withTimeout({
     fn: async (signal) => withRetry(signal, async () => {
@@ -743,7 +754,8 @@ async function processOllama(settings, model, systemPrompt, userMessage, parentS
           body: JSON.stringify({
             model: model,
             system: systemPrompt,
-            prompt: userMessage,
+            prompt,
+            ...(images.length ? { images } : {}),
             ...(structuredOutput ? { format: 'json' } : {}),
             ...(structuredOutput && /^deepseek-r1(?::|$)/i.test(model) ? { think: false } : {}),
             // Several current Ollama models advertise 128K+ context by default.
@@ -1015,6 +1027,8 @@ async function processCustom(settings, model, systemPrompt, userMessage, parentS
       }
 
       const data = await readBoundedCustomProviderJson(response);
+      recordReadingUsage('custom', data.model || model, data.usage);
+      requestOptions.onUsage?.({ model: data.model || model, usage: data.usage });
       const choice = data?.choices?.[0];
       const result = choice?.message?.content;
       if (typeof result !== 'string') {
@@ -1139,6 +1153,7 @@ function resolveFreeTranslateLanguages(text, languageHint) {
 }
 
 module.exports = {
+  readScreenshot: require('./reading-image').createImageReader(processLlmBackend),
   recognizeReadingFormulas: require('./formula-recognition').createFormulaRecognizer(processLlmBackend),
   processReadingText: require('./reading-service').createReadingProcessor(processLlmBackend),
   CUSTOM_PROVIDER_MAX_RESPONSE_BYTES,

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>拖动框选要读的英文</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <img id="screen" alt="当前屏幕，只用于本机框选" draggable="false">
+  <div id="dim"></div>
+  <div id="selection" hidden><span id="size"></span></div>
+  <div id="pointer" aria-hidden="true"></div>
+  <div id="guide" role="status"><span class="selection-icon" aria-hidden="true"></span><div><strong>拖动框选要读的英文</strong><span>按住鼠标拖出矩形，松开开始阅读 <b>·</b> Esc 取消</span></div></div>
+  <script src="view.js"></script>
+</body>
+</html>

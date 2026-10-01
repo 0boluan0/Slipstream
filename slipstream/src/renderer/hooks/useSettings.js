@@ -21,6 +21,7 @@ import {
   removeFailedSaveOperationKeys,
 } from '../utils/failedSettingsRetry.mjs';
 import constants from '../../shared/constants';
+import { readingSetupSample } from '../../shared/reading-setup.mjs';
 import { PROCESSING_LOCATION_KINDS } from '../../shared/endpoint-location.mjs';
 
 const { IPC_CHANNELS, DEFAULTS } = constants;
@@ -44,6 +45,7 @@ const CONNECTION_TEST_CODES = new Set([
   'service-unavailable',
   'http-error',
   'structured-output-invalid',
+  'image-not-supported',
   'generation-failed',
   'busy',
   'cancelled',
@@ -121,6 +123,7 @@ const defaultSettings = {
   clipboardShortcut: DEFAULTS.CLIPBOARD_SHORTCUT,
   screenshotShortcut: DEFAULTS.SCREENSHOT_SHORTCUT,
   setupMode: SETUP_MODES.UNCONFIGURED,
+  screenshotReadingMode: 'local',
   runtimeStatus: {
     trayAvailable: true,
     clipboardMonitoringDisabled: false,
@@ -450,6 +453,8 @@ export function useSettings() {
       return {
         status: response.status,
         code: response.code,
+        sample: response.status === 'connected' && response.code === 'ok'
+          ? readingSetupSample(response.sample) : null,
         processingLocation: CONNECTION_TEST_PROCESSING_LOCATIONS.has(response.processingLocation)
           ? response.processingLocation
           : null,

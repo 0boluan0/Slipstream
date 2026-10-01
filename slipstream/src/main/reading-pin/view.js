@@ -6,24 +6,112 @@ let previousPhase = '';
 let mode = 'translation';
 let fontSize = 16;
 let selected = null;
+let lookupOrigin = null;
 let fitRequested = false;
 let copyTimer;
 const scrollPositions = { translation: 0, parallel: 0, image: 0 };
 const sourceOpen = new Set();
 const segmentNodes = new Map();
+let focusedFormulaRegion = null;
+
+function centerSourceRegion() {
+  if (!focusedFormulaRegion) return;
+  const frame = byId('correction-image-frame'), image = byId('correction-image');
+  if (!image.naturalWidth) { image.addEventListener('load', centerSourceRegion, { once: true }); return; }
+  const region = focusedFormulaRegion;
+  const content = byId('correction-image-content');
+  content.style.width = frame.classList.contains('zoomed')
+    ? `${Math.min(image.naturalWidth, Math.max(frame.clientWidth,
+      frame.clientWidth * .9 / Math.max(region.w, .02)))}px` : '';
+  frame.scrollLeft = Math.max(0, (region.x + region.w / 2) * image.clientWidth - frame.clientWidth / 2);
+  frame.scrollTop = Math.max(0, (region.y + region.h / 2) * image.clientHeight - frame.clientHeight / 2);
+}
+
+function focusSourceRegion(region) {
+  const marker = byId('formula-source-marker');
+  const valid = region && ['x', 'y', 'w', 'h'].every((key) => Number.isFinite(region[key])
+    && region[key] >= 0 && region[key] <= 1);
+  focusedFormulaRegion = valid ? region : null;
+  marker.hidden = !valid;
+  byId('correction-image-frame').classList.toggle('formula-focused', Boolean(valid));
+  if (!valid) { byId('correction-image-content').style.width = ''; return; }
+  marker.style.left = `${region.x * 100}%`;
+  marker.style.top = `${region.y * 100}%`;
+  marker.style.width = `${region.w * 100}%`;
+  marker.style.height = `${region.h * 100}%`;
+  byId('correction-image-frame').classList.add('zoomed');
+  byId('correction-zoom').setAttribute('aria-pressed', 'true');
+  byId('correction-zoom').textContent = '适应宽度';
+  requestAnimationFrame(centerSourceRegion);
+}
+
+function scrollEditorToSource(editor, text, start) {
+  const style = getComputedStyle(editor);
+  const ruler = document.createElement('div');
+  Object.assign(ruler.style, { position: 'absolute', visibility: 'hidden', pointerEvents: 'none',
+    width: `${editor.clientWidth}px`, boxSizing: 'border-box', padding: style.padding,
+    font: style.font, lineHeight: style.lineHeight, letterSpacing: style.letterSpacing,
+    whiteSpace: 'pre-wrap', overflowWrap: 'break-word' });
+  ruler.append(document.createTextNode(text.slice(0, start)));
+  const caret = document.createElement('span');
+  caret.textContent = '\u200b';
+  ruler.append(caret);
+  document.body.append(ruler);
+  const top = caret.offsetTop;
+  ruler.remove();
+  editor.scrollTop = Math.max(0, top - editor.clientHeight / 3);
+}
+
+function linkedFormulaSources(text, ranges) {
+  const linked = new Map();
+  if (!state?.sourceText) return linked;
+  const original = window.readingMath.mathRanges(state.sourceText);
+  if (text !== state.sourceText && original.length !== ranges.length) return linked;
+  const originalCounts = new Map(), currentCounts = new Map();
+  const key = (range) => `${range.display}:${range.tex}`;
+  for (const range of original) originalCounts.set(key(range), (originalCounts.get(key(range)) || 0) + 1);
+  for (const range of ranges) currentCounts.set(key(range), (currentCounts.get(key(range)) || 0) + 1);
+  const uncertain = new Set(state.formulaUncertainStarts || []);
+  for (let index = 0; index < ranges.length; index++) {
+    const before = original[index], after = ranges[index];
+    if (!before || key(before) !== key(after)
+      || (text !== state.sourceText && (originalCounts.get(key(before)) !== 1
+        || currentCounts.get(key(after)) !== 1))) continue;
+    linked.set(after.start, { region: state.formulaRegions?.find((item) => item.start === before.start),
+      needsReview: uncertain.has(before.start) });
+  }
+  return linked;
+}
 
 function renderSourcePreview() {
   const text = byId('source-editor').value;
   window.renderReadingMath(byId('source-preview'), text);
   const ranges = window.readingMath.mathRanges(text);
-  byId('formula-edit-hint').hidden = !ranges.length;
+  const invalidDelimiter = window.readingMath.firstInvalidMathDelimiter(text);
+  const bareFontCommand = window.readingMath.firstBareFontCommand(text);
+  const unrenderable = byId('source-preview').querySelector('.math-fallback');
+  const linked = linkedFormulaSources(text, ranges);
+  const canLocate = [...linked.values()].some((item) => item.region);
+  if (state?.formulaNotice) byId('formula-notice').textContent = text === state.sourceText
+    ? state.formulaNotice : state.formulaNotice.replace('，已在公式预览标出', '');
+  const hint = byId('formula-edit-hint');
+  hint.hidden = !ranges.length && !invalidDelimiter;
+  hint.textContent = invalidDelimiter ? `公式标记“${invalidDelimiter}”未正确闭合或内容为空，请在下方校正。`
+    : bareFontCommand ? `公式里的“${bareFontCommand}”缺少反斜杠，请对照截图校正。`
+      : unrenderable ? '有公式无法排版，已显示 LaTeX 原文。请点击该处并对照截图校正。'
+        : canLocate ? `${text === state.sourceText ? '点击公式' : '未改动的公式'}可定位原始截图并校正；长公式可在公式上左右滚动。`
+          : '点击有误的公式可定位校正；长公式可在公式上左右滚动，查看完整内容。';
   const nodes = [...byId('source-preview').children];
   nodes.forEach((node, index) => {
     const range = ranges[index];
+    const match = linked.get(range.start);
+    const needsReview = Boolean(match?.needsReview);
+    const region = match?.region || null;
+    node.classList.toggle('math-needs-review', needsReview);
     node.setAttribute('role', 'button');
     node.tabIndex = 0;
-    node.setAttribute('aria-label', `校正公式：${range.tex}`);
-    node.title = '点击校正这一处公式';
+    node.setAttribute('aria-label', `${needsReview ? '需核对并校正' : '校正'}公式：${range.tex}`);
+    node.title = needsReview ? '这处公式识别不够确定。点击并对照原图核对。' : '点击校正这一处公式';
     node.onclick = () => {
       const editor = byId('source-editor');
       byId('source-correction').open = true;
@@ -31,9 +119,9 @@ function renderSourcePreview() {
       const delimiter = (range.end - range.start - range.tex.length) / 2;
       editor.focus({ preventScroll: true });
       editor.setSelectionRange(range.start + delimiter, range.end - delimiter);
-      editor.scrollTop = Math.max(0, (text.slice(0, range.start).split('\n').length - 2)
-        * parseFloat(getComputedStyle(editor).lineHeight));
+      scrollEditorToSource(editor, text, range.start);
       byId('source-correction').scrollIntoView({ block: 'start' });
+      focusSourceRegion(region);
     };
     node.onkeydown = (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); node.click(); }
@@ -88,24 +176,51 @@ function createSegment(segment) {
   source.className = 'source-paragraph';
   source.lang = 'en';
   source.dataset.segmentId = segment.id;
-  source.textContent = segment.source;
+  window.renderReadingMath(source, segment.source);
   const translation = document.createElement('p');
   translation.className = 'translation-paragraph';
+  const scopeNotice = document.createElement('p');
+  scopeNotice.className = 'scope-notice';
+  scopeNotice.setAttribute('role', 'note');
+  const mathCue = document.createElement('div');
+  mathCue.className = 'muted math-scroll-hint';
+  const mathLabel = document.createElement('span');
+  mathLabel.textContent = '长公式';
+  const mathLeft = document.createElement('button');
+  mathLeft.textContent = '← 左移';
+  mathLeft.setAttribute('aria-label', `向左查看第 ${segment.id + 1} 段公式`);
+  const mathRight = document.createElement('button');
+  mathRight.textContent = '右移 →';
+  mathRight.setAttribute('aria-label', `向右查看第 ${segment.id + 1} 段公式`);
+  mathCue.append(mathLabel, mathLeft, mathRight);
+  mathCue.hidden = true;
   const terms = document.createElement('div');
   terms.className = 'term-list';
+  const termsNotice = document.createElement('p');
+  termsNotice.className = 'muted terms-notice';
   const referenceHits = document.createElement('div');
   referenceHits.className = 'reference-hit-list';
-  section.append(tools, source, translation, terms, referenceHits);
+  section.append(tools, source, translation, scopeNotice, mathCue, terms, termsNotice, referenceHits);
   byId('translation').append(section);
-  const node = { section, source, translation, toggle, terms, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  const node = { section, source, translation, scopeNotice, mathCue, mathLeft, mathRight, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  mathLeft.onclick = () => moveMath(node, -1);
+  mathRight.onclick = () => moveMath(node, 1);
+  section.addEventListener('scroll', refreshMathCues, true);
   segmentNodes.set(segment.id, node);
   return node;
 }
 
 function requestLookup(selection) {
+  if (!byId('lookup-panel').contains(document.activeElement)) lookupOrigin = document.activeElement;
+  byId('lookup-panel').scrollTop = 0;
   selected = selection;
   byId('selection-bar').hidden = true;
   return act('lookup', { ...selection, revision: state?.revision });
+}
+
+async function dismissLookup() {
+  await act('dismiss-lookup');
+  if (lookupOrigin?.isConnected && lookupOrigin.getClientRects().length) lookupOrigin.focus({ preventScroll: true });
 }
 
 function renderSegments(segments) {
@@ -119,6 +234,7 @@ function renderSegments(segments) {
   for (const segment of segments) {
     const node = segmentNodes.get(segment.id) || createSegment(segment);
     node.section.dataset.status = segment.status;
+    node.section.dataset.code = segment.code ? 'true' : 'false';
     node.source.hidden = mode !== 'parallel' && !sourceOpen.has(segment.id);
     node.toggle.hidden = mode === 'parallel';
     node.toggle.textContent = node.source.hidden ? '原文' : '收起原文';
@@ -127,15 +243,18 @@ function renderSegments(segments) {
       : segment.status === 'error' ? segment.error
         : segment.status === 'translating' ? '正在翻译这一段…' : '等待翻译…';
     window.renderReadingMath(node.translation, value);
-    const termsKey = JSON.stringify(segment.terms || []);
+    node.scopeNotice.hidden = !segment.scopeNotice || segment.status !== 'done';
+    node.scopeNotice.textContent = segment.scopeNotice || '';
+    const visibleTerms = segment.terms || [];
+    const termsKey = JSON.stringify(visibleTerms);
     if (node.termsKey !== termsKey) {
       node.termsKey = termsKey;
       node.terms.replaceChildren();
-      if (segment.terms?.length) {
+      if (visibleTerms.length) {
         const label = document.createElement('span');
         label.textContent = '术语';
         node.terms.append(label);
-        for (const term of segment.terms) {
+        for (const term of visibleTerms) {
           const button = document.createElement('button');
           button.className = 'term-chip';
           button.dataset.quote = term.quote;
@@ -153,7 +272,9 @@ function renderSegments(segments) {
         }
       }
     }
-    node.terms.hidden = !segment.terms?.length;
+    node.terms.hidden = !visibleTerms.length;
+    node.termsNotice.hidden = segment.termsStatus !== 'unavailable';
+    node.termsNotice.textContent = segment.termsStatus === 'unavailable' ? '术语推荐暂未完成，可展开原文选词查询。' : '';
     node.terms.querySelectorAll('button').forEach((button) => {
       button.setAttribute('aria-pressed', String(state.lookup?.quote === button.dataset.quote));
     });
@@ -169,7 +290,7 @@ function renderSegments(segments) {
           const button = document.createElement('button');
           button.setAttribute('aria-label', `查本文定义：${hit.symbol}`);
           window.renderReadingMath(button, window.readingReferences.symbolText(hit.symbol));
-          button.onclick = () => requestLookup({ segmentId: segment.id, start: hit.start, end: hit.end });
+          button.onclick = () => requestLookup({ segmentId: segment.id, start: hit.start, end: hit.end, referenceSymbol: hit.symbol });
           node.referenceHits.append(button);
         }
       }
@@ -178,13 +299,39 @@ function renderSegments(segments) {
   }
 }
 
+function overflowingMath(node) {
+  const paragraphs = mode === 'parallel' || !node.source.hidden
+    ? [node.source, node.translation] : [node.translation];
+  return paragraphs.flatMap((paragraph) => [...paragraph.querySelectorAll('.math-block')])
+    .map((formula) => formula.querySelector('.math-scroll') || formula)
+    .filter((scroller) => scroller.clientWidth > 0 && scroller.scrollWidth > scroller.clientWidth + 2);
+}
+
+function refreshMathCues() {
+  for (const node of segmentNodes.values()) {
+    const scrollers = overflowingMath(node);
+    node.mathCue.hidden = !scrollers.length;
+    node.mathLeft.disabled = !scrollers.some((scroller) => scroller.scrollLeft > 2);
+    node.mathRight.disabled = !scrollers.some((scroller) => scroller.scrollLeft + scroller.clientWidth < scroller.scrollWidth - 2);
+  }
+}
+
+function moveMath(node, direction) {
+  for (const scroller of overflowingMath(node)) {
+    scroller.scrollLeft += direction * Math.max(120, Math.round(scroller.clientWidth * .7));
+  }
+  refreshMathCues();
+}
+
 function render(next) {
+  const previousLookup = state?.lookup;
   state = next;
   const segments = state.segments || [];
   const completed = segments.filter((segment) => segment.status === 'done').length;
   const working = ['ocr', 'waiting', 'translating', 'explaining', 'recognizing'].includes(state.phase);
   const labels = { ocr: '正在本机识别…', waiting: '准备翻译…', translating: `已完成 ${completed} / ${segments.length} 段`, explaining: '正在解释…', review: '等待核对', done: `${segments.length} 段 · 已完成`, partial: '部分段落待重试', error: '需要处理' };
-  if (!copyTimer) byId('status').textContent = state.phase === 'recognizing' ? '正在转写公式…' : labels[state.phase] || '';
+  if (!copyTimer) byId('status').textContent = state.phase === 'recognizing'
+    ? state.imageReading ? '正在读这张截图…' : '正在转写公式…' : labels[state.phase] || '';
   byId('card-label').textContent = state.collapsed ? '双击展开' : '阅读';
   document.body.classList.toggle('collapsed', Boolean(state.collapsed));
   byId('collapse').setAttribute('aria-expanded', String(!state.collapsed));
@@ -193,19 +340,26 @@ function render(next) {
   byId('collapse').querySelector('img').src = state.collapsed ? './icons/ArrowsOutSimple.svg' : './icons/Minus.svg';
   byId('notice').hidden = !state.notice;
   byId('notice').textContent = state.notice || '';
-  byId('destination').textContent = state.imageSent
+  byId('notice-retake').hidden = !state.imageReading || state.formulaStatus !== 'uncertain';
+  byId('notice-retake').disabled = working;
+  byId('destination').textContent = state.imageSent && !state.imageReading
     ? `${(state.destination || '').replace('截图留在本机。', '')}本次已请求将截图发送到 DeepSeek 识别公式。`
     : state.destination || '截图文字识别在本机完成';
   byId('pin').setAttribute('aria-pressed', String(state.topmost));
   byId('pin').title = state.topmost ? '取消置顶' : '置顶';
   byId('loading').hidden = !working || segments.length > 0;
   byId('review').hidden = state.phase !== 'review' || mode === 'image';
+  byId('review-retake').hidden = !state.imageReading;
+  byId('confirm').classList.toggle('primary', !state.imageReading);
+  byId('review-title').textContent = state.imageReading ? '这一处没看清' : '核对识别文字';
   byId('tab-translation').textContent = state.phase === 'review' ? '核对' : '译文';
   byId('tab-image').hidden = !state.image;
   if (state.phase === 'review' && previousPhase !== 'review') {
+    focusSourceRegion(null);
     byId('source-editor').value = state.sourceText || '';
     renderSourcePreview();
-    byId('formula-preview').open = window.readingMath.mathRanges(state.sourceText || '').length > 0;
+    byId('formula-preview').open = window.readingMath.mathRanges(state.sourceText || '').length > 0
+      || Boolean(window.readingMath.firstInvalidMathDelimiter(state.sourceText || ''));
     byId('source-correction').open = !byId('formula-preview').open;
     byId('review-title').focus({ preventScroll: true });
   }
@@ -214,7 +368,8 @@ function render(next) {
   byId('reading-hint').hidden = mode !== 'parallel' || !segments.length;
   byId('reading-hint').textContent = state.explainSupported ? '选中英文词句，查看概念与上下文解释。' : '选中英文词句可单独翻译；术语解释需配置模型。';
   byId('recovery').hidden = !['error', 'partial'].includes(state.phase);
-  byId('retry').hidden = !state.sourceText;
+  byId('retry').hidden = !state.sourceText && !state.imageReading;
+  byId('retry').lastChild.textContent = state.imageReading ? '重新读这张图' : '重试未完成段落';
   byId('original').hidden = mode !== 'image' || !state.image;
   for (const id of ['source-image', 'correction-image']) {
     if (byId(id).getAttribute('src') === state.image) continue;
@@ -224,8 +379,9 @@ function render(next) {
   byId('correction-reference').hidden = !state.image;
   byId('source-text').textContent = state.sourceText || '';
   byId('edit-source').disabled = working;
-  byId('copy').disabled = state.phase !== 'done' || !state.translation;
-  byId('formula-tools').hidden = !state.image || (!['review', 'recognizing', 'error'].includes(state.phase) && mode !== 'image');
+  byId('copy').disabled = !['done', 'translating'].includes(state.phase) || !state.translation
+    || !segments.length || segments.some((segment) => segment.status !== 'done');
+  byId('formula-tools').hidden = !state.image || state.imageReading || (!['review', 'recognizing', 'error'].includes(state.phase) && mode !== 'image');
   byId('recognize-formulas').hidden = !state.formulaSupported;
   byId('recognize-formulas').disabled = working;
   byId('formula-unavailable').hidden = state.formulaSupported;
@@ -233,18 +389,37 @@ function render(next) {
   byId('formula-notice').textContent = state.formulaNotice || '';
   if (state.formulaStatus) byId('formula-tools').open = true;
   renderSegments(segments);
+  requestAnimationFrame(refreshMathCues);
   const lookup = state.lookup;
   byId('lookup-panel').hidden = !lookup && !state.lookupNotice;
   if (lookup || state.lookupNotice) {
+    if (!previousLookup || previousLookup.quote !== lookup?.quote) {
+      byId('lookup-panel').scrollTop = 0;
+      byId('lookup-evidence').open = false;
+    }
     const contextual = lookup?.contextual ?? state.explainSupported;
-    byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : contextual ? '术语与词句解释' : '词句翻译';
+    byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : lookup?.localCard ? '已存卡片 · 本地解释'
+      : contextual ? '术语与词句解释' : '词句翻译';
     window.renderReadingMath(byId('lookup-quote'), lookup?.reference ? window.readingReferences.symbolText(lookup.quote) : lookup?.quote || '');
+    const showBasis = Boolean(contextual && !lookup?.reference && !lookup?.localCard && state.lookupStatus === 'done');
+    const basisLabels = {
+      defined: '原文给出定义（模型判断）',
+      contextual: '根据本段用法解释',
+      general: '通用释义 · 模型未找到原文定义',
+      unverified: '模型解释 · 原文依据未确认',
+    };
+    byId('lookup-basis').hidden = !showBasis;
+    byId('lookup-basis').textContent = showBasis ? basisLabels[lookup?.basis] || basisLabels.unverified : '';
     window.renderReadingMath(byId('lookup-meaning'), state.lookupStatus === 'loading' ? '正在结合这段原文解释…' : lookup?.meaning || '');
     byId('meaning-label').hidden = lookup?.reference || !contextual || state.lookupStatus !== 'done';
     byId('lookup-meaning').hidden = Boolean(lookup?.reference);
     byId('lookup-note').hidden = Boolean(lookup?.reference);
     window.renderReadingMath(byId('lookup-note'), lookup?.note || '');
     byId('note-label').hidden = lookup?.reference || !lookup?.note;
+    const showEvidence = showBasis && Boolean(lookup?.sourceQuote);
+    byId('lookup-evidence').hidden = !showEvidence;
+    byId('lookup-evidence').querySelector('summary').textContent = lookup?.basis === 'defined' ? '查看原文定义句' : '查看相关原文';
+    window.renderReadingMath(byId('lookup-evidence-quote'), showEvidence ? lookup.sourceQuote : '');
     byId('lookup-notice').hidden = !state.lookupNotice;
     byId('lookup-notice').textContent = state.lookupNotice || '';
     byId('lookup-retry').hidden = state.lookupStatus !== 'error' || !selected;
@@ -273,13 +448,10 @@ function captureSelection() {
   const element = range.startContainer.nodeType === Node.ELEMENT_NODE ? range.startContainer : range.startContainer.parentElement;
   const paragraph = element?.closest('.source-paragraph');
   if (!paragraph || !paragraph.contains(range.endContainer)) { byId('selection-bar').hidden = true; return; }
-  const prefix = range.cloneRange();
-  prefix.selectNodeContents(paragraph);
-  prefix.setEnd(range.startContainer, range.startOffset);
-  const start = prefix.toString().length;
-  const text = range.toString();
-  if (!text.trim() || text.length > 1500) { byId('selection-bar').hidden = true; return; }
-  selected = { segmentId: Number(paragraph.dataset.segmentId), start, end: start + text.length };
+  const sourceSelection = window.readingMathSelection(paragraph, range);
+  if (!sourceSelection?.text.trim() || sourceSelection.text.length > 1500) { byId('selection-bar').hidden = true; return; }
+  const { start, end, text } = sourceSelection;
+  selected = { segmentId: Number(paragraph.dataset.segmentId), start, end };
   byId('selection-preview').textContent = text;
   byId('lookup-selection').lastChild.textContent = state.explainSupported ? '解释所选' : '翻译所选';
   byId('selection-bar').hidden = false;
@@ -291,11 +463,15 @@ byId('collapse').onclick = () => act('collapse');
 byId('titlebar').ondblclick = (event) => { if (!event.target.closest('button')) act('collapse'); };
 byId('confirm').onclick = () => { setMode('translation'); return act('translate', { revision: state?.revision, text: byId('source-editor').value }); };
 byId('confirm-edits').onclick = byId('confirm').onclick;
-byId('source-editor').oninput = renderSourcePreview;
+byId('source-editor').oninput = () => {
+  if (byId('source-editor').value !== state?.sourceText) focusSourceRegion(null);
+  renderSourcePreview();
+};
 byId('correction-zoom').onclick = () => {
   const zoomed = byId('correction-image-frame').classList.toggle('zoomed');
   byId('correction-zoom').setAttribute('aria-pressed', String(zoomed));
   byId('correction-zoom').textContent = zoomed ? '适应宽度' : '放大';
+  requestAnimationFrame(centerSourceRegion);
 };
 byId('recognize-formulas').onclick = async () => {
   await act('recognize-formulas', { revision: state?.revision, sendImage: true,
@@ -303,6 +479,8 @@ byId('recognize-formulas').onclick = async () => {
   if (state?.phase === 'review') setMode('translation');
 };
 byId('retry').onclick = () => act('translate', { revision: state?.revision, retryFailed: true });
+byId('review-retake').onclick = () => act('retake');
+byId('notice-retake').onclick = () => act('retake');
 byId('retake').onclick = () => act('retake');
 for (const id of ['settings', 'footer-settings', 'lookup-settings']) byId(id).onclick = () => act('settings');
 byId('edit-source').onclick = async () => {
@@ -314,7 +492,7 @@ byId('edit-source').onclick = async () => {
   byId('source-correction').scrollIntoView({ block: 'start' });
 };
 byId('review-image').onclick = () => setMode('image');
-byId('lookup-close').onclick = () => act('dismiss-lookup');
+byId('lookup-close').onclick = dismissLookup;
 byId('save-term').onclick = () => act(state?.saveStatus === 'saved' ? 'library' : 'save-term');
 byId('library').onclick = () => act('library');
 byId('lookup-retry').onclick = () => selected && requestLookup(selected);
@@ -337,6 +515,7 @@ function changeFont(delta) {
   document.documentElement.style.setProperty('--reading-size', `${fontSize}px`);
   byId('smaller').disabled = fontSize === 13;
   byId('larger').disabled = fontSize === 24;
+  requestAnimationFrame(refreshMathCues);
 }
 byId('smaller').onclick = () => changeFont(-1);
 byId('larger').onclick = () => changeFont(1);
@@ -352,6 +531,8 @@ document.querySelectorAll('[role="tab"]').forEach((button) => {
   };
 });
 document.addEventListener('selectionchange', captureSelection);
+window.addEventListener('resize', () => requestAnimationFrame(refreshMathCues));
+document.fonts.ready.then(refreshMathCues);
 document.addEventListener('keydown', (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'w') { event.preventDefault(); act('close'); }
   else if (event.key === 'Escape') {
@@ -359,7 +540,8 @@ document.addEventListener('keydown', (event) => {
     if (byId('processing-info').open) byId('processing-info').open = false;
     else if (window.readingReferences.isEditing()) window.readingReferences.closeEditor();
     else if (!byId('selection-bar').hidden) { window.getSelection()?.removeAllRanges(); byId('selection-bar').hidden = true; }
-    else act(state?.lookup || state?.lookupNotice ? 'dismiss-lookup' : 'close');
+    else if (state?.lookup || state?.lookupNotice) dismissLookup();
+    else act('close');
   }
 });
 window.readingReferences.init(act);

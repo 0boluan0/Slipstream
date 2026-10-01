@@ -1,0 +1,140 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const { reconcileProseOcr, isolatedGlyphDisagreements, proseTokenDisagreements } = require('../src/main/prose-ocr-reconciliation');
+
+const rawLines = [
+  'We find that a standard pruning technique naturally uncovers subnetworks whose',
+  'initializations made them capable of training effectively. Based on these results, we',
+  'articulate the lottery ticket hypothesis: dense, randomly-initialized',
+  'retworks contain subnetworks (winning tickets) that-when trained in isolation-',
+  'reach test accuracy comparable to the original network in a similar number of',
+  'iterations. The winning tickets we find have won the initialization lottery: their',
+  'connections have initial weights that make training particularly effective.',
+];
+const paddedLines = [
+  rawLines[0], rawLines[1],
+  'articulate the lottery ticket hypothesis: dense, randomly-initialized, feed-forward',
+  'networks contain subnetworks (winning tickets) that—when trained in isolation—',
+  ...rawLines.slice(4),
+];
+const block = (text, index, confidence = 1, shift = 0) => ({
+  text, confidence,
+  boundingBox: { x: .07, y: .82 - index * .12 + shift, w: .86, h: .1 },
+  characters: Array.from(text, (letter) => ({ text: letter })),
+});
+const result = (lines, confidence = 1, shift = 0) => ({
+  text: lines.join('\n'), confidence,
+  blocks: lines.map((line, i) => block(line, i, confidence, shift)),
+});
+
+const recovered = reconcileProseOcr(result(rawLines), result(paddedLines));
+assert.equal(recovered.proseComparison?.disagree, true);
+assert.equal(recovered.proseComparison?.recovered, true);
+assert.match(recovered.text, /randomly-initialized, feed-forward\nnetworks contain/u);
+assert.match(recovered.text, /that—when trained in isolation—\nreach/u);
+assert.equal(recovered.blocks[3].characters[0].text, 'n', 'recovered text and character geometry stay together');
+
+const same = reconcileProseOcr(result(paddedLines), result(paddedLines));
+assert.equal(same.proseComparison?.disagree, false);
+assert.equal(same.text, paddedLines.join('\n'));
+
+const numerical = paddedLines.slice();
+numerical[4] = numerical[4].replace('similar number', 'similar 10 number');
+const changedNumber = reconcileProseOcr(result(rawLines), result(numerical));
+assert.equal(changedNumber.proseComparison?.disagree, true);
+assert.equal(changedNumber.proseComparison?.recovered, false);
+assert.equal(changedNumber.text, rawLines.join('\n'), 'a numerical disagreement stays unresolved');
+
+const shifted = reconcileProseOcr(result(rawLines), result(paddedLines, 1, .2));
+assert.equal(shifted.proseComparison?.recovered, false);
+assert.equal(shifted.text, rawLines.join('\n'), 'another page position cannot replace source lines');
+
+const uncertain = reconcileProseOcr(result(rawLines), result(paddedLines, .5));
+assert.equal(uncertain.proseComparison?.recovered, false);
+assert.equal(uncertain.proseComparison?.disagree, true);
+
+// Vision can combine two printed rows into one low-confidence, tall observation.
+// Padding split the same pixels into two complete rows in a native PDF capture.
+const surrounding = ['Abstract', 'The method starts from a small input space.',
+  'The output can be processed with a linear model.',
+  'We compare two feature families in experiments.',
+  'Their behavior depends on the selected kernel.',
+  'The final estimates are reported below.'];
+const sourceRows = surrounding.map((line, index) => block(line, index));
+sourceRows[3] = {
+  ...block('We compare cheat dia machine teaming al.', 3, .5),
+  boundingBox: { x: .07, y: .46, w: .86, h: .22 },
+};
+const completeRows = [
+  ...surrounding.slice(0, 3).map((line, index) => block(line, index)),
+  { ...block('We compare two feature families in experiments.', 3),
+    boundingBox: { x: .07, y: .57, w: .86, h: .09 } },
+  { ...block('We compare their accuracy across several tasks.', 4),
+    boundingBox: { x: .07, y: .48, w: .86, h: .09 } },
+  ...surrounding.slice(4).map((line, index) => block(line, index + 4)),
+];
+const fromBlocks = (blocks) => ({ text: blocks.map((entry) => entry.text).join('\n'), blocks });
+const expanded = reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(completeRows));
+assert.equal(expanded.proseComparison?.recovered, true);
+assert.match(expanded.text, /We compare two feature families in experiments\.\nWe compare their accuracy/u);
+assert.equal(expanded.blocks.length, 7);
+
+const confidentMerge = sourceRows.map((entry, index) => index === 3 ? { ...entry, confidence: 1 } : entry);
+assert.equal(reconcileProseOcr(fromBlocks(confidentMerge), fromBlocks(completeRows)).proseComparison.recovered,
+  false, 'a confident source line cannot be silently expanded');
+const movedExtra = completeRows.map((entry, index) => index === 4
+  ? { ...entry, boundingBox: { ...entry.boundingBox, y: .05 } } : entry);
+assert.equal(reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(movedExtra)).proseComparison.recovered,
+  false, 'the additional row must occupy the original merged observation');
+const changedNeighbor = completeRows.map((entry, index) => index === 1
+  ? { ...entry, text: 'Unrelated output can be processed with a linear model.' } : entry);
+assert.equal(reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(changedNeighbor)).proseComparison.recovered,
+  false, 'other lines must agree exactly');
+const uncertainExtra = completeRows.map((entry, index) => index === 4
+  ? { ...entry, confidence: .5 } : entry);
+assert.equal(reconcileProseOcr(fromBlocks(sourceRows), fromBlocks(uncertainExtra)).proseComparison.recovered,
+  false, 'both replacement rows must be confident');
+
+const glyphLine = 'where T is a temperature normally set to 1. A higher T gives softer class probabilities.';
+const confusedLine = glyphLine.replace(' T ', " I' ").replace(' T ', ' I ');
+const glyphSource = result([confusedLine, 'The next printed line stays as it is.']);
+const glyphPadded = result([glyphLine, 'The next printed line stays as it is.']);
+assert.deepEqual(isolatedGlyphDisagreements(glyphSource, glyphPadded).map(({ index, source, alternative }) =>
+  ({ index, source, alternative })), [{ index: 0, source: "I'、I", alternative: 'T' }],
+'only two repeated isolated mathematical glyphs in an otherwise identical row merit pixel rechecking');
+for (const rejected of [
+  result([glyphLine.replace('temperature', 'pressure'), 'The next printed line stays as it is.']),
+  result([glyphLine.replace('1.', '2.'), 'The next printed line stays as it is.']),
+  result([glyphLine.replace(' T ', ' B '), 'The next printed line stays as it is.']),
+  result([glyphLine, 'The next printed line stays as it is.'], .5),
+  result([glyphLine, 'The next printed line stays as it is.'], 1, .2),
+]) assert.equal(isolatedGlyphDisagreements(glyphSource, rejected).length, 0,
+  'changed prose, numbers, mismatched symbols, weak evidence or displaced rows cannot become a glyph repair');
+
+const proseLine = 'We compute the attention function on a set of queries simultaneously.';
+const mistakenProse = proseLine.replace('function', 'tunction').replace(' of ', ' ot ');
+const proseSource = result([mistakenProse]);
+const proseCandidate = result([proseLine]);
+assert.deepEqual(proseTokenDisagreements(proseSource, proseCandidate)[0].conflicts,
+  [{ source: 'tunction', alternative: 'function', symbol: false },
+    { source: 'ot', alternative: 'of', symbol: false }],
+  'two isolated spelling differences can request a local image reread');
+const matrixLine = 'The keys and values are also packed into matrices K and V.';
+assert.deepEqual(proseTokenDisagreements(result([matrixLine.replace(' K ', ' A ')]), result([matrixLine]))[0].conflicts,
+  [{ source: 'A', alternative: 'K', symbol: true }],
+  'one disputed capital in otherwise identical prose deserves the same pixel check');
+for (const rejected of [
+  result([proseLine.replace('queries', 'vectors')]),
+  result([proseLine.replace('a set', '1 set')]),
+  result([proseLine.replace('queries', 'queriez')]),
+  result([proseLine.replace('.', ',')]),
+  result([proseLine], .5), result([proseLine], 1, .3),
+  { blocks: [...proseCandidate.blocks, ...proseCandidate.blocks] },
+]) assert.equal(proseTokenDisagreements(proseSource, rejected).length, 0,
+  'rewritten sentences, digits, extra edits, punctuation, low confidence and ambiguous positions cannot change source prose');
+const otherRow = block('A different formula observation.', 2);
+assert.equal(proseTokenDisagreements({ blocks: [...proseSource.blocks, otherRow] }, proseCandidate).length, 1,
+  'unrelated formula observations do not prevent a position-matched prose comparison');
+
+console.log('Prose OCR disagreements pause review; fully supported longer rows can supply a reviewable candidate.');

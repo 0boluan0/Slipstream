@@ -59,7 +59,7 @@ const MODEL_IDS = {
   free_translate: ['google-translate'],
   anthropic: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
   openai: ['gpt-4o', 'gpt-4o-mini'],
-  deepseek: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+  deepseek: ['deepseek-flash', 'deepseek-v4-pro'],
   ollama: ['qwen2.5', 'mistral-small'],
   custom: ['custom'],
 };

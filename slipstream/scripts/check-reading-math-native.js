@@ -29,7 +29,15 @@ $$\mathbb{E}[Y\mid X=x]=\int_{-\infty}^{\infty} y f_{Y\mid X}(y\mid x)\,\mathrm{
 
 $$\bar{x}=\frac{1}{n}\sum_{i=1}^{n} x_i,\qquad A=\begin{pmatrix}a & b\\b & c\end{pmatrix}.$$`;
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-async function until(predicate, label) { const end = Date.now() + 20000; while (Date.now() < end) { if (await predicate()) return; await pause(40); } throw new Error(`Timed out: ${label}`); }
+async function until(predicate, label) {
+  const end = Date.now() + 20000;
+  let lastError;
+  while (Date.now() < end) {
+    try { if (await predicate()) return; } catch (error) { lastError = error; }
+    await pause(40);
+  }
+  throw new Error(`Timed out: ${label}${lastError ? `; ${lastError.message}` : ''}`);
+}
 let manager;
 let library;
 app.whenReady().then(async () => {
@@ -45,6 +53,7 @@ app.whenReady().then(async () => {
   const fixture = path.join(work, 'source.png');
   fs.writeFileSync(fixture, (await sourceWindow.webContents.capturePage()).toPNG());
   if (output) { fs.copyFileSync(fixture, path.join(output, 'reading-math-source.png')); fs.writeFileSync(path.join(output, 'reading-math-source.txt'), source); }
+  require('./prepare-ocr-test')(fixture);
   const ocr = await require('../src/main/ocr-service').performOCR(fixture);
   console.log(JSON.stringify({ localOcr: ocr.text, confidence: ocr.confidence }));
   if (output) fs.writeFileSync(path.join(output, 'reading-math-local-ocr.json'), JSON.stringify(ocr, null, 2));
@@ -58,11 +67,17 @@ app.whenReady().then(async () => {
   let heldSignal;
   let hold = false;
   let emptyOcr = false;
+  let localReviewOcr = false;
   const settings = { setupMode: 'full', activeBackend: 'deepseek', activeModel: 'fixture', deepseekApiKey: 'fixture-key' };
   manager = createReadingPins({ BrowserWindow, ipcMain, screen, getSettings: () => settings, getMainWindow: () => null,
     requestCapturePermission: async () => ({ granted: true }),
     captureRegion: async () => { const file = path.join(work, `capture-${Date.now()}.png`); fs.copyFileSync(fixture, file); return file; },
-    performOCR: async () => ({ text: emptyOcr ? '' : 'Conditional expectation E[Y | X] = y', confidence: .99, blocks: [] }),
+    performOCR: async () => localReviewOcr
+      ? { text: source, document: { text: source, layoutReview: false,
+        formulaRegions: [{ start: equations[0].start, x: .1, y: .2, w: .75, h: .15 },
+          { start: equations[1].start, x: .1, y: .55, w: .75, h: .15 }] }, confidence: .99, blocks: [],
+        formulaOcr: { status: 'done', count: 2, uncertain: 1, uncertainStarts: [source.indexOf('$$')] } }
+      : { text: emptyOcr ? '' : 'Conditional expectation E[Y | X] = y', confidence: .99, blocks: [] },
     processReadingText: async ({ kind, selection }) => {
       translations += 1;
       if (kind === 'lookup') return { lookup: { quote: selection, meaning: String.raw`条件期望 $\mathbb{E}[Y\mid X=x]$ 是给定 $X=x$ 时 $Y$ 的平均值。`, note: String.raw`这里用条件密度 $f_{Y\mid X}(y\mid x)$ 对 $y$ 加权积分。`, contextual: true } };
@@ -90,6 +105,53 @@ app.whenReady().then(async () => {
   await until(() => js('document.querySelectorAll("#source-preview .katex").length === 2'), 'local equation preview');
   await js('document.getElementById("confirm").click()');
   await until(async () => (await state()).phase === 'done', 'LaTeX translation');
+  const numberedSource = String.raw`$$f(x)=x^2\eqno(7.3)$$.`;
+  const numbered = await js(`(() => {
+    const element = document.createElement('div');
+    window.renderReadingMath(element, ${JSON.stringify(numberedSource)});
+    return { source: element.dataset.mathSource, label: element.querySelector('.math-tag')?.textContent,
+      rendered: !!element.querySelector('.katex'), fallback: !!element.querySelector('.math-fallback'),
+      title: element.querySelector('.math-block')?.title };
+  })()`);
+  assert.equal(numbered.source, numberedSource); assert.equal(numbered.title, numberedSource);
+  assert.equal(numbered.label, '(7.3)'); assert.equal(numbered.rendered, true); assert.equal(numbered.fallback, false);
+  await js('document.getElementById("tab-parallel").click()');
+  assert.equal(await js('document.querySelectorAll(".source-paragraph .katex").length'), 2, 'the original formulas must be readable in the parallel view');
+  const selectionSource = String.raw`The mean $\bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i$ is a sample statistic. Its scale is $1$.`;
+  manager.openText(selectionSource);
+  const selectionPin = BrowserWindow.getAllWindows().find(window => window !== pin);
+  const selectionJs = code => selectionPin.webContents.executeJavaScript(code);
+  await until(() => selectionJs('window.readingPin.act("ready").then(r=>r.state.phase === "done")'), 'math source for selection');
+  await selectionJs('document.getElementById("tab-parallel").click()');
+  assert.equal(await selectionJs('document.querySelectorAll(".source-paragraph .katex").length'), 2);
+  await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph');
+    const node = [...paragraph.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.includes('sample statistic'));
+    const range = document.createRange(), start = node.textContent.indexOf('sample statistic');
+    range.setStart(node, start); range.setEnd(node, start + 'sample statistic'.length);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+  })()`);
+  await until(() => selectionJs('!document.getElementById("selection-bar").hidden'), 'select prose after a rendered formula');
+  await selectionJs('document.getElementById("lookup-selection").click()');
+  await until(() => selectionJs('window.readingPin.act("ready").then(r=>r.state.lookupStatus === "done")'), 'exact source selection');
+  assert.equal(await selectionJs('window.readingPin.act("ready").then(r=>r.state.lookup.quote)'), 'sample statistic', 'rendered math must not shift subsequent source offsets');
+  const acrossMath = await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph'), math = paragraph.querySelector('.katex-html');
+    const range = document.createRange(); range.setStart(paragraph.firstChild, 4); range.setEnd(math.firstChild, 1);
+    return window.readingMathSelection(paragraph, range);
+  })()`);
+  assert.equal(acrossMath.text, selectionSource.slice(4, selectionSource.indexOf('$ is') + 1), 'a selection ending inside a formula includes its complete original LaTeX');
+  assert.equal(await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph'), range = document.createRange();
+    range.selectNodeContents(paragraph); return window.readingMathSelection(paragraph, range).text;
+  })()`), selectionSource, 'whole-source selection preserves raw LaTeX exactly once');
+  assert.equal(await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph'), range = document.createRange();
+    range.selectNodeContents(paragraph.querySelector('.katex-html')); range.collapse(true);
+    return window.readingMathSelection(paragraph, range);
+  })()`), null, 'a caret inside mathematics is not a selected formula');
+  selectionPin.close();
   assert(await js('document.querySelectorAll("#translation .katex").length >= 2'));
   assert(await js('document.querySelector("#translation math") !== null'), 'math must expose accessible MathML');
   await js('document.getElementById("copy").click()'); assert.match(copied, /\\frac\{1\}\{n\}/);
@@ -100,6 +162,30 @@ app.whenReady().then(async () => {
   await until(async () => (await state()).saveStatus === 'saved', 'math persisted');
   const saved = (await store.list()).cards[0];
   assert.match(fs.readFileSync(await store.filePath(saved.id), 'utf8'), /\\begin\{pmatrix\}/);
+  await js('window.renderReadingMath(document.getElementById("lookup-note"), "删去 $2x$ 不改变张成空间。")');
+  assert.equal(await js('document.querySelectorAll("#lookup-note .katex").length'), 1,
+    'a one-digit coefficient and Latin variable must render as mathematics in the actual reading card');
+  assert.equal(await js('document.querySelectorAll("#lookup-note .math-fallback").length'), 0);
+  const longTagged = String.raw`$$\mathbf z_0=[\mathbf x_{class};\mathbf x_p^1\mathbf E;\mathbf x_p^2\mathbf E;\cdots;\mathbf x_p^N\mathbf E]+\mathbf E_{pos},\quad \mathbf E\in\mathbb R^{(P^2C)\times D},\quad \mathbf E_{pos}\in\mathbb R^{(N+1)\times D}\tag{1}$$`;
+  await js(`window.renderReadingMath(document.getElementById('lookup-note'), ${JSON.stringify(longTagged)})`);
+  const taggedLayout = await js(`(() => { const root=document.getElementById('lookup-note');
+    const scroller=root.querySelector('.math-scroll'), tag=root.querySelector('.math-tag');
+    return { tagged:Boolean(tag), scrollable:Boolean(scroller && scroller.scrollWidth>scroller.clientWidth),
+      separated:Boolean(scroller && tag && scroller.getBoundingClientRect().right<=tag.getBoundingClientRect().left) };
+  })()`);
+  assert.deepEqual(taggedLayout, { tagged: true, scrollable: true, separated: true },
+    'a long numbered formula must scroll beside its equation number without overlapping it');
+  assert.equal(await js(`(() => { const root=document.getElementById('lookup-note'), range=document.createRange();
+    range.selectNodeContents(root); return window.readingMathSelection(root,range)?.text; })()`), longTagged,
+  'a separated equation number must still copy with the original LaTeX');
+  const punctuated = String.raw`$$\begin{aligned}a&=b\\c&=d\\\end{aligned}\tag{10}$$,`;
+  await js(`window.renderReadingMath(document.getElementById('lookup-note'), ${JSON.stringify(punctuated)})`);
+  assert.match(await js('document.querySelector("#lookup-note annotation").textContent'),
+    /c&=d\\;\\text\{,\}\\end\{aligned\}/u,
+    'punctuation after a multi-line equation belongs to its last row');
+  assert.equal(await js(`(() => { const root=document.getElementById('lookup-note'), range=document.createRange();
+    range.selectNodeContents(root); return window.readingMathSelection(root,range)?.text; })()`), punctuated,
+  'moving display punctuation must retain the original LaTeX and comma when copied');
   // Malformed LaTeX remains readable; arbitrary markup stays inert.
   const unsafe = String.raw`<img src="https://example.com" onerror="alert(1)"> $\notARealCommand{x}$ $\href{https://example.com}{link}$`;
   await js(`window.renderReadingMath(document.getElementById('lookup-note'), ${JSON.stringify(unsafe)})`);
@@ -120,10 +206,90 @@ app.whenReady().then(async () => {
   manager.invalidateProcessing(); assert(heldSignal.aborted);
   held({ text: 'stale formula result', uncertain: [] }); await pause(60);
   assert.notEqual((await state()).sourceText, 'stale formula result');
-  hold = false; emptyOcr = true;
+  hold = false; localReviewOcr = true;
   await manager.capture();
-  const formulaOnly = BrowserWindow.getAllWindows().find((window) => window !== pin);
-  await until(() => formulaOnly.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state.phase === "error")'), 'empty local OCR');
+  const markedPin = BrowserWindow.getAllWindows().find((window) => window !== pin && window.getTitle() === 'Slipstream · 阅读卡片');
+  assert(markedPin, 'local OCR capture must open a reading card');
+  await until(() => markedPin.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state.phase === "review")').catch(() => false), 'local formula review');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 1,
+    'the uncertain formula must be marked at its real source position');
+  assert.equal(await markedPin.webContents.executeJavaScript('getComputedStyle(document.querySelector("#source-preview .math-needs-review")).outlineStyle'), 'dashed');
+  assert.match(await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").getAttribute("aria-label")'), /需核对并校正公式/);
+  assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'), /已在公式预览标出/);
+  markedPin.setSize(460, 720);
+  await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").click()');
+  await markedPin.webContents.executeJavaScript('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  assert.deepEqual(await markedPin.webContents.executeJavaScript(`(() => {
+    const marker = document.getElementById('formula-source-marker');
+    return { hidden: marker.hidden, left: marker.style.left, top: marker.style.top,
+      zoomed: document.getElementById('correction-image-frame').classList.contains('zoomed') };
+  })()`), { hidden: false, left: '10%', top: '20%', zoomed: true },
+  'clicking a source formula must reveal its location in the original screenshot');
+  assert(await markedPin.webContents.executeJavaScript(`(() => {
+    const frame = document.getElementById('correction-image-frame');
+    const marker = document.getElementById('formula-source-marker');
+    return marker.getBoundingClientRect().width <= frame.clientWidth * .95;
+  })()`), 'the whole highlighted formula should fit the default narrow correction frame');
+  if (output) fs.writeFileSync(path.join(output, 'reading-math-source-position.png'), (await markedPin.webContents.capturePage()).toPNG());
+  await markedPin.webContents.executeJavaScript('document.getElementById("source-preview").children[1].click()');
+  await markedPin.webContents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  assert(await markedPin.webContents.executeJavaScript(`(() => {
+    const editor = document.getElementById('source-editor');
+    return editor.scrollHeight > editor.clientHeight && editor.scrollTop > 0
+      && editor.value.slice(editor.selectionStart, editor.selectionEnd).includes('pmatrix');
+  })()`), 'clicking a later formula must scroll its LaTeX into the correction editor');
+  if (output) fs.writeFileSync(path.join(output, 'reading-math-later-formula.png'), (await markedPin.webContents.capturePage()).toPNG());
+  await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").click()');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), false);
+  const oneFormulaEdited = source.slice(0, equations[0].start) + String.raw`$$\unknownmathsymbol$$`
+    + source.slice(equations[0].end);
+  await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = ${JSON.stringify(oneFormulaEdited)};
+    document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), true,
+    'editing the recognized source must clear its old pixel highlight');
+  await markedPin.webContents.executeJavaScript('document.getElementById("source-preview").children[1].click()');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").style.top'), '55%',
+    'a different unchanged formula keeps its own source pixels after the first formula is edited');
+  assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /公式无法排版.*校正/u,
+    'an unrenderable edit must explain the problem before confirmation');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-fallback").length'), 1);
+  const duplicateFormula = source.slice(0, equations[1].start)
+    + source.slice(equations[0].start, equations[0].end) + source.slice(equations[1].end);
+  await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = ${JSON.stringify(duplicateFormula)};
+    document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
+  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 0,
+    'ambiguous duplicate formulas must not inherit an old review position');
+  await markedPin.webContents.executeJavaScript('document.getElementById("source-preview").children[1].click()');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").hidden'), true,
+    'a newly duplicated formula must not point to an unrelated source region');
+  await markedPin.webContents.executeJavaScript(`document.getElementById('source-editor').value = 'The vectors satisfy $$x=1$.';
+    document.getElementById('source-editor').dispatchEvent(new Event('input'))`);
+  assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /未正确闭合/u);
+  await markedPin.webContents.executeJavaScript(`window.readingPin.act('ready').then(({ state }) => {
+    document.getElementById('source-editor').value = state.sourceText;
+    document.getElementById('source-editor').dispatchEvent(new Event('input'));
+  })`);
+  await markedPin.webContents.executeJavaScript('document.getElementById("source-editor").value += " corrected"; document.getElementById("source-editor").dispatchEvent(new Event("input"))');
+  assert.match(await markedPin.webContents.executeJavaScript('document.getElementById("formula-edit-hint").textContent'), /未改动的公式可定位原始截图/u);
+  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 1,
+    'the unchanged unique formula keeps its review mark after prose is edited');
+  await markedPin.webContents.executeJavaScript('document.querySelector("#source-preview .math-needs-review").click()');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.getElementById("formula-source-marker").style.top'), '20%',
+    'the retained review mark still locates the same original pixels');
+  assert.doesNotMatch(await markedPin.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'), /已在公式预览标出/);
+  await markedPin.webContents.executeJavaScript('document.getElementById("confirm").click()');
+  await until(() => markedPin.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state.phase === "done")'), 'edited source translation');
+  await markedPin.webContents.executeJavaScript('document.getElementById("edit-source").click()');
+  await until(() => markedPin.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state.phase === "review")'), 'edited source review');
+  assert.equal(await markedPin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .math-needs-review").length'), 0,
+    'reopening an edited source must not reuse the original OCR positions');
+  assert.deepEqual((await markedPin.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state)')).formulaRegions, [],
+    'source-pixel coordinates must be dropped after the source text changes');
+  markedPin.close();
+  localReviewOcr = false; emptyOcr = true;
+  await manager.capture();
+  const formulaOnly = BrowserWindow.getAllWindows().find((window) => window !== pin && window.getTitle() === 'Slipstream · 阅读卡片');
+  await until(() => formulaOnly.webContents.executeJavaScript('window.readingPin.act("ready").then(r=>r.state.phase === "error")').catch(() => false), 'empty local OCR');
   assert(await formulaOnly.webContents.executeJavaScript('!document.getElementById("formula-tools").hidden && !document.getElementById("recognize-formulas").hidden'), 'formula recognition must remain available when local OCR sees no text');
   manager.dispose();
   assert.equal((await require('../src/main/term-card-store').createTermCardStore(store.directory).list()).cards[0].meaning, saved.meaning);

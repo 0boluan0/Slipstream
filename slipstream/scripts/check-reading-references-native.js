@@ -29,6 +29,7 @@ const windows = (title) => BrowserWindow.getAllWindows().filter((window) => wind
 const referenceWindow = () => windows('Slipstream · 本文速查').at(-1);
 const source = 'Let $x_i$ denote the feature vector of sample i. Let $\\lambda$ denote the regularization strength.';
 const usage = 'We minimize $$L(\\theta) = \\sum_i \\ell(f_\\theta(x_i), y_i) + \\lambda R(\\theta).$$ The quantity $q$ is used below.';
+const spacedFormula = String.raw`The generalization error is $$P E ^ { \ast } = P _ { X,Y } ( m g ( X,Y ) < 0 )$$.`;
 const conflictingSource = 'In this section, let $\\lambda$ denote an eigenvalue.';
 const definitions = [
   { symbol: 'x_i', meaning: '第 i 个样本的特征向量。', evidence: source.split('. ')[0] + '.' },
@@ -62,6 +63,7 @@ async function openText(text) {
   assert(manager.openText(text).success);
   const window = windows('Slipstream · 阅读卡片').find((item) => !existing.has(item));
   await until(async () => (await snapshot(window)).phase === 'done', 'translation');
+  assert.equal(window.isAlwaysOnTop(), true, 'temporary reading cards retain their floating default');
   return window;
 }
 async function lookup(window, quote) {
@@ -85,11 +87,27 @@ app.whenReady().then(async () => {
   await manager.openReferences();
   let reference = referenceWindow();
   await until(async () => (await snapshot(reference)).referenceOnly, 'reference window');
+  assert.equal(reference.isAlwaysOnTop(), false, 'references open at ordinary window level');
+  assert.equal((await snapshot(reference)).topmost, false, 'the pin control reflects the ordinary default');
+  await act(reference, 'toggle-top');
+  assert.equal(reference.isAlwaysOnTop(), true, 'a reader may deliberately pin references');
+  await manager.openReferences();
+  assert.equal(reference.isAlwaysOnTop(), true, 'reopening references preserves an explicit pin choice');
+  await act(reference, 'toggle-top');
+  assert.equal(reference.isAlwaysOnTop(), false);
   await js(reference, 'document.getElementById("paper-create").click()');
   await until(async () => (await snapshot(reference)).paperId, 'new paper');
   const paperA = (await snapshot(reference)).paperId;
+  // The main-process paper id may update before the create action publishes
+  // the corresponding controls. Operate only once the actual form is ready.
+  await until(() => js(reference, `document.getElementById('paper-select').value === ${JSON.stringify(paperA)}
+    && !document.getElementById('reference-paper-tools').hidden`), 'new paper form rendered');
   await js(reference, 'document.getElementById("paper-title").value = "正则化 · 阅读速查"; document.getElementById("paper-rename").click()');
   await until(async () => (await snapshot(reference)).references.paper.title === '正则化 · 阅读速查', 'paper rename');
+  assert.equal(await act(reference, 'reference-save', { paperId: paperA,
+    entry: { symbol: 'x_i', meaning: '无来源的说法。', scope: '', evidence: 'A fabricated quote.', source, origin: 'manual' } }), false);
+  assert.match((await snapshot(reference)).references.notice, /原文依据与截图识别文字对不上/,
+    'an unmatched quote gives a specific, recoverable error');
   const definitionPin = await openText(source);
   assert.equal((await snapshot(definitionPin)).paperId, paperA);
   await until(async () => (await snapshot(reference)).references.candidates.length === 2, 'definition candidates');
@@ -99,6 +117,10 @@ app.whenReady().then(async () => {
   await until(async () => (await snapshot(reference)).references.paper.entries.length === 2, 'one-click retain definitions');
   console.log('ok - create paper, propose definitions and explicitly retain them');
   assert.equal(savedConcepts, 0, 'paper definitions do not pollute the concept library');
+  await act(definitionPin, 'reference-extract', { paperId: paperA });
+  const repeated = await snapshot(definitionPin);
+  assert.equal(repeated.references.candidates.length, 0, 'saved definitions do not return as duplicate proposals');
+  assert.match(repeated.references.notice, /已在本文速查/, 'a covered result must say it was already saved rather than promise unseen candidates');
   definitionPin.close();
   const reading = await openText(usage);
   const calls = providerCalls;
@@ -110,7 +132,34 @@ app.whenReady().then(async () => {
   assert(unknown.reference && unknown.definitions.length === 0);
   assert.equal(providerCalls, calls, 'unknown symbols are not guessed by a provider');
   assert(await js(reading, 'document.getElementById("lookup-references").textContent.includes("尚未留下")'));
+  assert(await js(reading, '!document.getElementById("reference-from-lookup").hidden'));
+  await js(reading, 'document.getElementById("reference-from-lookup").click()');
+  await until(() => js(reference, 'document.getElementById("reference-editor").hidden === false'),
+    'source-backed draft from lookup');
+  assert.equal(await js(reference, 'document.getElementById("reference-evidence").value'), usage,
+    'a lookup draft carries the exact source segment for the reader to review');
+  assert(await js(reference, 'document.getElementById("reference-editor-details").open'),
+    'the source evidence is visible before saving');
+  await js(reference, 'document.getElementById("reference-editor-cancel").click()');
+  await manager.openReferences(paperA);
   await lookup(reading, '\\lambda');
+  await act(reference, 'reference-save', { paperId: paperA,
+    entry: { symbol: String.raw`PE^{\ast}`, meaning: '间隔函数小于零的概率。', scope: '', evidence: '', source: '', origin: 'manual' } });
+  const spacedReading = await openText(spacedFormula);
+  await until(() => js(spacedReading, 'Array.from(document.querySelectorAll(".reference-hit-list button")).some(button => button.getAttribute("aria-label").startsWith("查本文定义：PE"))'),
+    'OCR-spaced formula reference button');
+  const beforeSpacedLookup = providerCalls;
+  await js(spacedReading, 'document.querySelector(".reference-hit-list button").click()');
+  const spacedLookup = (await snapshot(spacedReading)).lookup;
+  assert(spacedLookup.reference && spacedLookup.meaning.includes('间隔函数小于零'), 'formula hit must open the saved local definition');
+  assert.equal(providerCalls, beforeSpacedLookup, 'an OCR-spaced saved symbol must not request a new model explanation');
+  const spacedState = await snapshot(spacedReading);
+  const spacedSegment = spacedState.segments.find((item) => item.referenceHits?.some((hit) => hit.symbol === String.raw`PE^{\ast}`));
+  const spacedHit = spacedSegment.referenceHits.find((hit) => hit.symbol === String.raw`PE^{\ast}`);
+  await assert.rejects(act(spacedReading, 'lookup', { revision: spacedState.revision, segmentId: spacedSegment.id,
+    start: spacedHit.start, end: spacedHit.end, referenceSymbol: 'x_i' }), /Invalid reading selection/,
+  'a renderer cannot claim an unrelated saved symbol for the selected formula');
+  spacedReading.close();
   const entry = (await snapshot(reference)).references.paper.entries.find((item) => item.symbol === '\\lambda');
   await act(reference, 'reference-copy', { paperId: paperA, id: entry.id });
   assert(copied.includes('\\lambda'));
@@ -123,7 +172,9 @@ app.whenReady().then(async () => {
   const conflictingPin = await openText(conflictingSource);
   const pending = await lookup(conflictingPin, '\\lambda');
   assert.equal(pending.definitions.length, 2, 'a newly captured definition must not silently inherit an older meaning');
-  assert(pending.definitions[0].pending);
+  assert(!pending.definitions[0].pending && pending.definitions[1].pending,
+    'a saved meaning precedes an unconfirmed proposal from the current excerpt');
+  assert(await js(conflictingPin, 'document.getElementById("lookup-references").textContent.includes("待核对的候选")'));
   conflictingPin.close();
 
   // Edit through actual form controls; a subsequent capture must see the correction.
@@ -134,7 +185,7 @@ app.whenReady().then(async () => {
   await act(reference, 'reference-save', { paperId: paperA,
     entry: { symbol: 'λ', meaning: '附录中表示另一个标量。', scope: '附录', evidence: '', source: '', origin: 'manual' } });
   assert.equal((await lookup(reading, '\\lambda')).definitions.length, 2, 'conflicting definitions remain visible');
-  assert(await js(reading, 'document.getElementById("lookup-references").textContent.includes("多处定义")'));
+  assert(await js(reading, 'document.getElementById("lookup-references").textContent.includes("多处已保存的定义")'));
   assert.equal((await snapshot(reference)).references.paper.entries.filter((item) => item.sameSymbolCount === 2).length, 2);
   console.log('ok - edit and retain conflicting definitions');
 

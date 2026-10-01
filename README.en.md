@@ -8,12 +8,13 @@ Slipstream helps Chinese readers with English textbooks, papers and professional
 
 ## Download
 
-[Current preview: v1.3.0-preview.2](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0-preview.2)
+[Stable release: v1.3.0](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0)
 
-- [macOS 12+, Apple silicon DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Reading-Preview-1.3.0-preview.2-arm64.dmg): Developer ID signed and Apple notarized. Drag the app into Applications.
-- [Windows 11 x64 installer](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe): unsigned; Windows may show a warning. See the [installation guide](./docs/windows-preview.md#下载与安装).
+- [macOS 12+, Apple silicon DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0/Slipstream-1.3.0-arm64.dmg): Developer ID signed and Apple notarized.
+- [macOS 12+, Intel DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0/Slipstream-1.3.0-x64.dmg): Developer ID signed and Apple notarized.
+- [Windows 11 x64 preview installer](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0/Slipstream-Windows-Preview-1.3.0-x64-Setup.exe): unsigned; Windows may show a warning. See the [installation guide](./docs/windows-preview.md#下载与安装).
 
-Preview apps have separate identities. Checksums and build manifests accompany the installers. [macOS v1.2.1](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) also provides Apple silicon and Intel builds with local text/formula recognition and review before translation.
+Drag the Mac app into Applications. The stable app keeps Slipstream's existing settings and update channel. Reading Preview is a separate app with separate settings; saved local cards can be opened in the library. Checksums accompany the installers.
 
 ## Get started
 

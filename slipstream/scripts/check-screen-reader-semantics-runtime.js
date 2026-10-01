@@ -720,7 +720,7 @@ function assertRuntimeProof(proof, networkTrap, expectedEvidenceDirectory) {
   assertAx(proof.ax.setupAfter, 'textbox', '要解释的完整原文', 'capture handoff');
   assertAx(proof.ax.processing, 'heading', '把原文整理成可追溯的行动结论', 'processing');
   assertAx(proof.ax.processing, 'status', null, 'processing');
-  assertAx(proof.ax.settingsSaveRetry, 'button', '验证专业阅读能力', 'Settings save retry');
+  assertAx(proof.ax.settingsSaveRetry, 'button', '试读一张图片', 'Settings save retry');
   assert.equal(
     proof.ax.settingsSaveRetry.some((entry) => (
       ['alert', 'status', 'statictext'].includes(entry.role.toLowerCase())

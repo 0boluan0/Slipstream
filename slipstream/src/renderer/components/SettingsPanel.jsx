@@ -31,6 +31,8 @@ import LanguageToggle from './LanguageToggle';
 import SettingsResetDialog from './SettingsResetDialog';
 import SettingsTransitionDialog from './SettingsTransitionDialog';
 import constants from '../../shared/constants';
+import * as readingSetup from '../../shared/reading-setup.mjs';
+import readingSetupImage from '../../shared/reading-setup.png';
 import { useIpc } from '@renderer-ipc';
 import {
   ANALYSIS_LOCATIONS,
@@ -140,13 +142,13 @@ const VERIFICATION_OPTIONS = [
 ];
 
 const CONNECTION_RESULT_COPY = Object.freeze({
-  ok: ['服务与模型验证通过', '服务与当前模型已通过测试；内置虚构文本的翻译、行动、术语和流程背景也都通过了结构与来源证据校验。你现在可以决定是否启用。'],
+  ok: ['服务与模型验证通过', '当前模型已完成示例翻译和术语解释。可以查看下方实际返回的内容，再启用专业阅读。'],
   unsupported: ['无法确认', '这个自定义服务没有提供可识别的模型列表接口；未发送任何原文。'],
   'missing-credentials': ['缺少凭据', '请先保存当前服务所需的 API Key。'],
   'invalid-config': ['配置无效', '请检查服务、模型 ID 和服务地址后重试。'],
   'unsafe-endpoint': ['地址不安全', '只允许公开 HTTPS 地址，或指向本机回环地址的 HTTP 服务。'],
   unauthorized: ['凭据未通过', '服务拒绝了当前凭据，请检查或更换 API Key。'],
-  'model-not-found': ['没有找到模型', '服务可访问，但模型列表中没有当前模型 ID。'],
+  'model-not-found': ['没有找到模型', '服务无法使用当前模型 ID，请核对模型名称及账户的访问权限。'],
   timeout: ['测试超时', '服务没有在限定时间内完成连接或专业阅读验证，请稍后重试。'],
   'invalid-response': ['响应无法确认', '服务没有返回可识别的 JSON 模型元数据。'],
   'response-too-large': ['响应超出限制', '模型元数据响应过大，Slipstream 已停止读取。'],
@@ -154,8 +156,9 @@ const CONNECTION_RESULT_COPY = Object.freeze({
   'rate-limited': ['请求受限', '服务暂时限制了请求，或账户余额、额度不足。请检查服务商账户后再试。'],
   'service-unavailable': ['服务暂时不可用', '服务商当前无法完成测试，请稍后重试。'],
   'http-error': ['服务返回错误', '服务已响应，但没有完成这次模型元数据检查。'],
-  'structured-output-invalid': ['当前模型能力不兼容', '模型能够响应，但内置虚构文本的翻译、行动、术语或流程背景没有全部通过结构与来源证据校验。'],
-  'generation-failed': ['专业阅读测试失败', '模型已找到，但没有完成这次内置虚构文本的生成测试。'],
+  'structured-output-invalid': ['试读结果暂时无法使用', '模型能够响应，但这次没有返回可用的中文译文或术语解释。可以重试，或更换模型后再试。'],
+  'image-not-supported': ['这个模型暂时不能读图片', '请选择支持图片输入的模型，再试读一次。DeepSeek 可使用 deepseek-flash；图片和文字共用同一套 API Key。'],
+  'generation-failed': ['专业阅读测试失败', '模型已找到，但没有完成这次示例翻译和术语解释。'],
   busy: ['已有测试进行中', '请等待当前连接测试结束后再试。'],
   cancelled: ['测试已取消', '配置或输入发生变化，旧连接测试结果已丢弃。'],
   'cancelled-by-user': ['测试已取消', '你已停止这次验证；配置没有改变，可以随时重新验证。'],
@@ -296,7 +299,7 @@ export default function SettingsPanel({
   onResetAllData,
   settingsController,
 }) {
-  const { invoke } = useIpc();
+  const { invoke, platform } = useIpc();
   const {
     settings,
     updateSettings,
@@ -481,6 +484,9 @@ export default function SettingsPanel({
     let innerFrame = null;
     const outerFrame = window.requestAnimationFrame(() => {
       innerFrame = window.requestAnimationFrame(() => {
+        if (connectionTest.sample) {
+          connectionResultRef.current?.scrollIntoView({ block: 'start', behavior: 'auto' });
+        }
         connectionResultRef.current?.focus({ preventScroll: true });
       });
     });
@@ -488,7 +494,7 @@ export default function SettingsPanel({
       window.cancelAnimationFrame(outerFrame);
       if (innerFrame !== null) window.cancelAnimationFrame(innerFrame);
     };
-  }, [connectionExitIntent, connectionTest.status]);
+  }, [connectionExitIntent, connectionTest.status, connectionTest.sample]);
 
   const resetConnectionTest = useCallback(() => {
     if (connectionTaskActiveRef.current) return false;
@@ -898,7 +904,7 @@ export default function SettingsPanel({
           setupMode: mode,
           activeBackend: LLM_BACKENDS.FREE_TRANSLATE,
           activeModel: MODEL_IDS[LLM_BACKENDS.FREE_TRANSLATE][0],
-        } : { setupMode: mode });
+        } : { setupMode: mode, screenshotReadingMode: connectionTest.sample?.imageChecked ? 'image' : 'local' });
         onSetupComplete?.();
       } catch {
         // The persistent error banner explains what failed.
@@ -2190,7 +2196,7 @@ export default function SettingsPanel({
               retryReceipt={saveRetryReceipt}
             />
 
-            <div style={{ ...sectionTitleStyle, marginTop: 12 }}>{testStepNumber} 测试服务与模型</div>
+            <div style={{ ...sectionTitleStyle, marginTop: 12 }}>{testStepNumber} 试读，看看效果</div>
             <div className="provider-connection-card">
               <strong style={{ display: 'block', marginBottom: 3 }}>
                 {isCurrentConnectionReady
@@ -2203,11 +2209,12 @@ export default function SettingsPanel({
                 {isCurrentConnectionReady
                   ? settings.setupMode === SETUP_MODES.FULL
                     ? '重新验证会检查当前连接与模型能力，不会改变已经启用的功能模式。'
-                    : '启用前会检查连接，并确认当前模型能从内置虚构文本生成翻译、行动、术语和流程背景，且每项通过结构与来源证据校验。'
+                    : '用当前模型翻译一段自拟教材文字，再解释其中的 confounder（混杂变量）。完成后可以直接查看效果。'
                   : '完成上方必需信息后，才能测试当前服务与模型。'}
               </p>
               <small className="provider-connection-privacy">
-                测试先读取模型元数据，再让当前模型处理一段内置、虚构的英文测试文本；若模型提出待办，会再用同一模型做一次短复核。它会检查翻译、行动、术语、流程背景及其来源证据，不会发送截图、剪贴板、你的任务原文或高级分析说明。{providerConnectionTestRiskCopy}
+                {platform === 'darwin' ? '只发送内置试读图片，再解释其中的 confounder（混杂变量）。' : '只发送内置英文段落，再解释其中的 confounder（混杂变量）。'}
+                试读使用你选择的服务和 API Key。{providerConnectionTestRiskCopy}
               </small>
               <button
                 type="button"
@@ -2233,23 +2240,23 @@ export default function SettingsPanel({
                   : isCancellingConnection
                     ? '正在停止验证…'
                   : isTestingConnection
-                    ? '正在验证专业阅读能力…'
+                    ? '正在试读…'
                     : connectionTest.status === 'failed' || connectionTest.status === 'inconclusive'
-                      ? '重新验证专业阅读能力'
+                      ? '重新试读'
                       : settings.setupMode === SETUP_MODES.FULL
-                        ? '重新验证专业阅读能力'
-                        : '验证专业阅读能力'}
+                        ? '重新试读'
+                        : '试读一张图片'}
               </button>
               {isTestingConnection && (
                 <>
                   <div className="provider-connection-progress">
                     <CircleNotch size={17} weight="bold" aria-hidden="true" />
                     <span role="status" aria-live="polite">
-                      <strong>{isCancellingConnection ? '正在停止验证' : '正在验证专业阅读能力'}</strong>
+                      <strong>{isCancellingConnection ? '正在停止试读' : '正在试读…'}</strong>
                       <small>
                         {isCancellingConnection
                           ? '确认模型请求已经结束前，会保留当前设置与进度。'
-                          : '正在检查翻译、行动、术语和流程背景的结构与来源证据。连接信息暂时锁定；验证只使用内置虚构文本，不会使用你的内容。'}
+                          : '把下面的内置图片交给当前服务，再请它解释一个词。完成后你能看到实际结果。'}
                       </small>
                     </span>
                     <button
@@ -2283,6 +2290,20 @@ export default function SettingsPanel({
                     <strong>{connectionResultCopy[0]}</strong>
                     <span>{connectionResultCopy[1]}</span>
                   </div>
+                  {connectionTest.code === 'ok' && connectionTest.sample && (
+                    <section className="reading-setup-sample" aria-label="当前模型试读结果">
+                      <details>
+                        <summary>查看试读图片</summary>
+                        <img src={readingSetupImage} alt="内置英文试读图片：混杂变量同时影响处理与结果，样本中 n 等于 12。" style={{ width: '100%', display: 'block', marginTop: 8 }} />
+                      </details>
+                      <h3>中文译文</h3>
+                      <p>{connectionTest.sample.translation}</p>
+                      <h3>术语解释 · {readingSetup.READING_SETUP_SELECTION}</h3>
+                      <p>{connectionTest.sample.meaning}</p>
+                      {connectionTest.sample.note && <p><strong>在本段中：</strong>{connectionTest.sample.note}</p>}
+                      <small>以上是当前模型的实际输出。本次试读确认服务可用，具体内容仍需结合原文判断。</small>
+                    </section>
+                  )}
                   {connectionTest.code !== 'ok' && (
                     <ConnectionRecovery
                       code={connectionTest.code}
@@ -2300,16 +2321,12 @@ export default function SettingsPanel({
             <div style={{ ...sectionTitleStyle, marginTop: 12 }}>{enableStepNumber} 启用专业阅读</div>
             <div style={{ padding: '11px 12px', marginBottom: 12, borderRadius: 9, background: 'var(--accent-light)', color: 'var(--accent-ink)', fontSize: 11, lineHeight: 1.5 }}>
               <strong style={{ display: 'block', marginBottom: 3 }}>
-                {settings.setupMode === SETUP_MODES.FULL ? '专业阅读已启用' : '功能模式由你决定'}
+                {settings.screenshotReadingMode === 'image' ? '截图阅读已启用' : '试读成功后，就可以开始截图阅读'}
               </strong>
-              {settings.setupMode === SETUP_MODES.FULL
-                ? '专业阅读能力测试只检查当前配置，不会更改已经选择的功能模式。'
-                : hasCurrentSuccessfulConnectionTest
-                  ? '当前已保存配置通过了专业阅读能力测试。启用仍由你决定。'
-                  : isCurrentConnectionReady
-                    ? '第一次启用前，当前已保存配置必须通过上方专业阅读能力测试。测试通过也不会自动启用。'
-                  : '完成上方必需信息后，才能启用专业阅读。'}
-              {settings.setupMode !== SETUP_MODES.FULL && (
+              {settings.screenshotReadingMode === 'image'
+                ? '按截图快捷键，拖框选中英文，松开鼠标就能阅读中文。'
+                : '启用后，你主动框选的图片和文字会发送给当前服务，费用由你的 API 账户承担。'}
+              {(settings.setupMode !== SETUP_MODES.FULL || (platform === 'darwin' && settings.screenshotReadingMode !== 'image')) && (
                 <button
                   type="button"
                   className="full-analysis-enable-button"
@@ -2325,7 +2342,7 @@ export default function SettingsPanel({
                   }, event.currentTarget)}
                   style={{ display: 'block', width: '100%', marginTop: 9, padding: '8px 10px', border: 'none', borderRadius: 8, background: 'var(--accent-fill)', color: 'var(--on-solid)', cursor: hasCurrentSuccessfulConnectionTest ? 'pointer' : 'not-allowed', opacity: hasCurrentSuccessfulConnectionTest ? 1 : 0.48, fontSize: 11, fontWeight: 700 }}
                 >
-                  {hasCurrentSuccessfulConnectionTest ? '完成配置并启用专业阅读' : '请先通过专业阅读能力测试'}
+                  {hasCurrentSuccessfulConnectionTest ? '启用截图阅读' : '请先点上面的试读'}
                 </button>
               )}
               {isCurrentConnectionReady && (
@@ -2339,7 +2356,7 @@ export default function SettingsPanel({
 
         {analysisLocation === ANALYSIS_LOCATIONS.ONLINE && hasSelectedFullAnalysisBackend && (
           <div style={{ padding: '10px 12px', marginTop: 8, fontSize: 12, lineHeight: 1.5, color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', borderRadius: 8 }}>
-            当前服务会收到你主动提交的文字。剪贴板监控默认关闭，开启后复制的新文字也会自动提交。
+            当前服务会收到你主动提交的文字；启用截图阅读后，也会收到你框选的图片。剪贴板监控默认关闭。
           </div>
         )}
 

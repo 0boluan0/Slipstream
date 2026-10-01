@@ -286,7 +286,7 @@ assert.match(previewDataSource,
   'the timeless sample must preserve submit before reply');
 assert.match(rendererSource, /source: options\.source \|\| \(usesCurrentInput \? sourceType : 'manual'\)/,
   'manual submission must preserve whether the current source came from a sample or clipboard');
-assert.match(appStyles, /\.capture-sample button:focus-visible/);
+assert.match(appStyles, /\.capture-sample > button:focus-visible/);
 assert.match(appStyles, /@media \(max-width: 520px\)[\s\S]*\.capture-sample/);
 
 console.log('capture and recovery integrity checks passed');

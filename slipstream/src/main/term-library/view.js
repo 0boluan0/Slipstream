@@ -96,7 +96,12 @@ function selectCard(id) {
   byId('save').disabled = true;
   byId('edit-status').textContent = '已保存在本地';
   setEditing(false);
-  document.querySelector('main').scrollTop = 0;
+  const main = document.querySelector('main');
+  main.scrollTop = 0;
+  if (getComputedStyle(main).overflowY === 'visible') {
+    const workspace = document.querySelector('.workspace');
+    workspace.scrollTop = main.offsetTop - workspace.offsetTop;
+  }
 }
 async function load(id) {
   if (dirty) { message('有未保存的修改。先保存，再重新载入卡片。'); return; }

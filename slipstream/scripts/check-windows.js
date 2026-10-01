@@ -35,6 +35,21 @@ async function check() {
     assert.match(message, /复制/);
     assert.equal(result.error, message);
   } finally { manager.dispose(); }
-  console.log('Windows preview checks passed: isolated unsigned packaging, no publishing, unsupported capture has no side effects.');
+  let openedSettings = 0;
+  const windows = createReadingPins({ BrowserWindow: forbidden,
+    ipcMain: { handle() {}, removeHandler() {} }, screen: {},
+    getSettings: () => ({ setupMode: 'translation-only', activeBackend: 'free_translate' }),
+    getMainWindow: forbidden, captureRegion: forbidden, performOCR: forbidden, processReadingText: forbidden,
+    requestCapturePermission: forbidden, localOcrSupported: false,
+    onOpenSettings: () => { openedSettings += 1; }, onError: value => { message = value; },
+  });
+  try {
+    const result = await windows.capture();
+    assert.equal(result.success, false);
+    assert.equal(result.error, 'image-reading-required');
+    assert.equal(openedSettings, 1);
+    assert.match(message, /图片试读/);
+  } finally { windows.dispose(); }
+  console.log('Windows checks passed: isolated packaging and image setup required before capture; macOS OCR is never invoked.');
 }
 check().catch(error => { console.error(error); process.exitCode = 1; });

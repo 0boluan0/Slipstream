@@ -4,6 +4,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { runAppleTool } = require('./apple-tool-retry');
 const { BUILD_IDENTITIES } = require('../src/main/build-identity');
+const { sourceIdentity } = require('./paired-release');
 const {
   findFileProviderConflictCopies,
   formatConflictCopies,
@@ -42,7 +43,7 @@ function createStagingDirectory() {
   return stagingDir;
 }
 
-function buildArguments(signed, stagingDir) {
+function buildArguments(signed, stagingDir, identity) {
   const buildIdentity = signed
     ? BUILD_IDENTITIES.DEVELOPER_ID
     : BUILD_IDENTITIES.LOCAL_ADHOC;
@@ -54,6 +55,7 @@ function buildArguments(signed, stagingDir) {
     'never',
     `-c.directories.output=${stagingDir}`,
     `-c.extraMetadata.slipstreamBuildIdentity=${buildIdentity}`,
+    ...(identity ? [`-c.extraMetadata.slipstreamSourceRevision=${identity.sourceRevision}`] : []),
   ];
   if (signed) {
     return [...args, '-c.mac.notarize=false', '-c.forceCodeSigning=true'];
@@ -199,6 +201,7 @@ function publishArtifacts(stagingDir) {
 async function buildMacRelease({ signed = false } = {}) {
   if (process.platform !== 'darwin') throw new Error('macOS release builds require a macOS host');
   assertCleanPackagingInputs();
+  const identity = signed ? sourceIdentity() : undefined;
   const stagingDir = createStagingDirectory();
   const builder = path.join(root, 'node_modules', '.bin', 'electron-builder');
   const env = signed ? { ...process.env, SLIPSTREAM_REQUIRE_SIGNING: '1' } : process.env;
@@ -206,7 +209,7 @@ async function buildMacRelease({ signed = false } = {}) {
 
   console.log(`staging macOS release outside the synced workspace: ${stagingDir}`);
   try {
-    execFileSync(builder, buildArguments(signed, stagingDir), {
+    execFileSync(builder, buildArguments(signed, stagingDir, identity), {
       cwd: root,
       env,
       stdio: 'inherit',

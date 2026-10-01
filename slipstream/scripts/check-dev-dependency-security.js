@@ -6,20 +6,20 @@ const projectRoot = path.join(__dirname, '..');
 const packageJson = require(path.join(projectRoot, 'package.json'));
 const packageLock = require(path.join(projectRoot, 'package-lock.json'));
 
-const MINIMATCH_3_BRACE_VERSION = '1.1.18';
-const MINIMATCH_4_TO_9_BRACE_VERSION = '2.1.4';
-const MINIMATCH_10_BRACE_VERSION = '5.0.9';
-const FAST_URI_PATCH_VERSION = '3.1.6';
+const MINIMATCH_3_BRACE_VERSION = '1.1.21';
+const MINIMATCH_4_TO_9_BRACE_VERSION = '2.1.7';
+const MINIMATCH_10_BRACE_VERSION = '5.0.12';
+const FAST_URI_PATCH_VERSION = '3.1.8';
 const JS_YAML_PATCH_VERSION = '4.3.2';
 const NANOID_PATCH_VERSION = '3.3.18';
-const UNDICI_PATCH_VERSION = '7.29.0';
-const MINIMATCH_3_BRACE_INTEGRITY = 'sha512-Edep/X9fGqVNmzKBVsDYIOtD+z1tuezV70LBjdCst9Tqu76lsnvRiZ6oTic1n+/BIwX6QDGAO94PN4N2SADvtw==';
-const MINIMATCH_4_TO_9_BRACE_INTEGRITY = 'sha512-hGfVzPxthbf3+2yjg/RBs60cB0FhqBS/zvdV/4wn4/BmN0bNMMHPc4V/BbFieqf1TKAGGAHnY4eSjajCl0f2Xg==';
-const MINIMATCH_10_BRACE_INTEGRITY = 'sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==';
-const FAST_URI_PATCH_INTEGRITY = 'sha512-7Ical1vFEMr0onbVzEDIreM22I4khW+fzyQPwvAFWBp1iwdshSZRsL4jjRvPG9JP1uiqMHRto+YU6R2/CzDz5Q==';
+const UNDICI_PATCH_VERSION = '7.30.0';
+const MINIMATCH_3_BRACE_INTEGRITY = 'sha512-9zeA+KLZNNzglF2TPKRQEDyx6Yby7daAkuy8MiPzpXPsYDWi/DRM8jmwUDxokQjYqBpv5DgPiwD4h4ZZSy1Ujw==';
+const MINIMATCH_4_TO_9_BRACE_INTEGRITY = 'sha512-uZbew1NqdmPDTMJ8ah1y+b+9QEJrfkXFk3RcTQw3X0jW/xRUvFKsg1CfQdSYGdTbXZWExtU3J3ccxtnfw1Fi0g==';
+const MINIMATCH_10_BRACE_INTEGRITY = 'sha512-YovQ3rzhaLMIrDjNDMkNS01tea93qhEhG5xy8f6+R0l+dw3Ki+5sCoIoI942iuLZTHWogWktgwVDhU09iNEimQ==';
+const FAST_URI_PATCH_INTEGRITY = 'sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==';
 const JS_YAML_PATCH_INTEGRITY = 'sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==';
 const NANOID_PATCH_INTEGRITY = 'sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==';
-const UNDICI_PATCH_INTEGRITY = 'sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==';
+const UNDICI_PATCH_INTEGRITY = 'sha512-dkrQXeHSaoamnItlYbmzG0wFYrM0ZwDxCIg0A7aKjTyyhh9svRzCNFEzV+Vm05/yehjCzjDZ31KXfGEjYSztDQ==';
 
 assert.deepEqual(packageJson.overrides, {
   'fast-uri': FAST_URI_PATCH_VERSION,

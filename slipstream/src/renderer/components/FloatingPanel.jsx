@@ -25,6 +25,7 @@ import {
   X,
 } from '../phosphorIcons';
 import ClipboardActionNotice from './ClipboardActionNotice';
+import HelpTip from './HelpTip';
 import LoadingOverlay from './LoadingOverlay';
 import SessionRecoveryDialog from './SessionRecoveryDialog';
 import ClipboardResidueRiskNotice from './ClipboardResidueRiskNotice';
@@ -390,7 +391,7 @@ const SCREENSHOT_CAPTURE_PRIVACY_DISCLOSURE = Object.freeze({
   activeDetail: '系统框选和文字识别不会发送给模型；识别完成后才会进入所选处理方式。',
 });
 const USER_ERROR_MESSAGES = Object.freeze({
-  'screenshot-unsupported': 'Windows 预览暂不支持截图识字，请复制或粘贴文字开始阅读。',
+  'screenshot-unsupported': '当前系统暂不支持截图，请复制或粘贴文字开始阅读。',
   'processing-busy': '已有任务正在处理，请稍候。',
   'processing-cancelled': '处理已取消。',
   'processing-invalid': '模型返回的内容未通过结构与证据校验。原文和上一份有效结果已保留，请重试或更换模型。',
@@ -468,7 +469,7 @@ function settledTaskFocusTarget() {
   return resultFocusTarget()
     || document.getElementById('ocr-review-title')
     || document.getElementById('processing-error-card')
-    || document.querySelector('textarea[aria-label="要解释的完整原文"]');
+    || document.querySelector('.capture-input textarea');
 }
 
 if (RESULT_DEMO) document.documentElement.dataset.previewTheme = 'light';
@@ -771,7 +772,7 @@ export default function FloatingPanel({
   }, [setClipboardNotice]);
 
   const { invoke, on, platform } = useIpc();
-  const screenshotSupported = platform === 'darwin';
+  const screenshotSupported = ['darwin', 'win32'].includes(platform);
   const { clipboardEvent, clearClipboard } = useClipboard();
 
   const updateSavedTerms = useCallback((nextOrUpdater) => {
@@ -4582,8 +4583,12 @@ export default function FloatingPanel({
     processingLocation: privacyProcessingLocation,
   });
   const readingStart = !LEGACY_WORKSPACE_DEMO && !isEditingSource && !lastGoodRef.current;
+  const readingImageEnabled = settings.setupMode === 'full'
+    && settings.screenshotReadingMode === 'image' && !isFreeTranslate;
   const readingPrivacyDisclosure = { ...privacyDisclosure,
-    detail: privacyProvider === 'free_translate'
+    detail: readingImageEnabled
+      ? '框选的图片与文字交给当前服务翻译；点击术语时再请求解释。只发送你框内的内容。'
+      : privacyProvider === 'free_translate'
       ? '原文发送至 Google Translate，必要时使用 MyMemory。截图留在本机。'
       : privacyProcessingLocation === PROCESSING_LOCATIONS.LOCAL
         ? '译文和按需术语解释由本机模型处理。'
@@ -4593,7 +4598,9 @@ export default function FloatingPanel({
   };
   const capturePrivacyDisclosure = status === STATUS.PROCESSING
     && processingPhase === PROCESSING_PHASE.CAPTURE
-    ? SCREENSHOT_CAPTURE_PRIVACY_DISCLOSURE
+    ? readingImageEnabled ? { ...privacyDisclosure,
+      activeTitle: readingPrivacyDisclosure.title,
+      activeDetail: readingPrivacyDisclosure.detail } : SCREENSHOT_CAPTURE_PRIVACY_DISCLOSURE
     : readingStart ? readingPrivacyDisclosure : privacyDisclosure;
   const ocrReviewCopy = ocrReview
     ? describeOcrReview({
@@ -4686,7 +4693,8 @@ export default function FloatingPanel({
         : '';
   const capturePlaceholder = settings.clipboardMonitoring
     ? '粘贴英文，或复制后等待自动检测…'
-    : '也可以粘贴教材、论文或专业文章中的一段英文…';
+    : readingStart ? '粘贴不懂的词句或短段落；公式请带上必要说明…'
+      : '也可以粘贴教材、论文或专业文章中的一段英文…';
   const sourceDescriptionIds = [
     ocrReviewCopy ? 'ocr-review-detail' : null,
     ocrReviewCopy ? 'ocr-review-destination' : null,
@@ -5429,6 +5437,7 @@ export default function FloatingPanel({
               cancelError={processingCancelError}
               opensSettingsAfterCancel={settingsOpenIntent === 'analysis'}
               translationOnly={isFreeTranslate}
+              imageReading={readingImageEnabled}
               phase={processingPhase}
             />
           ) : (
@@ -5443,23 +5452,35 @@ export default function FloatingPanel({
                   <p className="eyebrow">{isEditingSource ? '修正原文' : '英文教材 · 论文 · 专业阅读'}</p>
                   <h1>{isEditingSource
                     ? '核对并修正识别文本'
-                    : isFreeTranslate ? '让英文阅读继续下去' : '读懂原文，留下概念'}</h1>
-                  <p>{isEditingSource
+                    : readingStart ? '卡住哪一块，就划哪一块'
+                      : isFreeTranslate ? '让英文阅读继续下去' : '读懂原文，留下概念'}</h1>
+                  {React.createElement(readingStart ? HelpTip : 'p', readingStart ? { label: '局部阅读说明' } : {}, isEditingSource
                     ? '上一份结果仍在内存保留；只有修正后的原文生成成功，才会替换它。'
                     : !screenshotSupported
-                      ? '复制或粘贴英文，看中文译文；按需解释概念并保存卡片。Windows 预览暂不支持截图识字。'
+                      ? '复制或粘贴英文，看中文译文；按需解释概念。'
                       : isFreeTranslate
                       ? '框选一段英文，把中文译文贴在阅读位置旁。'
-                      : '框选正在读的内容，看中文译文；遇到不懂的概念，再展开解释、存成卡片。'}</p>
+                      : '遇到不懂的词句、公式或小块图文，框选后看中文；查懂就关掉浮窗，继续读。')}
+
                 </div>
               </div>
 
               {readingStart && screenshotSupported && !ocrReviewCopy && (
-                <button type="button" className="reading-capture-primary" onClick={handleScreenshot}>
-                  <Camera size={24} aria-hidden="true" />
-                  <span><strong>截图阅读</strong><small>框选一段，译文贴在屏幕旁</small></span>
-                  <kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT, platform)}</kbd>
-                </button>
+                <div className="reading-capture-entry">
+                  <button type="button" className="reading-capture-primary" onClick={handleScreenshot}>
+                    <Camera size={24} aria-hidden="true" />
+                    <span><strong>截图阅读</strong></span>
+                    <kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT, platform)}</kbd>
+                  </button>
+                  <HelpTip label="截图阅读的操作步骤">
+                    按快捷键后屏幕变暗；拖出亮框，松开鼠标，在原文旁读中文。按 Esc 取消。
+                    {platform === 'darwin' && '首次截图需要屏幕录制权限。'}
+                    {!readingImageEnabled && (platform === 'win32'
+                      ? '在设置中配置支持图片的服务，并完成试读后启用。'
+                      : '截图先在本机识字。')}
+
+                  </HelpTip>
+                </div>
               )}
 
               {!readingStart && !inputText.trim() && !isEditingSource && !isFreeTranslate && (
@@ -5618,7 +5639,7 @@ export default function FloatingPanel({
                     }
                   }}
                   placeholder={capturePlaceholder}
-                  aria-label="要解释的完整原文"
+                  aria-label={readingStart ? '要查的词句或短段落' : '要解释的完整原文'}
                   aria-describedby={sourceDescriptionIds}
                   lang={inputText.trim() ? inferTextLanguageTag(inputText) : undefined}
                 />
@@ -5687,8 +5708,10 @@ export default function FloatingPanel({
                 <div className="capture-sample" role="note">
                   <span className="capture-sample__icon"><FileText size={19} /></span>
                   <span>
-                    <strong>{LEGACY_WORKSPACE_DEMO ? '先用安全示例体验' : '从一段教材风格示例开始'}</strong>
-                    <small>{LEGACY_WORKSPACE_DEMO ? '载入一封虚构英文邮件先看看效果；不会读取剪贴板，也不会自动处理。' : '相关关系与因果关系 · 自拟英文，载入后再开始阅读。'}</small>
+                    <strong>{LEGACY_WORKSPACE_DEMO ? '先用安全示例体验' : '试读示例'}</strong>
+                    {readingStart ? <HelpTip label="阅读示例说明">
+                      自拟英文：相关与因果。点击“开始阅读”才会发送。
+                    </HelpTip> : <small>{LEGACY_WORKSPACE_DEMO ? '载入一封虚构英文邮件先看看效果；不会读取剪贴板，也不会自动处理。' : '相关关系与因果关系 · 自拟英文，载入后再开始阅读。'}</small>}
                   </span>
                   <button type="button" onClick={handleLoadExample}>{LEGACY_WORKSPACE_DEMO ? '载入安全示例（不会生成）' : '载入阅读示例'}</button>
                 </div>
@@ -5757,10 +5780,12 @@ export default function FloatingPanel({
                 </div>
               )}
 
-              {!ocrReviewCopy && screenshotSupported && (
+              {!readingStart && !ocrReviewCopy && platform === 'darwin' && (
                 <p className="capture-permission-note" role="note">
                   <ShieldCheck size={16} weight="fill" aria-hidden="true" />
-                  <span>首次截图需要屏幕录制权限。文字识别在本机完成；粘贴阅读无需此权限。</span>
+                  <span>{readingImageEnabled
+                    ? '首次截图需要屏幕录制权限。只有你拖框选中的内容会交给当前服务。'
+                    : '首次截图需要屏幕录制权限。文字识别在本机完成；粘贴阅读无需此权限。'}</span>
                 </p>
               )}
 
@@ -5777,7 +5802,8 @@ export default function FloatingPanel({
                     : <CloudArrowUp size={20} weight="fill" />}
                 <span>
                   <strong>{capturePrivacyDisclosure.title}</strong>
-                  <small>{capturePrivacyDisclosure.detail}</small>
+                  {readingStart ? <small>{readingImageEnabled ? '仅发送你框选的图片与文字。' : '仅处理你主动提交的文字。'} <HelpTip label="提交内容与隐私说明">{capturePrivacyDisclosure.detail}</HelpTip></small>
+                    : <small>{capturePrivacyDisclosure.detail}</small>}
                 </span>
                 <button type="button" onClick={handleOpenSettingsRequest}>更改处理方式</button>
               </div>
@@ -5813,21 +5839,22 @@ export default function FloatingPanel({
                 </button>
               )}
 
-              <div className="shortcut-help">
+              {!readingStart && <div className="shortcut-help">
                 {screenshotSupported && <span><kbd>{displayShortcutAccelerator(settings.screenshotShortcut || DEFAULTS.SCREENSHOT_SHORTCUT, platform)}</kbd> 截图</span>}
                 <span><kbd>{platform === 'win32' ? 'Ctrl' : 'Command'}</kbd><kbd>Enter</kbd> {ocrReviewCopy ? '核对并继续' : '处理'}</span>
-              </div>
+              </div>}
+
             </section>
           )}
 
-          <footer className="capture-footer">
+          {!readingStart && <footer className="capture-footer">
             {capturePrivacyDisclosure.location === 'local'
               ? <ShieldCheck size={17} />
               : capturePrivacyDisclosure.location === 'local-loopback'
                 ? <HardDrives size={17} />
                 : <CloudArrowUp size={17} />}
             <span>{capturePrivacyDisclosure.footer}</span>
-          </footer>
+          </footer>}
         </main>
       )}
 

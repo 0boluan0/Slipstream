@@ -119,6 +119,8 @@ function validateSetting(key, value) {
     if (!LANGUAGE_HINTS.has(value) || value !== 'en') throw new Error('当前版本仅支持英文到中文');
   } else if (key === 'setupMode') {
     if (!SETUP_MODES.has(value)) throw new Error('不支持的功能模式');
+  } else if (key === 'screenshotReadingMode') {
+    if (!['local', 'image'].includes(value)) throw new Error('不支持的截图阅读方式');
   } else if (key === 'verificationPolicy') {
     if (!VERIFICATION_POLICIES.has(value)) throw new Error('不支持的联网核验策略');
   } else if (key === 'resultOrder') {

@@ -4,8 +4,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
-const { createReadingPins } = require('../src/main/reading-pins');
+const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
+const { createReadingPins, looksLikeClippedProse, looksLikeCodeCapture, looksLikeUnfinishedTail, suspiciousTimesGlyph, suspiciousCyrillicGlyph,
+  suspiciousDimensionToken, ambiguousMultiplierToken } = require('../src/main/reading-pins');
 const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
 
@@ -18,6 +19,50 @@ const screenshotPath = screenshotIndex >= 0 ? path.resolve(process.argv[screensh
 if (!preview) setTimeout(() => { console.error('Reading card runtime check exceeded 90 seconds.'); app.exit(1); }, 90000).unref();
 const english = 'Correlation does not imply causation.\nAn observed association between two variables may be explained by a common cause.\nThe estimate is conditional on the observed data.';
 const chinese = '相关关系并不意味着因果关系。两个变量之间观察到的关联，可能由一个共同原因来解释。这个估计是在给定已观测数据的条件下得到的。';
+assert.equal(looksLikeClippedProse({ blocks: [{ text: '(4)',
+  boundingBox: { x: .94, y: .07, w: .03, h: .06 } }] }, 'The rule is defined by $$A=B\\tag{4}$$'), null,
+'an intact equation number near the bottom must not be treated as unfinished prose');
+assert.equal(looksLikeClippedProse({ blocks: [
+  { text: '8 end', boundingBox: { x: .046, y: .0855, w: .064, h: .053 } },
+  { text: '9', boundingBox: { x: .0465, y: .0269, w: .013, h: .036 } },
+] }, '8 end\n9 $\\mathbf{z}_v\\gets\\mathbf{h}_v^K,\\forall v\\in\\mathcal{V}$'), null,
+'an isolated final algorithm line number must not imply cropped prose');
+assert.equal(looksLikeClippedProse({ blocks: [{ text: 'as',
+  boundingBox: { x: .08, y: .019, w: .1, h: .05 } }] }, 'the final vector as'), 'bottom',
+'a short unfinished prose line near the bottom must still pause the reader');
+assert.equal(looksLikeClippedProse({ blocks: [{ text: 'simultaneously:',
+  boundingBox: { x: .08, y: .019, w: .8, h: .05 } }] },
+'A stronger assertion holds for every pair simultaneously:'), null,
+'a complete lead-in ending with a colon must not masquerade as a cut sentence');
+assert.equal(suspiciousDimensionToken('The model receives a YD sequence of embeddings.'), 'YD');
+assert.equal(suspiciousDimensionToken('The model receives a 1D sequence of embeddings.'), null);
+assert.equal(suspiciousDimensionToken('The model receives HD images.'), null);
+assert.equal(ambiguousMultiplierToken('The kernel is up to 3X faster on A100 GPUs.'), '3X');
+assert.equal(ambiguousMultiplierToken('A 3x speedup was observed.'), '3x');
+assert.equal(ambiguousMultiplierToken('The kernel is up to 3× faster on A100 GPUs.'), null);
+assert.equal(ambiguousMultiplierToken('The 3X model uses a different kernel.'), null);
+assert.equal(ambiguousMultiplierToken('We multiply the 3X3 matrix.'), null);
+assert.equal(looksLikeUnfinishedTail('For example, if we wanted to predict the 3D position and orientation y'), false,
+  'a short standalone fragment alone is not enough to force review');
+assert.equal(looksLikeUnfinishedTail('The generative model uses prior knowledge about how the data were created. For example, if we wanted to predict the 3D position and orientation y'), true,
+  'a long capture ending in an unfinished symbol-led sentence needs a boundary check');
+assert.equal(looksLikeUnfinishedTail('The generative model uses prior knowledge about how the data were created.'), false);
+assert.equal(looksLikeUnfinishedTail('Unlike classical autoencoders, the decoder reconstructs the full signal. Following ViT, we divide an image into regular non-overlapping patches,'), true,
+  'a real paper screenshot ending after a comma must ask for source review before translation');
+assert.equal(looksLikeUnfinishedTail('Unlike classical autoencoders, the decoder reconstructs the full signal. Following ViT, we divide an image into regular non-overlapping patches.'), false);
+const clipCodeOcr = '# image_encoder - ResNet or Vision Transformer\n# T[n, 1] - minibatch of aligned texts\nI_e = 12_normalize(np.dot(I_f, W_i), axis=1)\nT_e = 12_normalize(np.dot(T_f, W_t), axis=1)\nlogits = np.dot(I_e, T_e.T) * np.exp(t)';
+assert.equal(looksLikeCodeCapture({ blocks: [{ text: clipCodeOcr }] }), true,
+  'assignment-heavy pseudocode must be treated as code even without for/def anchors');
+assert.equal(looksLikeCodeCapture({ blocks: [{ text: 'The model learns a mapping.\nThis improves performance.' }] }), false);
+assert.equal(suspiciousTimesGlyph('The real-world measurements × are computed as a function of y.'), true,
+  'a multiplication sign with no right operand before a verb needs review');
+assert.equal(suspiciousTimesGlyph('The kernel is 3× faster than before.'), false);
+assert.equal(suspiciousTimesGlyph('The matrix A × B is multiplied by C.'), false);
+assert.deepEqual(suspiciousCyrillicGlyph('The real-world measurements x are computed as a function of the output у.'),
+  { glyph: 'у', latin: 'y' }, 'a visually confusable variable in English prose needs review');
+assert.equal(suspiciousCyrillicGlyph('The formula $у=x$ is quoted verbatim.'), null,
+  'a character inside an explicit math span is handled by math review');
+assert.equal(suspiciousCyrillicGlyph('We discuss Russian text in Cyrillic.'), null);
 const cards = () => BrowserWindow.getAllWindows().filter((window) => window.getTitle() === 'Slipstream · 阅读卡片');
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(predicate, label, timeout = 30000) {
@@ -40,6 +85,54 @@ app.whenReady().then(async () => {
   const fixture = path.join(work, 'source.png');
   fs.writeFileSync(fixture, (await sourceWindow.webContents.capturePage()).toPNG());
   sourceWindow.destroy();
+  require('./prepare-ocr-test')(fixture);
+  const cutBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let y = 0; y < 4; y++) for (let x = 30; x < 42; x++) {
+    const offset = (y * 300 + x) * 4;
+    cutBitmap.fill(0, offset, offset + 3);
+  }
+  const cutFixture = path.join(work, 'top-cut.png');
+  fs.writeFileSync(cutFixture, nativeImage.createFromBitmap(cutBitmap, { width: 300, height: 100 }).toPNG());
+  const denseTopBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let y = 0; y < 3; y++) for (let x = 30; x < 102; x++) {
+    const offset = (y * 300 + x) * 4;
+    denseTopBitmap.fill(0, offset, offset + 3);
+  }
+  const denseTopFixture = path.join(work, 'dense-top-cut.png');
+  fs.writeFileSync(denseTopFixture, nativeImage.createFromBitmap(denseTopBitmap, { width: 300, height: 100 }).toPNG());
+  function edgeFixture(edge) {
+    const bitmap = Buffer.alloc(300 * 100 * 4, 255);
+    for (let strip = 0; strip < 4; strip++) for (let position = 30; position < 44; position++) {
+      const x = edge === 'left' ? strip : edge === 'right' ? 299 - strip : position;
+      const y = edge === 'bottom' ? 99 - strip : position;
+      const offset = (y * 300 + x) * 4;
+      bitmap.fill(0, offset, offset + 3);
+    }
+    const file = path.join(work, `${edge}-cut.png`);
+    fs.writeFileSync(file, nativeImage.createFromBitmap(bitmap, { width: 300, height: 100 }).toPNG());
+    return file;
+  }
+  const rightCutFixture = edgeFixture('right');
+  const leftCutFixture = edgeFixture('left');
+  const bottomCutFixture = edgeFixture('bottom');
+  const sparseBottomBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let y = 97; y < 100; y++) for (let x = 30; x < 34; x++) {
+    const offset = (y * 300 + x) * 4;
+    sparseBottomBitmap.fill(0, offset, offset + 3);
+  }
+  const sparseBottomFixture = path.join(work, 'sparse-bottom-cut.png');
+  fs.writeFileSync(sparseBottomFixture, nativeImage.createFromBitmap(sparseBottomBitmap, { width: 300, height: 100 }).toPNG());
+  const singleStripBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let x = 30; x < 34; x++) singleStripBitmap.fill(0, (99 * 300 + x) * 4, (99 * 300 + x) * 4 + 3);
+  const singleStripFixture = path.join(work, 'single-strip-bottom.png');
+  fs.writeFileSync(singleStripFixture, nativeImage.createFromBitmap(singleStripBitmap, { width: 300, height: 100 }).toPNG());
+  const pageFrameBitmap = Buffer.alloc(300 * 100 * 4, 255);
+  for (let y = 0; y < 100; y++) for (let x = 0; x < 5; x++) {
+    const offset = (y * 300 + x) * 4;
+    pageFrameBitmap.fill(0, offset, offset + 3);
+  }
+  const pageFrameFixture = path.join(work, 'page-frame.png');
+  fs.writeFileSync(pageFrameFixture, nativeImage.createFromBitmap(pageFrameBitmap, { width: 300, height: 100 }).toPNG());
   const mainWindow = new BrowserWindow({ width: 400, height: 300, show: false,
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   await mainWindow.loadURL('about:blank');
@@ -47,6 +140,12 @@ app.whenReady().then(async () => {
   let low = false;
   let fail = false;
   let cancel = false;
+  let holdSelection = false;
+  let selectionStarted = false;
+  let selectionAbortObserved = false;
+  let holdOcr = false;
+  let ocrStarted = false;
+  let ocrAbortObserved = false;
   let held = false;
   let resolveHeld;
   let heldSignal;
@@ -54,10 +153,32 @@ app.whenReady().then(async () => {
   let providerCalls = 0;
   let selectionCount = 0;
   let settings = { setupMode: 'full', activeBackend: 'custom', activeModel: 'fixture', customEndpointUrl: 'http://127.0.0.1:11434/v1' };
+  let imageUncertain = false, imageHeld = false, finishImage, imageSignal, imageReads = 0;
   let copied = '';
   let ocrOverride = null;
+  let ocrProseDisagreement = false;
+  let ocrProseGlyphConflicts = null;
+  let ocrPrimeConflicts = null;
+  let ocrReferenceConflicts = null;
+  let ocrDocumentOverride = null;
   let failMatching = '';
   let noTerms = false;
+  let ocrClipped = false;
+  let ocrLeftClipped = false;
+  let ocrTopClipped = false;
+  let ocrTopPadded = false;
+  let imageTopCut = false;
+  let imageDenseTopCut = false;
+  let imageBottomCut = false;
+  let imageSparseBottomCut = false;
+  let imageSingleBottomSpot = false;
+  let imagePageFrame = false;
+  let ocrLeftPadded = false;
+  let ocrRightPadded = false;
+  let ocrBottomClipped = false;
+  let ocrBottomShortBlock = false;
+  let formulaOcrOverride = null;
+  let holdReview = false, resolveReview, reviewSignal;
   const provider = createReadingProcessor(async (...args) => {
     providerCalls += 1;
     if (held) {
@@ -67,30 +188,85 @@ app.whenReady().then(async () => {
     if (fail) throw new Error('fixture-provider-failure');
     if (failMatching && args[6].includes(failMatching)) throw new Error('fixture-paragraph-failure');
     const input = JSON.parse(args[4]);
+    if (input.candidates) {
+      if (holdReview) { reviewSignal = args[7]; return new Promise((resolve) => { resolveReview = resolve; }); }
+      return JSON.stringify({ keep: input.candidates.map((_quote, index) => index) });
+    }
     if (input.selection) return JSON.stringify({ quote: input.selection,
       meaning: input.selection === 'causation'
         ? '因果关系意味着改变一个因素，会引起另一个因素的变化。仅仅观察到两者一起变化，还不足以说明存在这种关系。'
         : '相关关系描述两个变量在统计上一起变化的程度；它本身不能说明一个变量导致了另一个变量。',
-      note: '这段提到共同原因：两个变量可以受到同一个因素影响，因此一起变化，却没有直接的因果关系。' });
+      note: '这段提到共同原因：两个变量可以受到同一个因素影响，因此一起变化，却没有直接的因果关系。',
+      ...(input.selection === 'Correlation' ? { basis: 'contextual',
+        sourceQuote: input.excerpt.slice(input.excerpt.indexOf('Correlation'), input.excerpt.indexOf('Correlation') + 90) } : {}) });
     if (args[3].includes('"translation"')) return JSON.stringify({ translation: chinese,
-      terms: noTerms ? [] : [{ quote: 'Correlation', label: '相关关系' }, { quote: 'causation', label: '因果关系' }] });
+      terms: noTerms ? [] : [{ quote: 'Correlation', label: '相关关系', role: 'core' }, { quote: 'causation', label: '因果关系', role: 'core' }] });
     return args[8] ? JSON.stringify({ terms: [{ quote: 'Correlation', explanation: '指变量一起变化的统计关系；这里没有据此断定因果。' }], sentences: [] }) : chinese;
   });
   manager = createReadingPins({ BrowserWindow, ipcMain, screen,
+    readScreenshot: async ({ image, signal, onTranslation }) => {
+      imageReads += 1; imageSignal = signal; assert.match(image, /^data:image\/png;base64,/u);
+      const result = { text: english, translation: chinese, terms: [], references: [],
+        uncertain: imageUncertain ? ['下边没有显示下一行。'] : [] };
+      if (imageHeld) { onTranslation?.(result); return new Promise(resolve => { finishImage = () => resolve(result); }); }
+      return result;
+    },
     copyText: (text) => { copied = text; },
     saveTermCard: (input) => termStore.save(input),
     getSettings: () => settings, getMainWindow: () => mainWindow,
     requestCapturePermission: async () => ({ granted: true }),
-    captureRegion: async () => {
+    captureRegion: async (_file, { signal } = {}) => {
       assert(cards().every((window) => !window.isVisible()), 'existing cards must be hidden while selecting');
       assert(!mainWindow.isVisible(), 'main workspace must be hidden while selecting');
+      if (holdSelection) {
+        selectionStarted = true;
+        return new Promise((_resolve, reject) => {
+          const fail = () => { selectionAbortObserved = true; const error = new Error('cancel'); error.isCancellation = true; reject(error); };
+          if (signal?.aborted) fail();
+          else signal?.addEventListener('abort', fail, { once: true });
+        });
+      }
       if (cancel) { const error = new Error('cancel'); error.isCancellation = true; throw error; }
       const file = path.join(work, `capture-${++selectionCount}.png`);
-      fs.copyFileSync(fixture, file);
+      fs.copyFileSync(imageDenseTopCut ? denseTopFixture : imageTopCut ? cutFixture : imageBottomCut ? bottomCutFixture
+        : imageSparseBottomCut ? sparseBottomFixture : imageSingleBottomSpot ? singleStripFixture
+          : imagePageFrame ? pageFrameFixture
+        : ocrClipped ? rightCutFixture : ocrLeftClipped ? leftCutFixture : fixture, file);
       return file;
     },
     performOCR: async (file, options) => {
-      if (ocrOverride) return { text: ocrOverride, confidence: .99, blocks: [{ text: ocrOverride, confidence: .99 }] };
+      if (holdOcr) {
+        ocrStarted = true;
+        return new Promise((_resolve, reject) => {
+          const fail = () => { ocrAbortObserved = true; const error = new Error('cancel'); error.isCancellation = true; reject(error); };
+          if (options.signal?.aborted) fail();
+          else options.signal?.addEventListener('abort', fail, { once: true });
+        });
+      }
+      if (ocrOverride) return { text: ocrOverride, confidence: .99, formulaOcr: formulaOcrOverride || undefined,
+        primeReviewConflicts: ocrPrimeConflicts || undefined,
+        referenceReviewConflicts: ocrReferenceConflicts || undefined,
+        document: ocrDocumentOverride || undefined,
+        proseComparison: ocrProseDisagreement ? { disagree: true, recovered: true } : undefined,
+        proseGlyphConflicts: ocrProseGlyphConflicts || undefined,
+        blocks: ocrClipped ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
+        : ocrLeftClipped ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .005, y: .7 - index * .1, w: .8, h: .06 } }))
+        : ocrLeftPadded ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .005, y: .7 - index * .1, w: .8, h: .06 } }))
+        : ocrRightPadded ? ocrOverride.split('\n').map((text, index) => ({ text, confidence: .99,
+          boundingBox: { x: .1, y: .7 - index * .1, w: .895, h: .06 } }))
+        : ocrTopClipped ? [{ text: ocrOverride, confidence: .99,
+          boundingBox: { x: .08, y: .94, w: .8, h: .06 } }]
+        : ocrTopPadded ? [{ text: ocrOverride, confidence: .99,
+          boundingBox: { x: .08, y: .91, w: .8, h: .06 } }]
+        : ocrBottomClipped ? [{ text: ocrOverride, confidence: .99,
+          boundingBox: { x: .08, y: .0163, w: .8, h: .08 } }]
+        : ocrBottomShortBlock ? [{ text: 'the final hidden vector', confidence: .99,
+          boundingBox: { x: .08, y: .2, w: .8, h: .08 } },
+          { text: 'as', confidence: .99, boundingBox: { x: .08, y: .019, w: .1, h: .05 } }]
+        : [{ text: ocrOverride, confidence: .99 }] };
       if (!realOcrDone) {
         const result = await require('../src/main/ocr-service').performOCR(file, options);
         assert.match(result.text, /Correlation/);
@@ -109,7 +285,7 @@ app.whenReady().then(async () => {
   assert(!mainWindow.isVisible(), 'successful capture must leave the main workspace hidden');
   const first = cards()[0];
   await until(phaseIs(first, 'done'), 'first translated card');
-  assert.equal(providerCalls, 1);
+  assert.equal(providerCalls, 2, 'translation plus deletion-only term review');
   assert.equal((await stateOf(first)).translation, chinese);
   console.log('ok - native card with real Apple Vision OCR and a deterministic translation');
   assert(first.isAlwaysOnTop());
@@ -122,10 +298,20 @@ app.whenReady().then(async () => {
   await until(async () => Boolean((await stateOf(first)).explanations), 'source-grounded explanations');
   assert.equal((await stateOf(first)).explanations.terms.length, 1);
   console.log('ok - narrow IPC, blocked renderer network and source-matching explanations');
-  await first.webContents.executeJavaScript('document.querySelector(".term-chip").click()');
+  await first.webContents.executeJavaScript('document.querySelector(".term-chip").focus(); document.querySelector(".term-chip").click()');
   await until(async () => (await stateOf(first)).lookupStatus === 'done', 'one-click concept explanation');
   assert.equal((await stateOf(first)).lookup.quote, 'Correlation');
   assert.match((await stateOf(first)).lookup.meaning, /一起变化/);
+  assert.equal((await stateOf(first)).lookup.basis, 'contextual');
+  assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-basis").textContent'), '根据本段用法解释');
+  assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence").hidden'), false);
+  await first.webContents.executeJavaScript('document.querySelector("#lookup-evidence summary").click()');
+  assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence").open'), true);
+  assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence-quote").textContent'),
+    (await stateOf(first)).lookup.sourceQuote, 'the disclosure must display the exact source-backed excerpt');
+  await first.webContents.executeJavaScript('document.getElementById("lookup-close").click()');
+  await until(() => first.webContents.executeJavaScript('document.activeElement.classList.contains("term-chip")'), 'return focus to the concept button');
+  await first.webContents.executeJavaScript('document.querySelector(".term-chip").click()');
   const cachedCalls = providerCalls;
   await first.webContents.executeJavaScript('document.querySelector(".term-chip").click()');
   await pause(50);
@@ -183,6 +369,10 @@ app.whenReady().then(async () => {
   await until(async () => first.webContents.executeJavaScript('!document.getElementById("selection-bar").hidden'), 'manual English selection affordance');
   await first.webContents.executeJavaScript('document.getElementById("lookup-selection").click()');
   await until(async () => (await stateOf(first)).lookupStatus === 'done' && (await stateOf(first)).lookup.quote === 'causation', 'selected phrase explanation');
+  assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence").hidden'), true,
+    'the previous concept must not leave its evidence visible on another lookup');
+  assert.equal(await first.webContents.executeJavaScript('document.getElementById("lookup-evidence").open'), false,
+    'a new lookup must reset the previous evidence disclosure');
   await action(first, 'dismiss-lookup');
   console.log('ok - manual selection maps browser text offsets to the exact original phrase');
   first.setSize(280, 220);
@@ -217,6 +407,92 @@ app.whenReady().then(async () => {
   assert(first.isDestroyed());
   assert(!second.isDestroyed());
   console.log('ok - independent cards and zero provider calls before OCR review');
+  low = false;
+  ocrOverride = english;
+  ocrProseDisagreement = true;
+  const callsBeforeDisagreement = providerCalls;
+  await manager.capture();
+  const disputed = cards().find((window) => window !== second);
+  await until(phaseIs(disputed, 'review'), 'padded OCR disagreement review');
+  assert.equal(providerCalls, callsBeforeDisagreement, 'conflicting high-confidence OCR must not silently translate');
+  assert.match((await stateOf(disputed)).notice, /两次本地识别对正文有分歧/u);
+  void action(disputed, 'close').catch(() => {});
+  await until(() => disputed.isDestroyed(), 'close disputed card');
+  ocrProseDisagreement = false;
+  ocrOverride = 'where T is a temperature normally set to 1. A higher T softens the outputs.';
+  ocrProseGlyphConflicts = [{ source: "I'、I", alternative: 'T', verified: true }];
+  const callsBeforeGlyph = providerCalls;
+  await manager.capture();
+  const glyphCard = cards().find((window) => window !== second);
+  await until(phaseIs(glyphCard, 'review'), 'corrected variable glyph review');
+  assert.equal(providerCalls, callsBeforeGlyph, 'a glyph correction must remain local until reader confirmation');
+  assert.match(await glyphCard.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'),
+    /I'、I[^\n]*T[^\n]*独立局部复读支持后者/u,
+    'the card must show the original glyphs and the independently supported alternative');
+  void action(glyphCard, 'close').catch(() => {});
+  await until(() => glyphCard.isDestroyed(), 'close corrected-glyph card');
+  ocrProseGlyphConflicts = null;
+  ocrOverride = null;
+  ocrOverride = "In this image, C' is the number of channels. The classification head uses a MILP with one hidden layer.";
+  ocrPrimeConflicts = [{ source: "C'", alternative: 'C' }];
+  ocrDocumentOverride = { text: ocrOverride,
+    proseSpellingConflicts: [{ key: 'milp/mlp', source: 'MILP', alternative: 'MLP' }] };
+  const callsBeforeSymbols = providerCalls;
+  await manager.capture();
+  const symbolCard = cards().find((window) => window !== second);
+  await until(phaseIs(symbolCard, 'review'), 'disputed technical symbols review');
+  assert.equal(providerCalls, callsBeforeSymbols, 'disputed technical symbols must not be sent before review');
+  assert.match((await stateOf(symbolCard)).notice, /C'[^\n]*C[^\n]*MILP[^\n]*MLP/u,
+    'the card must name both symbol and acronym alternatives');
+  assert.match(await symbolCard.webContents.executeJavaScript('document.getElementById("formula-notice").textContent'),
+    /C'[^\n]*C[^\n]*MILP[^\n]*MLP/u,
+    'the OCR detail must retain both candidate conflicts');
+  void action(symbolCard, 'close').catch(() => {});
+  await until(() => symbolCard.isDestroyed(), 'close technical-symbol card');
+  ocrOverride = null;
+  ocrPrimeConflicts = null;
+  ocrDocumentOverride = null;
+  ocrOverride = "Hoeffding's inequality bounds a fixed pair.";
+  ocrDocumentOverride = { text: ocrOverride,
+    hyphenationReview: [{ source: "Hoeffd-ing's", alternative: "Hoeffding's" }] };
+  const callsBeforeEponym = providerCalls;
+  await manager.capture();
+  const eponymCard = cards().find((window) => window !== second);
+  await until(phaseIs(eponymCard, 'review'), 'source-review eponym join');
+  assert.equal(providerCalls, callsBeforeEponym, 'inferred surname joins wait for reader confirmation');
+  assert.match((await stateOf(eponymCard)).notice, /Hoeffd-ing's.*Hoeffding's/u);
+  assert.match((await stateOf(eponymCard)).sourceText, /Hoeffding's inequality/u);
+  void action(eponymCard, 'close').catch(() => {});
+  await until(() => eponymCard.isDestroyed(), 'close eponym card');
+  ocrOverride = null;
+  ocrDocumentOverride = null;
+  ocrOverride = 'The standard Transformer receives a YD sequence of embeddings. See Figure I for the model.';
+  ocrReferenceConflicts = [{ source: 'Figure I', alternative: 'Figure 1' }];
+  const callsBeforeReference = providerCalls;
+  await manager.capture();
+  const referenceCard = cards().find((window) => window !== second);
+  await until(phaseIs(referenceCard, 'review'), 'unresolved figure number and dimension review');
+  assert.equal(providerCalls, callsBeforeReference,
+    'unresolved figure number and dimension must not be sent before review');
+  assert.match((await stateOf(referenceCard)).notice, /Figure I[^\n]*Figure 1[^\n]*YD/u,
+    'the card must show the unresolved reference and dimension token');
+  void action(referenceCard, 'close').catch(() => {});
+  await until(() => referenceCard.isDestroyed(), 'close unresolved-reference card');
+  ocrOverride = null;
+  ocrReferenceConflicts = null;
+  ocrOverride = 'The resulting implementation is up to 3X faster on A100 GPUs.';
+  const callsBeforeMultiplier = providerCalls;
+  await manager.capture();
+  const multiplierCard = cards().find((window) => window !== second);
+  await until(phaseIs(multiplierCard, 'review'), 'OCR multiplication glyph ambiguity review');
+  assert.equal(providerCalls, callsBeforeMultiplier, 'uncertain multiplier glyph must not be sent before review');
+  assert.match((await stateOf(multiplierCard)).notice, /3X.*倍数符号.*×/u);
+  assert.match((await stateOf(multiplierCard)).formulaNotice, /3X.*倍数符号.*×/u);
+  assert.match((await stateOf(multiplierCard)).sourceText, /3X faster/u,
+    'ambiguous OCR glyph must remain unmodified until source comparison');
+  void action(multiplierCard, 'close').catch(() => {});
+  await until(() => multiplierCard.isDestroyed(), 'close multiplication-glyph card');
+  ocrOverride = null;
   cancel = true;
   mainWindow.showInactive();
   await manager.capture();
@@ -224,6 +500,33 @@ app.whenReady().then(async () => {
   assert(second.isVisible(), 'cancel must restore existing cards');
   assert(mainWindow.isVisible(), 'cancel must restore the previously visible main workspace');
   cancel = false;
+  holdSelection = true;
+  selectionStarted = false;
+  selectionAbortObserved = false;
+  const pendingSelection = manager.capture({ owner: 7001 });
+  await until(() => selectionStarted, 'waiting native selector fixture');
+  const cancelledSelection = manager.cancelCapture(7001);
+  assert(cancelledSelection && typeof cancelledSelection.then === 'function', 'main-owned capture must expose settlement');
+  assert.equal(await cancelledSelection.then(() => true), true);
+  assert.deepEqual(await pendingSelection, { success: false, cancelled: true });
+  assert(selectionAbortObserved, 'cancel must reach the active selector');
+  assert.equal(manager.cancelCapture(7001), null, 'settled capture must release its owner');
+  assert(second.isVisible(), 'cancel must restore existing cards after an in-flight selector');
+  assert(mainWindow.isVisible(), 'cancel must restore the main workspace after an in-flight selector');
+  holdSelection = false;
+  holdOcr = true;
+  ocrStarted = false;
+  ocrAbortObserved = false;
+  const pendingOcr = manager.capture({ owner: 7002 });
+  await until(() => ocrStarted, 'waiting local OCR fixture');
+  const cancelledOcr = manager.cancelCapture(7002);
+  assert(cancelledOcr && typeof cancelledOcr.then === 'function', 'OCR capture must expose settlement');
+  await cancelledOcr;
+  assert.deepEqual(await pendingOcr, { success: false, cancelled: true });
+  assert(ocrAbortObserved, 'cancel must reach local OCR');
+  assert.equal(cards().length, 1, 'cancelled OCR must remove its incomplete card');
+  assert.equal(manager.cancelCapture(7002), null);
+  holdOcr = false;
   low = false;
   held = true;
   await manager.capture();
@@ -278,6 +581,344 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforeRetry + 1);
   manager.clear();
   noTerms = true;
+  ocrOverride = '框选一段，译文贴在屏幕旁 Option+Shift+S';
+  const beforeOwnUi = providerCalls;
+  await manager.capture();
+  const ownUi = cards()[0];
+  await until(phaseIs(ownUi, 'review'), 'self UI screenshot review');
+  assert.match((await stateOf(ownUi)).notice, /选区似乎包含 Slipstream 窗口/);
+  assert.equal(providerCalls, beforeOwnUi, 'capturing Slipstream chrome must not automatically transmit OCR text');
+  manager.clear();
+  ocrClipped = true;
+  ocrOverride = 'Given an ensemble of classifiers and a training set\nThe margin measures the extent of the correct vote';
+  const beforeClipped = providerCalls;
+  await manager.capture();
+  const clipped = cards()[0];
+  await until(phaseIs(clipped, 'review'), 'right-edge cropped prose review');
+  assert.match((await stateOf(clipped)).notice, /右侧可能截断/);
+  assert.equal(providerCalls, beforeClipped, 'cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrClipped = false;
+  ocrLeftClipped = true;
+  ocrOverride = 'ode feature inputs enter a shared transformation\nhe first operation applies the weight matrix to each node';
+  const beforeLeft = providerCalls;
+  await manager.capture();
+  const left = cards()[0];
+  await until(phaseIs(left, 'review'), 'left-edge cropped prose review');
+  assert.match((await stateOf(left)).notice, /左侧可能截断/);
+  assert.equal(providerCalls, beforeLeft, 'left-cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrOverride = '2.0\nFigure 2.1 Linear regression model. For\n1.0- ear regression model defines a family of input/output relations';
+  ocrDocumentOverride = { text: ocrOverride, layoutReview: true };
+  const beforeFigureLayout = providerCalls;
+  await manager.capture();
+  const figureLayout = cards()[0];
+  await until(phaseIs(figureLayout, 'review'), 'clipped figure and caption layout review');
+  assert.match((await stateOf(figureLayout)).notice, /左侧可能截断.*并排的图与图注/u,
+    'a clipped figure must also surface the independent layout warning');
+  assert.equal(providerCalls, beforeFigureLayout);
+  manager.clear();
+  ocrDocumentOverride = null;
+  ocrLeftClipped = false;
+  ocrLeftPadded = true;
+  ocrOverride = 'Both complete lines have room at the left edge.\nTheir content is fully visible.';
+  const beforePaddedLeft = providerCalls;
+  await manager.capture();
+  const paddedLeft = cards()[0];
+  await until(phaseIs(paddedLeft, 'done'), 'complete prose near the left edge');
+  assert.equal(providerCalls, beforePaddedLeft + 1, 'white pixels at the left edge overrule a near-edge OCR box');
+  manager.clear();
+  ocrLeftPadded = false;
+  ocrRightPadded = true;
+  ocrOverride = 'Both complete lines have room at the right edge.\nTheir content is fully visible.';
+  const beforePaddedRight = providerCalls;
+  await manager.capture();
+  const paddedRight = cards()[0];
+  await until(phaseIs(paddedRight, 'done'), 'complete prose near the right edge');
+  assert.equal(providerCalls, beforePaddedRight + 1, 'white pixels at the right edge overrule a near-edge OCR box');
+  manager.clear();
+  ocrRightPadded = false;
+  ocrTopClipped = true;
+  ocrOverride = 'A complete first line sits near the crop boundary but remains fully legible.';
+  const beforeTop = providerCalls;
+  await manager.capture();
+  const top = cards()[0];
+  await until(phaseIs(top, 'done'), 'complete prose near the top edge');
+  assert.equal(providerCalls, beforeTop + 1, 'white source pixels overrule an overextended top OCR box');
+  manager.clear();
+  ocrTopClipped = false;
+  ocrTopPadded = true;
+  ocrOverride = 'We propose a complete description for each dataset. Its limits should also be recorded.';
+  const beforePaddedTop = providerCalls;
+  await manager.capture();
+  const paddedTop = cards()[0];
+  await until(phaseIs(paddedTop, 'done'), 'complete prose with a small top margin');
+  assert.equal(providerCalls, beforePaddedTop + 1, 'complete first line with a small margin should continue');
+  manager.clear();
+  ocrTopPadded = false;
+  ocrOverride = 'performance may vary, and measures of model performance. We advocate for results by intersectional groups.';
+  const beforeSentenceTail = providerCalls;
+  await manager.capture();
+  const sentenceTail = cards()[0];
+  await until(phaseIs(sentenceTail, 'review'), 'intact earlier-sentence tail review');
+  assert.match((await stateOf(sentenceTail)).notice, /上一句的尾部/);
+  assert.equal(providerCalls, beforeSentenceTail, 'a plausible but incomplete prose start must stay local');
+  manager.clear();
+  imageTopCut = true;
+  ocrOverride = 'In the electronics industry, a component has a datasheet describing its limits.';
+  const beforePixelCut = providerCalls;
+  await manager.capture();
+  const pixelCut = cards()[0];
+  await until(phaseIs(pixelCut, 'review'), 'source line cut off before OCR');
+  assert.match((await stateOf(pixelCut)).notice, /顶部可能截断/);
+  assert.equal(providerCalls, beforePixelCut, 'pixels crossing the top edge must pause before translation');
+  manager.clear();
+  imageTopCut = false;
+  imageDenseTopCut = true;
+  ocrOverride = 'The source line is dense enough that OCR may miss its cut glyphs.';
+  const beforeDenseTop = providerCalls;
+  await manager.capture();
+  const denseTop = cards()[0];
+  await until(phaseIs(denseTop, 'review'), 'dense printed line cut by the selection top');
+  assert.match((await stateOf(denseTop)).notice, /顶部可能截断/);
+  assert.equal(providerCalls, beforeDenseTop, 'a dense edge must stay local even when OCR reports a complete sentence');
+  manager.clear();
+  imageDenseTopCut = false;
+  imageBottomCut = true;
+  ocrOverride = 'The OCR ends with a complete sentence while source glyphs are cut below it.';
+  const beforePixelBottom = providerCalls;
+  await manager.capture();
+  const pixelBottom = cards()[0];
+  await until(phaseIs(pixelBottom, 'review'), 'source line cut off below the OCR');
+  assert.match((await stateOf(pixelBottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforePixelBottom, 'bottom-edge source ink must pause before translation');
+  manager.clear();
+  imageBottomCut = false;
+  imageSparseBottomCut = true;
+  ocrOverride = 'A thin mathematical subscript touches the lower edge although OCR sees a complete equation.';
+  const beforeSparseBottom = providerCalls;
+  await manager.capture();
+  const sparseBottom = cards()[0];
+  await until(phaseIs(sparseBottom, 'review'), 'four dark glyph pixels crossing the bottom edge', 5000);
+  assert.match((await stateOf(sparseBottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforeSparseBottom, 'a thin clipped subscript must stay local until reviewed');
+  manager.clear();
+  imageSparseBottomCut = false;
+  imageSingleBottomSpot = true;
+  ocrOverride = 'A complete source line has only one stray dark strip at the selection boundary.';
+  const beforeSingleStrip = providerCalls;
+  await manager.capture();
+  const singleStrip = cards()[0];
+  await until(phaseIs(singleStrip, 'done'), 'a one-row border artifact must not block reading');
+  assert.equal(providerCalls, beforeSingleStrip + 1, 'one dark bottom strip is insufficient to pause translation');
+  manager.clear();
+  imageSingleBottomSpot = false;
+  imagePageFrame = true;
+  ocrOverride = 'The whole abstract is inside a PDF page frame, with white space below its final sentence.';
+  const beforePageFrame = providerCalls;
+  await manager.capture();
+  const pageFrame = cards()[0];
+  await until(phaseIs(pageFrame, 'done'), 'page border should not mimic clipped text');
+  assert.equal(providerCalls, beforePageFrame + 1, 'a continuous page rule must not block complete prose');
+  manager.clear();
+  imagePageFrame = false;
+  ocrBottomClipped = true;
+  ocrOverride = 'We want to differentiate and optimize the lower bound with respect to both the variational';
+  const beforeBottom = providerCalls;
+  await manager.capture();
+  const bottom = cards()[0];
+  await until(phaseIs(bottom, 'review'), 'bottom-edge cropped prose review');
+  assert.match((await stateOf(bottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforeBottom, 'bottom-edge cropped prose must stay local until reviewed');
+  manager.clear();
+  ocrBottomClipped = true;
+  ocrOverride = 'The bound holds for one fixed pair. A stronger assertion can be proven simultaneously:';
+  const beforeColonLeadIn = providerCalls;
+  await manager.capture();
+  const colonLeadIn = cards()[0];
+  await until(phaseIs(colonLeadIn, 'done'), 'complete colon lead-in near a clear bottom edge');
+  assert.equal(providerCalls, beforeColonLeadIn + 1,
+    'a complete lead-in with a clear edge must continue to translation');
+  manager.clear();
+  ocrBottomClipped = false;
+  ocrBottomShortBlock = true;
+  ocrOverride = 'the final hidden vector for the token as $T_i \\in \\mathbb{R}^H$';
+  const beforeShortBottom = providerCalls;
+  await manager.capture();
+  const shortBottom = cards()[0];
+  await until(phaseIs(shortBottom, 'review'), 'short edge line after math must trigger review');
+  assert.match((await stateOf(shortBottom)).notice, /底部可能截断/);
+  assert.equal(providerCalls, beforeShortBottom);
+  manager.clear();
+  ocrBottomShortBlock = false;
+  ocrOverride = 'The generative model uses prior knowledge about how the data were created. For example, if we wanted to predict the 3D position and orientation y';
+  const beforeUnfinishedTail = providerCalls;
+  await manager.capture();
+  const unfinishedTail = cards()[0];
+  await until(phaseIs(unfinishedTail, 'review'), 'unfinished sentence away from the image edge');
+  assert.match((await stateOf(unfinishedTail)).notice, /末句.*下一页/);
+  assert.equal(providerCalls, beforeUnfinishedTail);
+  manager.clear();
+  ocrOverride = 'The real-world measurements × are computed as a function of the output y.';
+  const beforeTimesGlyph = providerCalls;
+  await manager.capture();
+  const timesGlyph = cards()[0];
+  await until(phaseIs(timesGlyph, 'review'), 'multiplication glyph in prose');
+  assert.match((await stateOf(timesGlyph)).notice, /字母 x 识成乘号/);
+  assert.equal(providerCalls, beforeTimesGlyph);
+  manager.clear();
+  ocrOverride = 'The real-world measurements x are computed as a function of the output у.';
+  const beforeCyrillicGlyph = providerCalls;
+  await manager.capture();
+  const cyrillicCard = cards()[0];
+  await until(phaseIs(cyrillicCard, 'review'), 'Cyrillic lookalike in an English variable role');
+  assert.match((await stateOf(cyrillicCard)).notice, /“у”是西里尔字母.*“y”/);
+  assert.equal(providerCalls, beforeCyrillicGlyph);
+  manager.clear();
+  ocrOverride = 'The first token is [CLS]. The separator is [SEP 1 in the OCR text.';
+  const beforeBrokenBrackets = providerCalls;
+  await manager.capture();
+  const brokenBrackets = cards()[0];
+  await until(phaseIs(brokenBrackets, 'review'), 'broken special-token bracket must trigger review');
+  assert.match((await stateOf(brokenBrackets)).notice, /方括号可能漏识别/);
+  assert.equal(providerCalls, beforeBrokenBrackets);
+  manager.clear();
+  ocrOverride = clipCodeOcr;
+  const beforeCode = providerCalls;
+  await manager.capture();
+  const codeCard = cards()[0];
+  await until(phaseIs(codeCard, 'review'), 'code OCR must wait for line-by-line review');
+  assert.match((await stateOf(codeCard)).notice, /代码式或伪代码截图.*12_normalize.*逐行校正/u);
+  assert.doesNotMatch((await stateOf(codeCard)).notice, /底部可能截断正文|多栏或表格/u);
+  assert.equal(providerCalls, beforeCode);
+  manager.clear();
+  formulaOcrOverride = { status: 'done', count: 0, clippedBottom: true };
+  await manager.capture();
+  const clippedCodeMath = cards()[0];
+  await until(phaseIs(clippedCodeMath, 'review'), 'clipped formula should outrank code warning');
+  assert.match((await stateOf(clippedCodeMath)).notice, /底边截断了公式/u);
+  assert.equal(providerCalls, beforeCode);
+  manager.clear();
+  formulaOcrOverride = null;
+  ocrOverride = 'The span of {1,x) is unchanged after removing 2x.';
+  const beforeBrokenBraces = providerCalls;
+  await manager.capture();
+  const brokenBraces = cards()[0];
+  await until(phaseIs(brokenBraces, 'review'), 'broken set braces must trigger review');
+  assert.match((await stateOf(brokenBraces)).notice, /花括号可能漏识别/);
+  assert.equal(providerCalls, beforeBrokenBraces);
+  manager.clear();
+  ocrOverride = 'The cases are $$x=\\left\\{\\begin{array}{ll}1&i=j\\\\0&i\\neq j.\\end{array}\\right.$$';
+  formulaOcrOverride = { status: 'done', count: 1, uncertain: 0, uncertainStarts: [] };
+  const beforeValidCase = providerCalls;
+  await manager.capture();
+  const validCase = cards()[0];
+  await until(phaseIs(validCase, 'review'), 'a valid math excerpt should reach normal formula review');
+  assert.doesNotMatch((await stateOf(validCase)).notice, /花括号可能漏识别/u,
+    'the visible left case brace is escaped LaTeX, not an unmatched source brace');
+  assert.equal(providerCalls, beforeValidCase);
+  manager.clear();
+  formulaOcrOverride = null;
+  ocrOverride = 'The axioms are $v+w$, $w+v$, $rv$, $r(w+v)$, $(r+s)v$, $r(sv)$, $0+v$, and $v+(-v)$.';
+  formulaOcrOverride = { status: 'done', count: 8, uncertain: 5, uncertainStarts: [] };
+  const beforeDense = providerCalls;
+  await manager.capture();
+  const dense = cards()[0];
+  await until(phaseIs(dense, 'review'), 'dense formula capture must wait for review');
+  assert.match((await stateOf(dense)).formulaNotice, /先点击标出的公式与截图逐一对照.*若字形难辨.*重框/);
+  assert.equal(providerCalls, beforeDense);
+  manager.clear();
+  ocrOverride = 'The vectors satisfy $$\\unknownmathsymbol$$.';
+  formulaOcrOverride = { status: 'done', count: 1, uncertain: 1,
+    uncertainStarts: [ocrOverride.indexOf('$$')], unrenderable: 1, caseDelimiterRepairs: 0 };
+  const beforeUnrenderable = providerCalls;
+  await manager.capture();
+  const unrenderableCard = cards()[0];
+  await until(phaseIs(unrenderableCard, 'review'), 'malformed math must pause before translation');
+  assert.match((await stateOf(unrenderableCard)).notice, /公式暂时无法排版.*校正 LaTeX/u);
+  assert.match((await stateOf(unrenderableCard)).formulaNotice, /无法排版.*保留了 LaTeX 原文/u);
+  assert.equal(providerCalls, beforeUnrenderable);
+  await action(unrenderableCard, 'translate', { revision: (await stateOf(unrenderableCard)).revision,
+    text: ocrOverride });
+  assert.equal((await stateOf(unrenderableCard)).phase, 'review');
+  assert.match((await stateOf(unrenderableCard)).notice, /公式仍无法排版.*校正 LaTeX/u);
+  assert.equal(providerCalls, beforeUnrenderable, 'confirming an unrenderable formula must not call the model');
+  await action(unrenderableCard, 'translate', { revision: (await stateOf(unrenderableCard)).revision,
+    text: 'The vectors satisfy $$x=1$$.' });
+  await until(phaseIs(unrenderableCard, 'done'), 'corrected formula translates');
+  manager.clear();
+  ocrOverride = 'The vectors satisfy $$x=1$.';
+  formulaOcrOverride = null;
+  const beforeOpenDelimiter = providerCalls;
+  await manager.capture();
+  const openDelimiterCard = cards()[0];
+  await until(phaseIs(openDelimiterCard, 'review'), 'unclosed math must reach review');
+  await action(openDelimiterCard, 'translate', { revision: (await stateOf(openDelimiterCard)).revision,
+    text: ocrOverride });
+  assert.equal((await stateOf(openDelimiterCard)).phase, 'review');
+  assert.match((await stateOf(openDelimiterCard)).notice, /公式标记.*未正确闭合/u);
+  assert.equal(providerCalls, beforeOpenDelimiter, 'unclosed display math must not call the model');
+  await action(openDelimiterCard, 'translate', { revision: (await stateOf(openDelimiterCard)).revision,
+    text: 'The vectors satisfy $$x=1$$.' });
+  await until(phaseIs(openDelimiterCard, 'done'), 'closed formula translates');
+  manager.clear();
+  ocrOverride = 'The output $( mathbf  z  _ { L } ^ { 0 } )$ represents the image.';
+  formulaOcrOverride = { status: 'done', count: 1, uncertain: 0, uncertainStarts: [] };
+  const beforeBareCommand = providerCalls;
+  await manager.capture();
+  const bareCommandCard = cards()[0];
+  await until(phaseIs(bareCommandCard, 'review'), 'bare TeX command review');
+  await action(bareCommandCard, 'translate', { revision: (await stateOf(bareCommandCard)).revision,
+    text: ocrOverride });
+  assert.equal((await stateOf(bareCommandCard)).phase, 'review');
+  assert.match((await stateOf(bareCommandCard)).notice, /mathbf.*反斜杠/u);
+  assert.equal(providerCalls, beforeBareCommand, 'a corrupted font command cannot be sent to the model');
+  await action(bareCommandCard, 'translate', { revision: (await stateOf(bareCommandCard)).revision,
+    text: String.raw`The output $( \mathbf z _ { L } ^ { 0 } )$ represents the image.` });
+  await until(phaseIs(bareCommandCard, 'done'), 'corrected TeX translates');
+  manager.clear();
+  ocrOverride = 'The vectors satisfy $$a_i^Ta_j=1$$.';
+  formulaOcrOverride = { status: 'done', count: 1, uncertain: 1,
+    uncertainStarts: [ocrOverride.indexOf('$$')], unrenderable: 0, caseDelimiterRepairs: 1 };
+  const beforeCaseRepair = providerCalls;
+  await manager.capture();
+  const caseRepairCard = cards()[0];
+  await until(phaseIs(caseRepairCard, 'review'), 'repaired invisible math delimiter must pause before translation');
+  assert.match((await stateOf(caseRepairCard)).notice, /已补上不可见定界符.*核对/u);
+  assert.match((await stateOf(caseRepairCard)).formulaNotice, /仅用于排版的不可见右定界符/u);
+  assert.equal(providerCalls, beforeCaseRepair);
+  manager.clear();
+  formulaOcrOverride = null;
+  ocrOverride = 'Two tosses give outcomes where "h" denotes "heads" and "" denotes "tails".';
+  const beforeMissingQuote = providerCalls;
+  await manager.capture();
+  const missingQuote = cards()[0];
+  await until(phaseIs(missingQuote, 'review'), 'missing quoted character review');
+  assert.match((await stateOf(missingQuote)).notice, /引号之间可能漏识别/);
+  assert.equal(providerCalls, beforeMissingQuote, 'an empty OCR quote must be checked before translation');
+  manager.clear();
+  ocrOverride = 'AI models are used in high-stakes Al applications.';
+  const beforeAmbiguousAi = providerCalls;
+  await manager.capture();
+  const ambiguousAi = cards()[0];
+  await until(phaseIs(ambiguousAi, 'review'), 'AI/Al glyph ambiguity review');
+  assert.match((await stateOf(ambiguousAi)).notice, /AI 和 Al.*核对/);
+  assert.equal(providerCalls, beforeAmbiguousAi, 'ambiguous acronym glyphs must stay local until reviewed');
+  manager.clear();
+  ocrOverride = 'The Fitzpatrick skin type is discussed. A second Pitzpatrick skin type appears later.';
+  const beforeConflictingName = providerCalls;
+  await manager.capture();
+  const conflictingName = cards()[0];
+  await until(phaseIs(conflictingName, 'review'), 'conflicting proper-name OCR review');
+  assert.match((await stateOf(conflictingName)).notice, /Fitzpatrick 和 Pitzpatrick 两种近似专名/);
+  assert.equal(providerCalls, beforeConflictingName, 'a repeated name with inconsistent initials must stay local');
+  manager.clear();
+  ocrOverride = 'Fitzpatrick skin type is reported in two distinct groups.';
+  const beforeConsistentName = providerCalls;
+  await manager.capture();
+  await until(phaseIs(cards()[0], 'done'), 'consistent proper name translates without review');
+  assert.equal(providerCalls, beforeConsistentName + 1);
+  manager.clear();
   ocrOverride = 'The next section describes the results.';
   const beforePlain = providerCalls;
   await manager.capture();
@@ -294,6 +935,73 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, beforePlain + 2, 'only manual selection should request an explanation');
   manager.clear();
   console.log('ok - no automatic terms leaves a clean translation and preserves manual lookup');
+  noTerms = false;
+  holdReview = true;
+  manager.openText(english);
+  const reviewing = cards()[0];
+  await until(() => Boolean(resolveReview), 'held concept review');
+  const early = await stateOf(reviewing);
+  assert.equal(early.translation, chinese, 'a pending recommendation review must not delay the translation');
+  assert.equal(early.segments[0].termsStatus, 'reviewing');
+  assert.deepEqual(early.segments[0].terms, []);
+  copied = '';
+  assert(await reviewing.webContents.executeJavaScript('!document.getElementById("copy").disabled'));
+  await action(reviewing, 'copy');
+  assert.equal(copied, chinese, 'a complete translation can be copied while optional suggestions are pending');
+  assert(await reviewing.webContents.executeJavaScript('document.querySelector(".translation-paragraph").textContent.length > 0'));
+  await action(reviewing, 'lookup', { revision: early.revision, segmentId: 0, start: 0, end: 'Correlation'.length });
+  assert.equal((await stateOf(reviewing)).lookupStatus, 'done', 'manual lookup remains usable while suggestions are being reviewed');
+  resolveReview('not a valid review');
+  await until(phaseIs(reviewing, 'done'), 'review failure still completes translation');
+  assert.equal((await stateOf(reviewing)).translation, chinese);
+  assert(await reviewing.webContents.executeJavaScript('!document.querySelector(".terms-notice").hidden'));
+  manager.clear();
+  resolveReview = null;
+  manager.openText(english);
+  const abandonedReview = cards()[0];
+  await until(() => Boolean(resolveReview), 'second concept review');
+  const finishAbandoned = resolveReview;
+  void action(abandonedReview, 'close').catch(() => {});
+  await until(() => abandonedReview.isDestroyed(), 'close during concept review');
+  assert(reviewSignal.aborted);
+  finishAbandoned('{"keep":[0]}');
+  await pause(60);
+  assert.equal(cards().length, 0, 'a late review cannot reopen a closed pin');
+  console.log('ok - translation arrives before term review; review failure and cancellation preserve reading behavior');
+  held = false; holdReview = false; ocrOverride = null;
+  settings = { ...settings, screenshotReadingMode: 'image' };
+  const beforeImage = providerCalls;
+  await manager.capture();
+  const imageCard = cards()[0];
+  await until(phaseIs(imageCard, 'done'), 'image reading without OCR approval');
+  assert.equal(imageReads, 1); assert.equal(providerCalls, beforeImage, 'a picture read does not also run the text/OCR translation path');
+  assert.equal((await stateOf(imageCard)).translation, chinese);
+  assert.match((await stateOf(imageCard)).destination, /选区图片/u);
+  const imageState = await stateOf(imageCard);
+  await action(imageCard, 'lookup', { revision: imageState.revision,
+    segmentId: imageState.segments[0].id, start: 0, end: 'Correlation'.length });
+  await until(async () => (await stateOf(imageCard)).lookupStatus === 'done', 'manual lookup on a screenshot read');
+  assert.equal((await stateOf(imageCard)).lookup.quote, 'Correlation');
+  assert.equal(providerCalls, beforeImage + 1, 'manual lookup uses the same text provider on the image source');
+  manager.clear(); imageUncertain = true;
+  await manager.capture(); const warnedImage = cards()[0];
+  await until(phaseIs(warnedImage, 'done'), 'localized image uncertainty keeps readable translation');
+  assert.equal((await stateOf(warnedImage)).translation, chinese);
+  assert.match((await stateOf(warnedImage)).notice, /没看清/u);
+  assert(await warnedImage.webContents.executeJavaScript('!document.getElementById("notice-retake").hidden && !document.getElementById("reading-content").hidden'));
+  manager.clear(); imageUncertain = false; imageHeld = true;
+  const pendingImage = manager.capture();
+  await until(() => Boolean(finishImage), 'pending image recommendation');
+  const closingImage = cards()[0];
+  void action(closingImage, 'close').catch(() => {});
+  await until(() => closingImage.isDestroyed(), 'close during image reading');
+  assert(imageSignal.aborted);
+  finishImage(); await pendingImage; await pause(30); assert.equal(cards().length, 0);
+  finishImage = null;
+  const changingImage = manager.capture(); await until(() => Boolean(finishImage), 'second pending image');
+  manager.invalidateProcessing(); assert(imageSignal.aborted, 'settings changes abort the remaining image request even after early translation');
+  finishImage(); await changingImage; manager.clear();
+  console.log('ok - image route, localized warning, closing and settings invalidation preserve reading lifecycle');
   assert(!fs.readdirSync(work).some((file) => /^capture-.*\.png$/.test(file)), 'temporary captures must be removed');
   console.log('Reading cards native checks passed: real Apple Vision OCR, rendered local source, independent cards, resize/move/pin, low-confidence gate, provider retry, cancellation, late-result suppression, settings changes, sandbox and close cleanup. Translation responses were deterministic fixtures; native screen selection and live translation were not exercised by this test.');
   manager.dispose();

@@ -73,9 +73,19 @@ function cleanup() {
   try { fs.rmSync(TEMP_DIR, { recursive: true, force: true }); } catch (_) { /* best effort */ }
 }
 
+async function captureReadingRegion(outPath, { signal } = {}) {
+  const filePath = outPath || outputPath();
+  const image = await require('./capture-overlay').selectRegion({ signal });
+  if (signal?.aborted) throw cancelError();
+  try { fs.writeFileSync(filePath, image, { mode: 0o600 }); }
+  catch (error) { try { fs.unlinkSync(filePath); } catch { /* no partial file */ } throw error; }
+  return filePath;
+}
+
 module.exports = {
   captureRegion,
   captureSelectedRegion: captureRegion,
+  captureReadingRegion,
   cleanup,
   getTempDir,
 };

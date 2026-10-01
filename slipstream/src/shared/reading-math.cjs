@@ -27,12 +27,35 @@
       while (end >= 0 && escaped(text, end)) end = text.indexOf(pair[1], end + pair[1].length);
       if (end < 0) continue;
       const tex = text.slice(i + pair[0].length, end);
+      const number = /^\d+(?:[.,]\d+)?$/u.test(tex);
+      const coefficient = /^\d+(?:[.,]\d+)?[A-Za-z]$/u.test(tex);
       if (!tex.trim() || (pair[0] === '$' && (/\n|\s$/u.test(tex)
-        || (/^\d/u.test(tex) && !/[\\_^=+*/<>|{}]/u.test(tex))))) continue;
+        || (/^\d/u.test(tex) && !number && !coefficient && !/[\\_^=+*/<>|{}]/u.test(tex))
+        || (number && /\d/u.test(text[end + 1] || ''))))) continue;
       ranges.push({ start: i, end: end + pair[1].length, tex, display: pair[2] });
       i = end + pair[1].length - 1;
     }
     return ranges;
+  }
+  function firstInvalidMathDelimiter(text) {
+    for (let i = 0; i < text.length; i += 1) {
+      if (escaped(text, i)) continue;
+      if (text[i] === '`') {
+        const marker = text.startsWith('```', i) ? '```' : '`';
+        const end = text.indexOf(marker, i + marker.length);
+        i = end < 0 ? text.length : end + marker.length - 1;
+        continue;
+      }
+      const pair = text.startsWith('$$', i) ? ['$$', '$$']
+        : text.startsWith('\\[', i) ? ['\\[', '\\]']
+          : text.startsWith('\\(', i) ? ['\\(', '\\)'] : null;
+      if (!pair) continue;
+      let end = text.indexOf(pair[1], i + pair[0].length);
+      while (end >= 0 && escaped(text, end)) end = text.indexOf(pair[1], end + pair[1].length);
+      if (end < 0 || !text.slice(i + pair[0].length, end).trim()) return pair[0];
+      i = end + pair[1].length - 1;
+    }
+    return '';
   }
   function needsMathReview(text) {
     return mathRanges(text).length > 0 || /[∑∫∂∇√∞≠≤≥∈∉⊂⊆∪∩₀-₉⁰¹²³⁴⁵⁶⁷⁸⁹]/u.test(text)
@@ -46,7 +69,31 @@
     for (const range of ranges) { prose += text.slice(offset, range.start); offset = range.end; }
     return /^[\s.,;:，。；：]*$/u.test(prose + text.slice(offset));
   }
-  const api = { mathRanges, needsMathReview, isMathOnly };
+  function bareFontCommand(tex) {
+    return /(?<![\\A-Za-z])(boldsymbol|mathbf|mathbb|mathcal|mathscr|mathsf|mathtt|mathit|mathrm)\b(?=\s*(?:\{|[A-Za-z\\]))/u.exec(tex)?.[1] || '';
+  }
+  function firstBareFontCommand(text) {
+    for (const range of mathRanges(text)) {
+      const command = bareFontCommand(range.tex);
+      if (command) return command;
+    }
+    return '';
+  }
+  function repairBareFontCommands(tex) {
+    return tex.replace(/(?<![\\A-Za-z])(?:boldsymbol|mathbf|mathbb|mathcal|mathscr|mathsf|mathtt|mathit|mathrm)\b(?=\s*(?:\{|[A-Za-z\\]))/gu,
+      (command) => `\\${command}`);
+  }
+  function displayEquationParts(tex) {
+    const tag = /^(.*)\\tag\s*\{([^{}]+)\}\s*$/su.exec(tex);
+    if (tag) return { body: tag[1], label: `(${tag[2]})` };
+    // Plain TeX puts a right-hand number after \eqno. Interpret it for
+    // display only; source offsets and the copied expression stay untouched.
+    const eqno = /^(.*)\\eqno\s*(\([^{}\\\n]+\)|\{[^{}\\\n]+\}|[\w.-]+)\s*$/su.exec(tex);
+    if (eqno) return { body: eqno[1], label: eqno[2].replace(/^\{(.*)\}$/su, '$1') };
+    return { body: tex, label: null };
+  }
+  const api = { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, displayEquationParts,
+    firstBareFontCommand, repairBareFontCommands };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.readingMath = api;
 })(globalThis);

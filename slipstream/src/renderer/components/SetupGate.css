@@ -2,20 +2,43 @@
   width: 100%;
   min-width: 0;
   height: 100%;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 22px;
+  padding: 0 22px 22px;
   background:
     radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--accent-light) 72%, transparent), transparent 40%),
     var(--bg-secondary);
+}
+
+.setup-window-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg-secondary);
+  display: flex;
+  align-self: stretch;
+  min-height: 48px;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-inline: -22px;
+  padding: 10px 22px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: default;
+  user-select: none;
+  -webkit-app-region: drag;
 }
 
 .setup-card {
   width: min(100%, 790px);
   min-width: 0;
   max-width: 100%;
+  flex: 0 0 auto;
+  margin-block: auto;
   padding: 25px;
   border: 1px solid var(--border-primary);
   border-radius: 20px;
@@ -29,7 +52,8 @@
 }
 
 .setup-eyebrow {
-  display: inline-flex;
+  display: table;
+  margin-bottom: 11px;
   padding: 4px 8px;
   border-radius: 999px;
   background: var(--accent-light);
@@ -40,6 +64,8 @@
 }
 
 .setup-header h1 {
+  display: inline;
+  margin-right: 6px;
   margin-top: 11px;
   color: var(--text-primary);
   font-size: clamp(23px, 4vw, 31px);
@@ -393,8 +419,10 @@
 @media (max-width: 620px) {
   .setup-gate {
     align-items: start;
-    padding: 10px;
+    padding: 0 10px 10px;
   }
+
+  .setup-window-header { margin-inline: -10px; padding-inline: 18px; }
 
   .setup-card {
     padding: 18px;
@@ -426,8 +454,10 @@
 @media (max-width: 280px) {
   .setup-gate {
     place-items: start stretch;
-    padding: 8px;
+    padding: 0 8px 8px;
   }
+
+  .setup-window-header { margin-inline: -8px; padding-inline: 12px; }
 
   .setup-card {
     padding: 12px;

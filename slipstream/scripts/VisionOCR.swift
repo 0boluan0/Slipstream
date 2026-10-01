@@ -1,11 +1,55 @@
 #!/usr/bin/env swift
 
 // OCR_VERSION: increment this when the Swift source changes to force recompilation
-let OCR_VERSION = 4
+let OCR_VERSION = 12
 
 import Vision
 import AppKit
 import Foundation
+import CoreGraphics
+
+struct FrontWindow: Codable {
+    let bundleId: String
+    let title: String
+}
+
+func windowRect(_ window: [String: Any]) -> CGRect? {
+    guard let bounds = window[kCGWindowBounds as String] as? [String: Any],
+          let x = bounds["X"] as? NSNumber, let y = bounds["Y"] as? NSNumber,
+          let width = bounds["Width"] as? NSNumber, let height = bounds["Height"] as? NSNumber else { return nil }
+    return CGRect(x: x.doubleValue, y: y.doubleValue, width: width.doubleValue, height: height.doubleValue)
+}
+
+func frontWindow() -> FrontWindow? {
+    guard let app = NSWorkspace.shared.frontmostApplication,
+          let bundleId = app.bundleIdentifier,
+          let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] else { return nil }
+    for (index, window) in windows.enumerated() {
+        guard (window[kCGWindowOwnerPID as String] as? Int32) == app.processIdentifier,
+              (window[kCGWindowLayer as String] as? Int) == 0,
+              let title = window[kCGWindowName as String] as? String,
+              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+        // The active app can report a document on a different Space while a
+        // normal window covers its pixels. Do not bind that screenshot to the
+        // obscured document's local reading context.
+        guard let target = windowRect(window) else { continue }
+        // Preview can put a tiny "Window" title-bar accessory above the PDF.
+        // It is not a readable document and must not become the paper identity.
+        guard target.width >= 200, target.height >= 120 else { continue }
+        let obscured = windows.prefix(index).contains { other in
+            guard (other[kCGWindowLayer as String] as? Int) == 0,
+                  (other[kCGWindowOwnerPID as String] as? Int32) != app.processIdentifier,
+                  (other[kCGWindowAlpha as String] as? Double ?? 1) > 0.01,
+                  let rect = windowRect(other) else { return false }
+            let overlap = target.intersection(rect)
+            return !overlap.isNull && overlap.width * overlap.height >= target.width * target.height * 0.5
+        }
+        if obscured { return nil }
+        return FrontWindow(bundleId: bundleId, title: title)
+    }
+    return nil
+}
 
 // MARK: - JSON output structures
 
@@ -21,6 +65,7 @@ struct Block: Codable {
     let confidence: Double
     let boundingBox: BoundingBox
     let characters: [CharacterBox]?
+    let alternatives: [String]
 }
 
 struct CharacterBox: Codable {
@@ -32,12 +77,14 @@ struct Output: Codable {
     let text: String?
     let confidence: Double?
     let blocks: [Block]?
+    let spellJoinCandidates: [String]?
     let error: String?
 
-    init(text: String, confidence: Double, blocks: [Block]) {
+    init(text: String, confidence: Double, blocks: [Block], spellJoinCandidates: [String]) {
         self.text = text
         self.confidence = confidence
         self.blocks = blocks
+        self.spellJoinCandidates = spellJoinCandidates
         self.error = nil
     }
 
@@ -45,13 +92,44 @@ struct Output: Codable {
         self.text = nil
         self.confidence = nil
         self.blocks = nil
+        self.spellJoinCandidates = nil
         self.error = error
     }
+}
+
+// The system word list used by the reader omits some academic words (such as
+// "quantile"). Only corroborate a printed line-break join when the English
+// spell checker knows the whole word but rejects at least one fragment, or
+// when the printed split has a very short fragment (inter- / net). The reader
+// still protects productive hyphenated prefixes such as pre- / trained.
+func spellJoinCandidates(_ blocks: [Block]) -> [String] {
+    let checker = NSSpellChecker.shared
+    func known(_ word: String) -> Bool {
+        checker.checkSpelling(of: word, startingAt: 0, language: "en_US", wrap: false,
+            inSpellDocumentWithTag: 0, wordCount: nil).location == NSNotFound
+    }
+    var candidates = Set<String>()
+    for pair in zip(blocks, blocks.dropFirst()) {
+        let previous = pair.0.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let next = pair.1.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let leftRange = previous.range(of: #"[A-Za-z]{2,}-$"#, options: .regularExpression),
+              let rightRange = next.range(of: #"^[a-z]{2,}(?![A-Za-z])"#, options: .regularExpression) else { continue }
+        let left = String(previous[leftRange].dropLast()).lowercased()
+        let right = String(next[rightRange]).lowercased()
+        let joined = left + right
+        if known(joined) && (!known(left) || !known(right)
+            || left.count <= 3 || right.count <= 3) { candidates.insert(joined) }
+    }
+    return candidates.sorted()
 }
 
 // MARK: - Entry point
 
 func main() {
+    if CommandLine.arguments.dropFirst().first == "--front-window" {
+        print(encodeJSON(frontWindow()))
+        return
+    }
     guard CommandLine.arguments.count > 1 else {
         let output = Output(error: "No image path provided")
         print(encodeJSON(output))
@@ -61,7 +139,14 @@ func main() {
     let imagePath = CommandLine.arguments[1]
     let imageURL = URL(fileURLWithPath: imagePath)
 
-    guard let image = NSImage(contentsOf: imageURL) else {
+    // Initialize Vision's model cache without reading a screen or user file.
+    let input = imagePath == "--warm-up"
+        ? NSImage(size: NSSize(width: 64, height: 64), flipped: false, drawingHandler: { rect in
+            NSColor.white.setFill()
+            rect.fill()
+            return true
+        }) : NSImage(contentsOf: imageURL)
+    guard let image = input else {
         let output = Output(error: "Failed to load image at path: \(imagePath)")
         print(encodeJSON(output))
         exit(1)
@@ -71,6 +156,30 @@ func main() {
         let output = Output(error: "Failed to convert NSImage to CGImage")
         print(encodeJSON(output))
         exit(1)
+    }
+
+    // Tight reading captures can make Vision drop letters at the page edge.
+    // Give the text detector breathing room, then map every box back to the
+    // original screenshot so inline formula replacement still uses its pixels.
+    var recognitionImage = cgImage
+    var margin = 0
+    if CommandLine.arguments.contains("--pad-edges") {
+        let padding = max(8, Int((Double(cgImage.width) * 0.025).rounded()))
+        if let context = CGContext(data: nil, width: cgImage.width + padding * 2,
+            height: cgImage.height + padding * 2, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+            context.setFillColor(CGColor(gray: 1, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: context.width, height: context.height))
+            context.draw(cgImage, in: CGRect(x: padding, y: padding, width: cgImage.width, height: cgImage.height))
+            if let padded = context.makeImage() { recognitionImage = padded; margin = padding }
+        }
+    }
+    func sourceBox(_ rect: CGRect) -> BoundingBox {
+        let x = Double(rect.minX) * Double(recognitionImage.width) - Double(margin)
+        let y = Double(rect.minY) * Double(recognitionImage.height) - Double(margin)
+        return BoundingBox(x: x / Double(cgImage.width), y: y / Double(cgImage.height),
+            w: Double(rect.width) * Double(recognitionImage.width) / Double(cgImage.width),
+            h: Double(rect.height) * Double(recognitionImage.height) / Double(cgImage.height))
     }
 
     let request = VNRecognizeTextRequest { request, error in
@@ -91,18 +200,14 @@ func main() {
         var allText: [String] = []
 
         for observation in observations {
-            guard let topCandidate = observation.topCandidates(1).first else { continue }
+            let candidates = observation.topCandidates(5)
+            guard let topCandidate = candidates.first else { continue }
 
             let text = topCandidate.string
             let confidence = Double(topCandidate.confidence)
             let box = observation.boundingBox
 
-            let boundingBox = BoundingBox(
-                x: Double(box.origin.x),
-                y: Double(box.origin.y),
-                w: Double(box.size.width),
-                h: Double(box.size.height)
-            )
+            let boundingBox = sourceBox(box)
 
             // Formula masking can leave two prose fragments in one Vision line.
             // Character positions let the caller insert inline LaTeX between them.
@@ -112,8 +217,7 @@ func main() {
                 for index in text.indices {
                     let end = text.index(after: index)
                     guard let rect = try? topCandidate.boundingBox(for: index..<end)?.boundingBox else { continue }
-                    characters?.append(CharacterBox(text: String(text[index]), boundingBox: BoundingBox(
-                        x: Double(rect.minX), y: Double(rect.minY), w: Double(rect.width), h: Double(rect.height))))
+                    characters?.append(CharacterBox(text: String(text[index]), boundingBox: sourceBox(rect)))
                 }
             }
 
@@ -121,7 +225,8 @@ func main() {
                 text: text,
                 confidence: confidence,
                 boundingBox: boundingBox,
-                characters: characters
+                characters: characters,
+                alternatives: candidates.dropFirst().map { $0.string }
             ))
 
             allText.append(text)
@@ -132,7 +237,8 @@ func main() {
         let output = Output(
             text: allText.joined(separator: "\n"),
             confidence: avgConfidence,
-            blocks: blocks
+            blocks: blocks,
+            spellJoinCandidates: spellJoinCandidates(blocks)
         )
         print(encodeJSON(output))
     }
@@ -155,7 +261,7 @@ func main() {
         request.recognitionLanguages = ["en-US", "zh-Hans", "zh-Hant", "ja-JP", "ko-KR"]
     }
 
-    let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    let handler = VNImageRequestHandler(cgImage: recognitionImage, options: [:])
 
     do {
         try handler.perform([request])

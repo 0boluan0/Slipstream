@@ -1,10 +1,12 @@
 const { execFile } = require('child_process');
-const { app } = require('electron');
+const { app, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('node:fs/promises');
 const { createOcrEnvironment } = require('./ocr-environment');
 const { createLocalFormulaOcr } = require('./local-formula-ocr');
 const { mergeFormulaDocument } = require('./formula-document');
+const { reconcileProseOcr, isolatedGlyphDisagreements, proseTokenDisagreements } = require('./prose-ocr-reconciliation');
+const { missingInteriorRows, orderedAgreement, rect } = require('./interior-prose-recheck');
 
 const APP_ROOT = path.resolve(__dirname, '..', '..');
 const OCR_SCRIPT = app.isPackaged
@@ -12,6 +14,59 @@ const OCR_SCRIPT = app.isPackaged
   : path.join(APP_ROOT, 'scripts', 'ocr-swift-runner.sh');
 const formulaOcr = createLocalFormulaOcr(app.isPackaged
   ? path.join(process.resourcesPath, 'formula-models') : path.join(APP_ROOT, 'formula-models'));
+let prepared = false;
+let preparation = null;
+let preparationController = null;
+
+function ocrCancellation() {
+  return Object.assign(new Error('OCR cancelled by user'), { isCancellation: true });
+}
+
+function prepareOCR() {
+  if (prepared) return Promise.resolve();
+  if (!preparation) {
+    preparationController = new AbortController();
+    // Cold Vision/ANE compilation can take about 30 seconds. Share this bounded
+    // startup work; each actual screenshot still has a 15-second OCR deadline.
+    preparation = runOCR('--warm-up', { signal: preparationController.signal, timeout: 60000 })
+      .then(() => { prepared = true; })
+      .catch(error => {
+        if (!error.isCancellation) error.code = 'ocr-initialization-failed';
+        throw error;
+      }).finally(() => { preparation = null; preparationController = null; });
+  }
+  return preparation;
+}
+
+function waitForPreparation(promise, signal) {
+  if (!signal) return promise;
+  return new Promise((resolve, reject) => {
+    const finish = (callback, value) => {
+      signal.removeEventListener('abort', onAbort);
+      callback(value);
+    };
+    const onAbort = () => finish(reject, ocrCancellation());
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(value => finish(resolve, value), error => finish(reject, error));
+    if (signal.aborted) onAbort();
+  });
+}
+
+function frontmostDocumentWindow() {
+  if (process.platform !== 'darwin') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let environment;
+    try { environment = createOcrEnvironment(path.join(app.getPath('userData'), 'ocr-cache')); }
+    catch { resolve(null); return; }
+    execFile('/bin/bash', [OCR_SCRIPT, '--front-window'], {
+      timeout: 20000, maxBuffer: 4096, env: environment,
+    }, (error, stdout) => {
+      if (error) { resolve(null); return; }
+      try { resolve(JSON.parse(stdout.trim())); }
+      catch { resolve(null); }
+    });
+  });
+}
 
 /**
  * Clean raw OCR text by normalizing whitespace and removing garbage.
@@ -34,7 +89,18 @@ function cleanOcrText(rawText) {
  * @param {string} imagePath - Absolute path to the image file.
  * @returns {Promise<{text: string, confidence: number, blocks: Array}>}
  */
-function performOCR(imagePath, { signal, characters = false } = {}) {
+async function performOCR(imagePath, { signal, onProgress, ...options } = {}) {
+  if (signal?.aborted) throw ocrCancellation();
+  if (!prepared) {
+    onProgress?.('initializing');
+    await waitForPreparation(prepareOCR(), signal);
+  }
+  if (signal?.aborted) throw ocrCancellation();
+  onProgress?.('recognizing');
+  return runOCR(imagePath, { ...options, signal });
+}
+
+function runOCR(imagePath, { signal, characters = false, padEdges = false, timeout = 15000 } = {}) {
   return new Promise((resolve, reject) => {
     const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
     let settled = false;
@@ -63,8 +129,8 @@ function performOCR(imagePath, { signal, characters = false } = {}) {
       finish(reject, error);
       return;
     }
-    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath, ...(characters ? ['--characters'] : [])], {
-      timeout: 15000,
+    child = execFile('/bin/bash', [OCR_SCRIPT, imagePath, ...(characters ? ['--characters'] : []), ...(padEdges ? ['--pad-edges'] : [])], {
+      timeout,
       maxBuffer: 8 * 1024 * 1024,
       env: environment,
     }, (error, stdout, stderr) => {
@@ -97,6 +163,7 @@ function performOCR(imagePath, { signal, characters = false } = {}) {
           text: cleanOcrText(result.text || ''),
           confidence: result.confidence || 0,
           blocks: result.blocks || [],
+          spellJoinCandidates: result.spellJoinCandidates || [],
         });
       } catch (parseError) {
         finish(reject, new Error(`Failed to parse OCR output: ${parseError.message}`));
@@ -105,20 +172,499 @@ function performOCR(imagePath, { signal, characters = false } = {}) {
   });
 }
 
-async function performReadingOCR(imagePath, { signal } = {}) {
+async function recheckReferenceOne(imagePath, original, padded, temporary,
+  { signal, recognize = performOCR, supportingOcr } = {}) {
+  const source = original?.blocks || [], alternative = padded?.blocks || [];
+  const reference = /\b(?:Figure|Table|Equation|Algorithm|Eq\.) I\b|\(I\)|\(1(?=\s|$)/u;
+  if (!source.some((block) => reference.test(block.text))) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const blocks = source.slice();
+  let checked = 0;
+  const verifiedGlyphConflicts = [...(original?.verifiedGlyphConflicts || [])];
+  const referenceReviewConflicts = [...(original?.referenceReviewConflicts || [])];
+  for (let row = 0; row < blocks.length && checked < 4; row++) {
+    const block = blocks[row];
+    const match = reference.exec(block.text);
+    if (!match || !block.boundingBox) continue;
+    const parenthesized = match[0].startsWith('(');
+    const replacement = parenthesized ? '(1)' : match[0].replace(/I$/u, '1');
+    const corrected = block.text.slice(0, match.index) + replacement
+      + block.text.slice(match.index + match[0].length);
+    const context = parenthesized ? 12 : 18;
+    const before = block.text.slice(Math.max(0, match.index - context), match.index);
+    const after = block.text.slice(match.index + match[0].length,
+      match.index + match[0].length + context);
+    if (before.trim().length < 3 || after.trim().length < 3 && !(parenthesized && !after)) continue;
+    let alternativeCharacters;
+    const witnesses = parenthesized ? [...alternative, ...(supportingOcr?.blocks || [])] : alternative;
+    const alternativeRow = witnesses.find((candidate) => {
+      const at = candidate.text.indexOf(before + replacement + after);
+      if (candidate.confidence < .9 || at < 0 || !candidate.boundingBox
+        || Math.abs(candidate.boundingBox.y + candidate.boundingBox.h / 2
+          - block.boundingBox.y - block.boundingBox.h / 2) >= Math.min(candidate.boundingBox.h, block.boundingBox.h) * .6) return false;
+      if (!parenthesized) return true;
+      if (candidate.characters?.length !== [...candidate.text].length
+        || block.characters?.length !== [...block.text].length) return false;
+      const start = [...candidate.text.slice(0, at + before.length)].length;
+      const proposed = candidate.characters.slice(start, start + replacement.length);
+      const sourceStart = [...block.text.slice(0, match.index)].length;
+      const current = block.characters.slice(sourceStart, sourceStart + match[0].length);
+      if (proposed.map((char) => char.text).join('') !== replacement
+        || [...current, ...proposed].some((char) => !char.boundingBox
+          || !(char.boundingBox.w > 0) || !(char.boundingBox.h > 0))) return false;
+      const span = (characters) => ({ left: Math.min(...characters.map((char) => char.boundingBox.x)),
+        right: Math.max(...characters.map((char) => char.boundingBox.x + char.boundingBox.w)) });
+      const a = span(current), b = span(proposed);
+      if (Math.min(a.right, b.right) - Math.max(a.left, b.left) < Math.min(a.right - a.left, b.right - b.left) * .5) return false;
+      alternativeCharacters = proposed;
+      return true;
+    });
+    if (!alternativeRow) continue;
+    const unresolved = () => {
+      const pair = { source: match[0], alternative: replacement };
+      if (!referenceReviewConflicts.some((entry) => entry.source === pair.source)) referenceReviewConflicts.push(pair);
+    };
+    if (!block.characters?.length || block.characters.length !== Array.from(block.text).length) {
+      unresolved(); continue;
+    }
+    const first = Array.from(block.text.slice(0, Math.max(0, match.index - 4))).length;
+    const last = Array.from(block.text.slice(0, match.index + match[0].length)).length;
+    const chars = block.characters.slice(first, last).filter((char) => char.boundingBox.w > 0 && char.boundingBox.h > 0);
+    if (chars.length < 3) { unresolved(); continue; }
+    const x = Math.max(0, Math.floor(Math.min(...chars.map((char) => char.boundingBox.x)) * size.width) - 8);
+    const right = Math.min(size.width, Math.ceil(Math.max(...chars.map((char) => char.boundingBox.x + char.boundingBox.w)) * size.width) + 8);
+    const y = Math.max(0, Math.floor((1 - Math.max(...chars.map((char) => char.boundingBox.y + char.boundingBox.h))) * size.height) - 8);
+    // Tall source boxes can touch the next printed row. Parentheses need no
+    // extra lower margin; its stray letter tops can scramble this small crop.
+    const bottom = Math.min(size.height, Math.ceil((1 - Math.min(...chars.map((char) => char.boundingBox.y))) * size.height) + (parenthesized ? 0 : 8));
+    if (right - x < 40 || bottom - y < 12) { unresolved(); continue; }
+    const crop = path.join(temporary, `reference-${checked++}.png`);
+    await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+    const confirmed = await recognize(crop, { signal }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    if (!confirmed || confirmed.confidence < .9
+      || !(parenthesized ? /\(1\)\s*[.,;:]?\s*$/u.test(confirmed.text) : confirmed.text.includes(replacement))) { unresolved(); continue; }
+    const index = last - 1;
+    const start = [...block.text.slice(0, match.index)].length;
+    blocks[row] = { ...block, text: corrected, characters: parenthesized
+      ? [...block.characters.slice(0, start), ...alternativeCharacters, ...block.characters.slice(last)]
+      : block.characters.map((char, i) => i === index ? { ...char, text: '1' } : char) };
+    verifiedGlyphConflicts.push({ source: match[0], alternative: replacement });
+  }
+  return { ...original, blocks, verifiedGlyphConflicts, referenceReviewConflicts };
+}
+
+function findPrimeDefinitionConflicts(original, renderedText) {
+  const conflicts = [];
+  for (const block of original?.blocks || []) {
+    if (block.confidence < .9 || !block.alternatives?.length) continue;
+    for (const match of block.text.matchAll(/\b([A-Za-z])['’]\s+[A-Za-z]+(?:\s+[A-Za-z]+){4}\b/gu)) {
+      const corrected = block.text.slice(0, match.index)
+        + match[0].replace(/^([A-Za-z])['’]/u, '$1')
+        + block.text.slice(match.index + match[0].length);
+      if (!block.alternatives.includes(corrected)) continue;
+      const source = `${match[1]}${match[0][1]}`;
+      if (typeof renderedText === 'string' && !renderedText.includes(`${source} is`)) continue;
+      if (!conflicts.some((pair) => pair.source === source)) {
+        conflicts.push({ source, alternative: match[1] });
+      }
+    }
+  }
+  return conflicts;
+}
+
+async function recheckRightEdgeWord(imagePath, original, padded, temporary, { signal, recognize = performOCR } = {}) {
+  const source = original?.blocks || [], alternative = padded?.blocks || [];
+  if (!source.length || !alternative.length) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const blocks = source.slice();
+  let checked = 0;
+  for (let row = 0; row < blocks.length && checked < 3; row++) {
+    const block = blocks[row];
+    const word = /[A-Za-z]+(?:-[A-Za-z]+)?$/u.exec(block.text);
+    if (!word || !block.boundingBox || block.boundingBox.x + block.boundingBox.w < .82
+      || !block.characters?.length || block.characters.length !== Array.from(block.text).length) continue;
+    const normalizePrefix = (value) => value.replace(/[‘’“”"']/gu, '"').replace(/\s+/gu, ' ');
+    const prior = normalizePrefix(block.text.slice(0, word.index));
+    const replacement = alternative.find((candidate) => {
+      const other = /[A-Za-z]+(?:-[A-Za-z]+)?$/u.exec(candidate.text);
+      if (!other || !candidate.boundingBox || candidate.confidence < .9
+        || normalizePrefix(candidate.text.slice(0, other.index)) !== prior
+        || Math.abs(candidate.boundingBox.x - block.boundingBox.x) > .08
+        || Math.abs(candidate.boundingBox.x + candidate.boundingBox.w
+          - block.boundingBox.x - block.boundingBox.w) > .08
+        || Math.abs(candidate.boundingBox.y + candidate.boundingBox.h / 2
+          - block.boundingBox.y - block.boundingBox.h / 2) >= Math.min(candidate.boundingBox.h, block.boundingBox.h) * .6
+        || other[0].length !== word[0].length) return false;
+      return [...other[0]].filter((letter, i) => letter !== word[0][i]).length === 1;
+    });
+    if (!replacement) continue;
+    const other = /[A-Za-z]+(?:-[A-Za-z]+)?$/u.exec(replacement.text)[0];
+    const start = Array.from(block.text.slice(0, Math.max(0, word.index - 6))).length;
+    const letters = block.characters.slice(start).filter((char) => char.boundingBox.w > 0 && char.boundingBox.h > 0);
+    if (letters.length < other.length) continue;
+    const x = Math.max(0, Math.floor(Math.min(...letters.map((char) => char.boundingBox.x)) * size.width) - 15);
+    const right = Math.min(size.width, Math.ceil(Math.max(...letters.map((char) => char.boundingBox.x + char.boundingBox.w)) * size.width) + 15);
+    const y = Math.max(0, Math.floor((1 - Math.max(...letters.map((char) => char.boundingBox.y + char.boundingBox.h))) * size.height) - 12);
+    const bottom = Math.min(size.height, Math.ceil((1 - Math.min(...letters.map((char) => char.boundingBox.y))) * size.height) + 12);
+    if (right - x < 30 || bottom - y < 12) continue;
+    const crop = path.join(temporary, `edge-word-${checked++}.png`);
+    await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+    const confirmed = await recognize(crop, { signal }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    const tail = confirmed?.text?.trim() || '';
+    if (!confirmed || confirmed.confidence < .9 || !tail.endsWith(other)
+      || (tail.length > other.length && /[A-Za-z-]/u.test(tail.at(-other.length - 1)))) continue;
+    const wordStart = Array.from(block.text.slice(0, word.index)).length;
+    blocks[row] = { ...block, text: block.text.slice(0, word.index) + other,
+      characters: block.characters.map((char, i) => i >= wordStart
+        ? { ...char, text: other[i - wordStart] } : char) };
+  }
+  return { ...original, blocks };
+}
+
+async function recheckEmptyEdgeQuote(imagePath, original, temporary, { signal, recognize = performOCR } = {}) {
+  const source = original?.blocks || [];
+  if (!source.some((block) => /(?:""|“”|‘’)(?=\s*$)/u.test(block.text))) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const blocks = source.slice();
+  let checked = 0;
+  for (let row = 0; row < blocks.length && checked < 2; row++) {
+    const block = blocks[row], match = /(?:""|“”|‘’)(?=\s*$)/u.exec(block.text);
+    if (!match || !block.boundingBox || block.boundingBox.x + block.boundingBox.w < .85
+      || !block.characters?.length || block.characters.length !== Array.from(block.text).length) continue;
+    const index = Array.from(block.text.slice(0, match.index)).length;
+    const quotes = block.characters.slice(index, index + 2);
+    if (quotes.length !== 2 || quotes.some((char) => !char.boundingBox?.w || !char.boundingBox?.h)) continue;
+    const readings = [];
+    for (const before of [18, 8]) {
+      const chars = block.characters.slice(Math.max(0, index - before), index + 2)
+        .filter((char) => char.boundingBox.w > 0 && char.boundingBox.h > 0);
+      if (chars.length < 2) break;
+      const x = Math.max(0, Math.floor(Math.min(...chars.map((char) => char.boundingBox.x)) * size.width) - 20);
+      const right = Math.min(size.width, Math.ceil(Math.max(...chars.map((char) => char.boundingBox.x + char.boundingBox.w)) * size.width) + 20);
+      const y = Math.max(0, Math.floor((1 - Math.max(...chars.map((char) => char.boundingBox.y + char.boundingBox.h))) * size.height) - 8);
+      const bottom = Math.min(size.height, Math.ceil((1 - Math.min(...chars.map((char) => char.boundingBox.y))) * size.height) + 16);
+      if (right - x < 70 || bottom - y < 20) break;
+      const crop = path.join(temporary, `edge-quote-${checked}-${before}.png`);
+      await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+      const result = await recognize(crop, { signal }).catch((error) => {
+        if (signal?.aborted || error?.isCancellation) throw error;
+        return null;
+      });
+      const letter = result?.text?.trim().match(/["“‘]([A-Za-z0-9])["”’]$/u)?.[1];
+      if (!letter || result.confidence < .9) break;
+      readings.push(letter);
+    }
+    checked++;
+    if (readings.length !== 2 || readings[0] !== readings[1]) continue;
+    const first = quotes[0].boundingBox, second = quotes[1].boundingBox;
+    const x = Math.min(first.x, second.x), y = Math.min(first.y, second.y);
+    const shared = { x, y, w: Math.max(first.x + first.w, second.x + second.w) - x,
+      h: Math.max(first.y + first.h, second.y + second.h) - y };
+    const characters = block.characters.slice();
+    characters.splice(index, 2, { ...quotes[0], boundingBox: shared },
+      { text: readings[0], boundingBox: shared }, { ...quotes[1], boundingBox: shared });
+    blocks[row] = { ...block, text: block.text.slice(0, match.index + 1) + readings[0]
+      + block.text.slice(match.index + 1), characters };
+  }
+  return { ...original, blocks };
+}
+
+async function recheckAmbiguousProseZero(imagePath, original, masked, temporary,
+  { signal, recognize = performOCR } = {}) {
+  const source = original?.blocks || [], comparison = masked?.blocks || [];
+  if (!source.length || !comparison.length) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const box = (char) => ({ x: char.boundingBox.x * size.width,
+    y: (1 - char.boundingBox.y - char.boundingBox.h) * size.height,
+    w: char.boundingBox.w * size.width, h: char.boundingBox.h * size.height });
+  const sameGlyph = (a, b) => Math.abs(a.x + a.w / 2 - b.x - b.w / 2) < Math.max(a.w, b.w) * .45
+    && Math.abs(a.y + a.h / 2 - b.y - b.h / 2) < Math.max(a.h, b.h) * .35;
+  const normalize = (value) => value.replace(/\s+/gu, ' ').trim().toLowerCase();
+  const blocks = source.slice(), verifiedGlyphConflicts = [...(original?.verifiedGlyphConflicts || [])];
+  let checked = 0;
+  for (let row = 0; row < blocks.length && checked < 3; row++) {
+    const block = blocks[row], chars = block.characters || [], rowText = Array.from(block.text);
+    if (block.confidence < .9 || chars.length !== rowText.length) continue;
+    for (let index = 1; index < chars.length - 1 && checked < 3; index++) {
+      const char = chars[index];
+      if (!/^[Oo]$/u.test(char.text) || !/\W/u.test(chars[index - 1].text)
+        || !/\W/u.test(chars[index + 1].text) || !char.boundingBox?.w || !char.boundingBox?.h) continue;
+      const before = rowText.slice(Math.max(0, index - 8), index).join('');
+      const after = rowText.slice(index + 1, index + 7).join('');
+      if (before.trim().length < 5 || after.trim().length < 2) continue;
+      const printed = box(char);
+      const matches = comparison.flatMap((candidate) => {
+        const candidateText = Array.from(candidate.text);
+        if (candidate.confidence < .9 || candidate.characters?.length !== candidateText.length) return [];
+        return candidate.characters.flatMap((glyph, i) => {
+          if (glyph.text !== '0' || !glyph.boundingBox?.w || !glyph.boundingBox?.h
+            || !sameGlyph(printed, box(glyph))
+            || !normalize(candidateText.slice(Math.max(0, i - Array.from(before).length), i).join('')).endsWith(normalize(before))
+            || !normalize(candidateText.slice(i + 1, i + 1 + Array.from(after).length).join('')).startsWith(normalize(after))) return [];
+          return [glyph];
+        });
+      });
+      if (matches.length !== 1) continue;
+      checked++;
+      const expected = normalize(before + '0' + after);
+      let confirmed = true;
+      for (const [left, right] of [[260, 260], [350, 350]]) {
+        const x = Math.max(0, Math.floor(printed.x) - left);
+        const edge = Math.min(size.width, Math.ceil(printed.x + printed.w) + right);
+        const y = Math.max(0, Math.floor(printed.y) - 20);
+        const bottom = Math.min(size.height, Math.ceil(printed.y + printed.h) + 20);
+        if (edge - x < 100 || bottom - y < 20) { confirmed = false; break; }
+        const crop = path.join(temporary, `prose-zero-${row}-${index}-${left}.png`);
+        await fs.writeFile(crop, image.crop({ x, y, width: edge - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+        const result = await recognize(crop, { signal }).catch((error) => {
+          if (signal?.aborted || error?.isCancellation) throw error;
+          return null;
+        });
+        const readings = result?.blocks?.length ? result.blocks : [result];
+        if (!readings.some((entry) => entry?.confidence >= .9 && normalize(entry.text || '').includes(expected))) {
+          confirmed = false; break;
+        }
+      }
+      if (!confirmed) continue;
+      blocks[row] = { ...block, text: [...rowText.slice(0, index), '0', ...rowText.slice(index + 1)].join(''),
+        characters: chars.map((entry, i) => i === index ? { ...entry, text: '0' } : entry) };
+      verifiedGlyphConflicts.push({ source: char.text, alternative: '0' });
+      break;
+    }
+  }
+  return verifiedGlyphConflicts.length > (original?.verifiedGlyphConflicts?.length || 0)
+    ? { ...original, blocks, verifiedGlyphConflicts } : original;
+}
+
+async function recheckLineInitialZ(imagePath, original, padded, temporary,
+  { signal, recognize = performOCR } = {}) {
+  const source = original?.blocks || [], alternatives = padded?.blocks || [];
+  if (!source.length || !alternatives.length) return original;
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  const blocks = source.slice(), verifiedGlyphConflicts = [...(original?.verifiedGlyphConflicts || [])];
+  for (let row = 0, checked = 0; row < blocks.length && checked < 2; row++) {
+    const block = blocks[row], glyph = block.characters?.[0], box = block.boundingBox;
+    if (block.confidence < .9 || !/^7[,;]\s+[A-Za-z]{3,}/u.test(block.text)
+      || block.characters?.length !== Array.from(block.text).length
+      || !glyph?.boundingBox?.w || !glyph.boundingBox.h || !box?.h) continue;
+    const expected = `z${block.text.slice(1)}`;
+    const sameRow = alternatives.filter((candidate) => candidate.confidence >= .9
+      && candidate.text === expected && candidate.boundingBox
+      && Math.abs(candidate.boundingBox.x - box.x) < .025
+      && Math.abs(candidate.boundingBox.y + candidate.boundingBox.h / 2 - box.y - box.h / 2)
+        < Math.min(candidate.boundingBox.h, box.h) * .6);
+    if (sameRow.length !== 1) continue;
+    checked++;
+    const x = Math.max(0, Math.floor(glyph.boundingBox.x * size.width) - 12);
+    const y = Math.max(0, Math.floor((1 - box.y - box.h) * size.height) - 3);
+    const width = Math.min(size.width - x, 230);
+    const height = Math.min(size.height - y, Math.ceil(box.h * size.height) + 6);
+    if (width < 100 || height < 18) continue;
+    const crop = image.crop({ x, y, width, height }).resize({ width: width * 2, height: height * 2, quality: 'best' });
+    const cropPath = path.join(temporary, `line-initial-z-${row}.png`);
+    await fs.writeFile(cropPath, crop.toPNG(), { mode: 0o600 });
+    const local = await recognize(cropPath, { signal }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    const prefix = expected.slice(0, 12).replace(/\s+/gu, ' ').toLowerCase();
+    if (!(local?.blocks || []).some((candidate) => candidate.confidence >= .9
+      && candidate.text.replace(/\s+/gu, ' ').toLowerCase().startsWith(prefix))) continue;
+    blocks[row] = { ...block, text: expected,
+      characters: block.characters.map((char, index) => index === 0 ? { ...char, text: 'z' } : char) };
+    verifiedGlyphConflicts.push({ source: '7', alternative: 'z' });
+  }
+  return verifiedGlyphConflicts.length > (original?.verifiedGlyphConflicts?.length || 0)
+    ? { ...original, blocks, text: cleanOcrText(blocks.map((block) => block.text).join('\n')),
+      verifiedGlyphConflicts } : original;
+}
+
+function withoutClippedBottomRows(ocr, size, cutoffY) {
+  if (!ocr || cutoffY === null) return ocr;
+  const blocks = (ocr.blocks || []).filter((block) => {
+    const box = block.boundingBox;
+    if (!box || !Number.isFinite(box.y) || !Number.isFinite(box.h)) return true;
+    return (1 - box.y - box.h / 2) * size.height < cutoffY;
+  });
+  return { ...ocr, blocks, text: cleanOcrText(blocks.map((block) => block.text).join('\n')) };
+}
+
+// A display equation can make Vision join the two prose lines immediately
+// above it into one low-confidence, out-of-order observation. Re-read only
+// those source pixels without the equation, and accept the rows only when a
+// separate padded reading agrees on their words and positions.
+async function recheckMergedProseAboveFormula(imagePath, original, padded, formulas, size,
+  temporary, { signal, recognize = performOCR } = {}) {
+  const blocks = original?.blocks || [];
+  if (!blocks.length || !padded?.blocks?.length || !formulas.some((formula) => formula.display)) {
+    return { ocr: original, recovered: 0, unresolved: 0 };
+  }
+  const image = nativeImage.createFromPath(imagePath);
+  if (image.isEmpty() || size.width < 300 || size.height < 100) {
+    return { ocr: original, recovered: 0, unresolved: 0 };
+  }
+  const source = blocks.slice();
+  let recovered = 0, unresolved = 0, checked = 0;
+  const pixel = (box) => ({ left: box.x * size.width,
+    top: (1 - box.y - box.h) * size.height,
+    right: (box.x + box.w) * size.width, bottom: (1 - box.y) * size.height,
+    height: box.h * size.height });
+  for (let index = 0; index < blocks.length && checked < 2; index++) {
+    const block = blocks[index], bounds = rect(block);
+    if (!bounds || block.confidence > .5 || block.text.length < 40
+      || bounds.height * size.height < 50 || bounds.right - bounds.left < .7) continue;
+    const box = pixel(block.boundingBox);
+    const display = formulas.find((formula) => formula.display
+      && formula.y >= box.bottom && formula.y - box.bottom <= 45);
+    if (!display) continue;
+    const candidateRows = padded.blocks.filter((row) => {
+      const rowBox = rect(row);
+      if (!rowBox || row.confidence < .9 || row.text.length < 25
+        || rowBox.height >= bounds.height * .7) return false;
+      const center = rowBox.center;
+      return center >= bounds.top && center <= bounds.bottom
+        && Math.max(0, Math.min(bounds.right, rowBox.right) - Math.max(bounds.left, rowBox.left))
+          >= (rowBox.right - rowBox.left) * .7;
+    }).sort((a, b) => rect(a).center - rect(b).center);
+    if (candidateRows.length < 2 || candidateRows.length > 3) continue;
+    const candidateBoxes = candidateRows.map((row) => pixel(row.boundingBox));
+    if (candidateBoxes.some((row, at) => at
+      && row.top + row.height / 2 - candidateBoxes[at - 1].top
+        - candidateBoxes[at - 1].height / 2 < Math.min(row.height, candidateBoxes[at - 1].height) * .55)) continue;
+    checked++;
+    const cropY = Math.max(0, Math.floor(box.top) - 10);
+    const cropBottom = Math.min(size.height, Math.floor(display.y) - 7);
+    if (cropBottom <= box.bottom || cropBottom - cropY < 60) { unresolved++; continue; }
+    const cropHeight = cropBottom - cropY;
+    const cropPath = path.join(temporary, `prose-above-formula-${index}.png`);
+    let reread;
+    try {
+      await fs.writeFile(cropPath, image.crop({ x: 0, y: cropY,
+        width: size.width, height: cropHeight }).toPNG(), { mode: 0o600 });
+      reread = await recognize(cropPath, { signal, characters: true });
+    } catch (error) {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      unresolved++;
+      continue;
+    }
+    const relocateBox = (relative) => relative && ({ ...relative,
+      y: (size.height - cropY - cropHeight + relative.y * cropHeight) / size.height,
+      h: relative.h * cropHeight / size.height });
+    const rows = (reread.blocks || []).filter((row) => row.confidence >= .9
+      && row.text.length >= 25 && rect(row))
+      .map((row) => ({ ...row, boundingBox: relocateBox(row.boundingBox),
+        characters: (row.characters || []).map((char) => ({ ...char,
+          boundingBox: relocateBox(char.boundingBox) })) }))
+      .filter((row) => {
+        const rowBox = rect(row);
+        return rowBox.center >= bounds.top && rowBox.center <= bounds.bottom;
+      }).sort((a, b) => rect(a).center - rect(b).center);
+    if (rows.length !== candidateRows.length || rows.some((row, at) => {
+      const location = pixel(row.boundingBox), candidate = candidateBoxes[at];
+      return Math.abs(location.top + location.height / 2 - candidate.top - candidate.height / 2) > 14
+        || orderedAgreement(row.text, candidateRows[at].text) < .8;
+    })) { unresolved++; continue; }
+    source[index] = rows;
+    recovered++;
+  }
+  if (!recovered) return { ocr: original, recovered, unresolved };
+  const flattened = source.flat();
+  return { ocr: { ...original, blocks: flattened,
+    text: cleanOcrText(flattened.map((block) => block.text).join('\n')) }, recovered, unresolved };
+}
+
+async function recheckIsolatedProseGlyphs(imagePath, original, padded,
+  { signal, recognize = performOCR } = {}) {
+  const candidates = isolatedGlyphDisagreements(original, padded);
+  if (!candidates.length) return { ocr: original, conflicts: [], recovered: 0 };
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  const conflicts = candidates.map(({ source, alternative }) => ({ source, alternative, verified: false }));
+  if (image.isEmpty() || size.width < 100 || size.height < 40) {
+    return { ocr: original, conflicts, recovered: 0 };
+  }
+  const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
+  await fs.mkdir(cacheDir, { recursive: true, mode: 0o700 });
+  const temporary = await fs.mkdtemp(path.join(cacheDir, 'glyph-'));
+  const blocks = original.blocks.slice();
+  let recovered = 0;
+  try {
+    for (const [at, candidate] of candidates.slice(0, 2).entries()) {
+      const box = original.blocks[candidate.index].boundingBox;
+      const top = (1 - box.y - box.h) * size.height;
+      const bottom = (1 - box.y) * size.height;
+      const height = box.h * size.height;
+      const y = Math.max(0, Math.floor(top - height * .6));
+      const end = Math.min(size.height, Math.ceil(bottom + height * .15));
+      if (end - y < 24) continue;
+      const crop = path.join(temporary, `line-${at}.png`);
+      await fs.writeFile(crop, image.crop({ x: 0, y, width: size.width,
+        height: end - y }).toPNG(), { mode: 0o600 });
+      const local = await recognize(crop, { signal, characters: true }).catch((error) => {
+        if (signal?.aborted || error?.isCancellation) throw error;
+        return null;
+      });
+      const sameText = (value) => String(value || '').replace(/\s+/gu, ' ').trim();
+      if (local?.blocks?.length !== 1 || local.blocks[0].confidence < .9
+        || sameText(local.blocks[0].text) !== sameText(candidate.text)) continue;
+      blocks[candidate.index] = padded.blocks[candidate.index];
+      conflicts[at].verified = true;
+      recovered++;
+    }
+  } finally { await fs.rm(temporary, { recursive: true, force: true }); }
+  return { ocr: recovered ? { ...original, blocks,
+    text: cleanOcrText(blocks.map((block) => block.text).join('\n')) } : original,
+  conflicts, recovered };
+}
+
+async function performReadingOCR(imagePath, { signal, onProgress } = {}) {
   const [textResult, formulaResult] = await Promise.allSettled([
-    performOCR(imagePath, { signal, characters: true }), formulaOcr.recognize(imagePath, { signal }),
+    performOCR(imagePath, { signal, onProgress, characters: true }), formulaOcr.recognize(imagePath, { signal }),
   ]);
   if (textResult.status === 'rejected') throw textResult.reason;
-  const original = textResult.value;
+  let original = textResult.value;
   if (formulaResult.status === 'rejected') {
     const error = formulaResult.reason;
     if (signal?.aborted || error?.isCancellation) throw error;
     return { ...original, formulaOcr: { status: error.code === 'ENOENT' ? 'unavailable' : 'failed', count: 0 } };
   }
-  const recognized = formulaResult.value;
+  let recognized = formulaResult.value;
+  if (recognized.formulas.length) {
+    try { recognized = await formulaOcr.recheckCharacters(imagePath, original, recognized, { signal }); }
+    catch (error) {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      // Character-level corroboration is optional; retain the completed
+      // region-level result if this bounded second pass cannot finish.
+    }
+  }
+  const clippedBottom = Number.isFinite(recognized.clippedBottomY);
+  if (clippedBottom) original = withoutClippedBottomRows(original, recognized.size, recognized.clippedBottomY);
   if (!recognized.formulas.length) {
-    return { ...original, formulaOcr: { status: 'done', count: 0, milliseconds: recognized.milliseconds } };
+    let padded = await performOCR(imagePath, { signal, characters: true, padEdges: true }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    if (clippedBottom) padded = withoutClippedBottomRows(padded, recognized.size, recognized.clippedBottomY);
+    const prose = reconcileProseOcr(original, padded);
+    const glyphs = prose.proseComparison?.recovered
+      ? { ocr: prose, conflicts: [], recovered: 0 }
+      : await recheckIsolatedProseGlyphs(imagePath, original, padded, { signal });
+    const chosen = glyphs.recovered ? { ...prose, blocks: glyphs.ocr.blocks,
+      text: glyphs.ocr.text, proseComparison: { disagree: true, recovered: true,
+        glyphRecovered: true } } : prose;
+    return { ...chosen, proseGlyphConflicts: glyphs.conflicts,
+      primeReviewConflicts: findPrimeDefinitionConflicts(original, chosen.text),
+      formulaOcr: { status: 'done', count: 0, clippedBottom, milliseconds: recognized.milliseconds } };
   }
   const cacheDir = path.join(app.getPath('userData'), 'ocr-cache');
   createOcrEnvironment(cacheDir);
@@ -126,26 +672,131 @@ async function performReadingOCR(imagePath, { signal } = {}) {
   try {
     const maskedPath = path.join(temporary, 'prose.png');
     await fs.writeFile(maskedPath, recognized.masked, { mode: 0o600 });
-    const prose = await performOCR(maskedPath, { signal, characters: true });
-    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size, original);
+    let [prose, edges] = await Promise.all([
+      performOCR(maskedPath, { signal, characters: true }),
+      // A second layout may recover a clipped edge word, but must not replace
+      // whole sentences: padding can also make correct OCR worse elsewhere.
+      performOCR(imagePath, { signal, characters: true, padEdges: true }).catch((error) => {
+        if (signal?.aborted || error?.isCancellation) throw error;
+        return null;
+      }),
+    ]);
+    if (clippedBottom) {
+      prose = withoutClippedBottomRows(prose, recognized.size, recognized.clippedBottomY);
+      edges = withoutClippedBottomRows(edges, recognized.size, recognized.clippedBottomY);
+    }
+    const proseChecked = await recheckProseTokens(imagePath, original, edges, temporary, { signal });
+    const references = await recheckReferenceOne(imagePath, proseChecked, edges, temporary, { signal, supportingOcr: prose });
+    const corroborated = await recheckRightEdgeWord(imagePath, references, edges, temporary, { signal });
+    const quoted = await recheckEmptyEdgeQuote(imagePath, corroborated, temporary, { signal });
+    const zeroChecked = await recheckAmbiguousProseZero(imagePath, quoted, prose, temporary, { signal });
+    const symbolChecked = await recheckLineInitialZ(imagePath, zeroChecked, edges, temporary, { signal });
+    const interior = await verifyMissingInteriorRows(imagePath, symbolChecked, edges, { signal });
+    const mergedProse = await recheckMergedProseAboveFormula(imagePath, symbolChecked, edges,
+      recognized.formulas, recognized.size, temporary, { signal });
+    const document = mergeFormulaDocument(prose, recognized.formulas, recognized.size,
+      mergedProse.ocr, edges, interior.verified);
+    document.interiorUnresolved = interior.unresolved;
+    document.rowRecovered += mergedProse.recovered;
+    document.proseOrderUnresolved = mergedProse.unresolved;
     return { ...prose, text: document.text, document,
+      primeReviewConflicts: findPrimeDefinitionConflicts(original, document.text),
+      referenceReviewConflicts: symbolChecked.referenceReviewConflicts || [],
       // Token probabilities flag uncertain recognition; they do not certify correctness.
       formulaOcr: { status: 'done', count: document.formulaCount,
+        clippedBottom,
         uncertain: document.uncertainFormulaCount,
+        uncertainStarts: document.uncertainFormulaStarts,
+        caseDelimiterRepairs: document.caseDelimiterRepairs,
+        unrenderable: document.unrenderableFormulaCount,
         milliseconds: recognized.milliseconds } };
   } finally { await fs.rm(temporary, { recursive: true, force: true }); }
 }
 
+async function recheckProseTokens(imagePath, original, padded, temporary,
+  { signal, recognize = performOCR } = {}) {
+  const candidates = proseTokenDisagreements(original, padded).slice(0, 2);
+  if (!candidates.length) return original;
+  const blocks = original.blocks.slice(), proseTokenConflicts = [];
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty()) return original;
+  let verifiedProseRows = 0;
+  for (const [at, candidate] of candidates.entries()) {
+    const box = blocks[candidate.index].boundingBox;
+    const extra = Math.max(2, Math.round(box.h * size.height * .2));
+    const y = Math.max(0, Math.floor((1 - box.y - box.h) * size.height) - extra);
+    const end = Math.min(size.height, Math.ceil((1 - box.y) * size.height) + extra);
+    if (end <= y) continue;
+    const crop = path.join(temporary, `disputed-prose-${at}.png`);
+    await fs.writeFile(crop, image.crop({ x: 0, y, width: size.width, height: end - y })
+      .resize({ width: Math.min(2400, size.width * 2), quality: 'best' }).toPNG(), { mode: 0o600 });
+    const local = await recognize(crop, { signal, characters: true, padEdges: true }).catch((error) => {
+      if (signal?.aborted || error?.isCancellation) throw error;
+      return null;
+    });
+    const text = (value) => String(value || '').replace(/\s+/gu, ' ').trim();
+    const verified = local?.blocks?.length === 1 && local.blocks[0].confidence >= .9
+      && text(local.blocks[0].text) === text(candidate.block.text);
+    proseTokenConflicts.push(...candidate.conflicts.map((conflict) => ({ ...conflict, verified })));
+    if (!verified) continue;
+    blocks[candidate.index] = candidate.block;
+    verifiedProseRows++;
+  }
+  return { ...original, blocks, text: cleanOcrText(blocks.map((block) => block.text).join('\n')),
+    proseTokenConflicts, verifiedProseRows };
+}
+
+async function verifyMissingInteriorRows(imagePath, original, padded, { signal } = {}) {
+  const candidates = missingInteriorRows(original, padded);
+  if (!candidates.length) return { verified: [], unresolved: 0 };
+  const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+  if (image.isEmpty() || size.width < 100 || size.height < 40) {
+    return { verified: [], unresolved: candidates.length };
+  }
+  const verified = [];
+  for (const candidate of candidates.slice(0, 4)) {
+    const box = rect(candidate), margin = 8;
+    const x = Math.max(0, Math.floor(box.left * size.width) - margin);
+    const y = Math.max(0, Math.floor(box.top * size.height) - margin);
+    const right = Math.min(size.width, Math.ceil(box.right * size.width) + margin);
+    const bottom = Math.min(size.height, Math.ceil(box.bottom * size.height) + margin);
+    if (right - x < 100 || bottom - y < 12) continue;
+    const crop = path.join(await fs.mkdtemp(path.join(app.getPath('userData'), 'ocr-cache', 'line-')), 'line.png');
+    try {
+      await fs.writeFile(crop, image.crop({ x, y, width: right - x, height: bottom - y }).toPNG(), { mode: 0o600 });
+      const local = await performOCR(crop, { signal, characters: true });
+      if (local.blocks.some((row) => row.confidence >= .9
+        && orderedAgreement(candidate.text, row.text) >= .85)) verified.push(candidate);
+    } catch (error) {
+      if (signal?.aborted || error?.isCancellation) throw error;
+    } finally { await fs.rm(path.dirname(crop), { recursive: true, force: true }); }
+  }
+  return { verified, unresolved: candidates.length - verified.length };
+}
+
 /**
  * Cleanup any resources held by the OCR service.
- * Currently a no-op but provided for interface consistency.
+ * Cancel background preparation and release the local formula workers.
  */
 function cleanup() {
+  preparationController?.abort();
+  prepared = false;
   return formulaOcr.cleanup();
 }
 
 module.exports = {
+  prepareOCR,
+  frontmostDocumentWindow,
   performOCR,
   performReadingOCR,
+  recheckIsolatedProseGlyphs,
+  recheckProseTokens,
+  recheckMergedProseAboveFormula,
+  recheckReferenceOne,
+  findPrimeDefinitionConflicts,
+  recheckRightEdgeWord,
+  recheckEmptyEdgeQuote,
+  recheckAmbiguousProseZero,
+  recheckLineInitialZ,
   cleanup,
 };

@@ -4,19 +4,20 @@ Slipstream 没有账户、广告或产品分析埋点。以下首先说明当前
 
 ## 截图、翻译与术语解释
 
-- 主动截图后，Apple Vision 在本机识别文字。读取已复制文字或手动粘贴不需要屏幕录制权限。
-- 截图同时使用本地公式 OCR 恢复 LaTeX，模型随应用打包，截图处理时不下载权重、不调用云模型，也不需要 API Key。公式遮罩图仅在私有 OCR 临时目录处理，完成后删除；模型空闲后释放。
-- 提交前显示当前处理位置。原文按段交给所选模型或翻译服务；点击术语或选词查询后，词句和本次阅读上下文交给同一配置的服务解释。
+- 专业阅读完成内置图片与文字试读并明确启用后，主动框选的图片会交给当前配置的服务转写，再由同一服务翻译；点击术语或选词查询后，词句和本次阅读上下文交给该服务解释。首页和阅读卡片显示当前处理去向。选区外的屏幕内容不进入服务请求。
+- macOS 保留本地识字模式：Apple Vision 在本机识别文字，本地公式 OCR 恢复 LaTeX，再将识别出的文字交给所选翻译服务。公式模型随应用打包，本地 OCR 不调用云模型、不需要 API Key；公式遮罩图仅在私有 OCR 临时目录处理，完成后删除，模型空闲后释放。该模式的本地识别并不意味着后续翻译也在本机完成。
+- Windows 预览的截图阅读需要启用支持图片的服务，不运行 macOS 本地 OCR。读取已复制文字或手动粘贴不需要屏幕录制权限，也不会发送图片。
+- 首次设置和设置中的试读只发送应用内置的自拟材料，检查图像读取、翻译及选词解释；试读结果临时保留，不保存为用户卡片。
 - 专业阅读支持配置云模型或本机 Ollama。云服务可能记录请求和计费。自定义本机兼容服务也可能自行转发或保留内容；本地端点并不证明该服务离线。
 - 基础翻译将文本发送给 Google Translate，必要时回退到 MyMemory；选词查询也使用在线翻译。
-- 推荐术语随译文返回，可以为空；术语解释按需请求。阅读卡片不执行行动提取或官方网页检索。
-- API Key 仅在主进程使用，并经 macOS `safeStorage` 加密保存。渲染进程只获得是否已配置等脱敏状态。
+- 推荐术语随译文返回，可以为空；多个候选由同一服务额外复核，术语解释按需请求。阅读卡片不执行行动提取或官方网页检索。
+- API Key 仅在主进程使用，并经 Electron `safeStorage` 调用操作系统加密保存。渲染进程只获得是否已配置等脱敏状态。
 
 ## 数学公式与图片
 
-临时截图保留在阅读卡片内存中，以便对照和核对 OCR。疑似数学识别内容在翻译前进入可编辑核对。LaTeX 使用随应用打包的 KaTeX 和字体本地渲染。
+临时截图保留在阅读卡片内存中，以便对照识别内容；截图处理完成后删除临时文件。本地识字路径中有疑问的数学内容在翻译前进入可编辑核对。启用图片阅读后，正常截图直接进入阅读，发现截断、不完整输出或公式不一致时提示核对或重试。模型转写和公式一致性检查均不能证明原图被正确理解。LaTeX 使用随应用打包的 KaTeX 和字体本地渲染。
 
-支持的 DeepSeek 配置可提供云端重新识别：界面先说明图片会交给视觉模型，只有读者主动选择时才发送当前截图。返回的转写仍需对照截图确认。该操作不同于默认的本地文字与公式识别，也可能产生服务费用。
+在 macOS 本地识字路径中，支持的 DeepSeek 配置另有云端重新识别：界面先说明图片会交给视觉模型，读者主动选择后才发送当前截图，返回的转写需对照截图确认。该单次重新识别入口与已启用的图片阅读模式分别控制；两者都可能产生服务费用。
 
 ## 临时阅读与主动保存
 
@@ -30,17 +31,21 @@ Slipstream 没有账户、广告或产品分析埋点。以下首先说明当前
 
 「本文速查」另存于系统文稿目录的 `Slipstream/本文速查/references.json`。新建或切换阅读会保存名称及当前选择；定义及其来源段落只在明确点击留下后保存。未保存的提取候选只保留在临时卡片内存。查询已存定义在本机完成；自动提取与当前段落的专业阅读请求使用相同服务。删除整份速查的撤销内容仅在当前窗口内存中保留，关闭后释放。文稿目录可能由用户启用的系统同步服务同步。
 
+macOS 截图时可读取前台应用及文档窗口标题，以匹配读者已绑定的本文速查。关联字段保存摘要键，不保存原始窗口标题或 PDF 路径；从截图新建阅读时，窗口标题可作为默认阅读名称保存，读者可修改。无法识别或尚未绑定的来源先作为临时阅读，不自动归入上一篇文档。
+
 剪贴板监听默认关闭。快捷键或界面中的读取操作会获取已复制文字；手动开启监听前会说明处理去向。应用复制译文后，内容进入系统剪贴板，其他应用或剪贴板管理器可能读取它，关闭阅读卡片不会清除系统剪贴板。
 
 独立阅读预览使用自己的应用身份和配置目录，不从正式更新源安装更新，也不登记登录启动项。下面保留正式发行版及兼容工作区的详细安全说明，供服务配置、历史结果和恢复流程核对；其中的行动分析和官方检索不属于当前阅读卡片流程。
 
 ---
 
-# Published builds and compatibility workspace
+# Compatibility workspace details
+
+The sections below describe the retained action workspace. For current reading cards, the image-transfer and explicit-save rules above take precedence: enabled image reading sends the selected image to the configured service, and saved concept cards retain their source passage.
 
 ## Data that stays on the Mac
 
-- Screenshots and Apple Vision OCR processing.
+- Apple Vision OCR processing and screenshots in the compatibility capture path. Current reading cards may send selected images when image reading or explicit cloud re-recognition is enabled.
 - App settings and bounded saved-term records.
 - API keys, encrypted through macOS `safeStorage`.
 - Text processed by Ollama when a local model is selected.

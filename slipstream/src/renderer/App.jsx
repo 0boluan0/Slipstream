@@ -920,6 +920,29 @@ export default function App() {
   useEffect(() => {
     let active = true;
     const scheduledFrames = new Set();
+    const hiddenChecks = new Map();
+    let checkedRequestId = null;
+    const checkQuitRequest = (requestId) => {
+      if (!active || quitRequestIdRef.current !== requestId || checkedRequestId === requestId) return;
+      checkedRequestId = requestId;
+      if (canAutomaticallyConfirmQuit(requestId)) {
+        confirmQuitRequestAutomatically(requestId);
+        return;
+      }
+      setQuitDialogVisible(true);
+    };
+    const checkHiddenRequest = () => {
+      const requestId = quitRequestIdRef.current;
+      if (document.visibilityState !== 'hidden' || !requestId
+        || checkedRequestId === requestId || hiddenChecks.has(requestId)) return;
+      // A reading card hides the home renderer, where animation frames stop.
+      // Yield to its pending React updates without waiting for a visible paint.
+      hiddenChecks.set(requestId, window.setTimeout(() => {
+        hiddenChecks.delete(requestId);
+        checkQuitRequest(requestId);
+      }, 0));
+    };
+    document.addEventListener('visibilitychange', checkHiddenRequest);
     const receiveQuitRequest = (payload) => {
       if (!active) return;
       const requestId = payload?.requestId;
@@ -936,16 +959,12 @@ export default function App() {
         scheduledFrames.delete(firstFrame);
         const secondFrame = window.requestAnimationFrame(() => {
           scheduledFrames.delete(secondFrame);
-          if (!active || quitRequestIdRef.current !== requestId) return;
-          if (canAutomaticallyConfirmQuit(requestId)) {
-            confirmQuitRequestAutomatically(requestId);
-            return;
-          }
-          setQuitDialogVisible(true);
+          checkQuitRequest(requestId);
         });
         scheduledFrames.add(secondFrame);
       });
       scheduledFrames.add(firstFrame);
+      checkHiddenRequest();
     };
     // Subscribe before announcing readiness. The main process replays any
     // pending request on this event channel so Command+Q cannot be lost during
@@ -957,6 +976,8 @@ export default function App() {
     return () => {
       active = false;
       scheduledFrames.forEach((frame) => window.cancelAnimationFrame(frame));
+      hiddenChecks.forEach((timer) => window.clearTimeout(timer));
+      document.removeEventListener('visibilitychange', checkHiddenRequest);
       unsubscribe();
     };
   }, [

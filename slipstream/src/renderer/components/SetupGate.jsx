@@ -20,6 +20,7 @@ import {
   SETUP_CHOICE_ACTIONS,
   TRANSLATION_ONLY_SETUP_KEYS,
 } from '../utils/setupChoiceTransaction.mjs';
+import HelpTip from './HelpTip';
 import './SetupGate.css';
 
 const { LLM_BACKENDS, MODEL_IDS } = constants;
@@ -213,13 +214,14 @@ export default function SetupGate({
 
   return (
     <main className="setup-gate">
+      <div className="setup-window-header">Slipstream</div>
       <section className="setup-card" aria-labelledby="setup-title">
         <header className="setup-header">
           <span className="setup-eyebrow">首次使用</span>
           <h1 id="setup-title">从下一段英文开始</h1>
-          <p>{platform === 'win32'
-            ? '复制或粘贴英文，读中文译文、查询概念并保存卡片。Windows 预览暂不支持截图识字。'
-            : '截图读译文，按需解释专业概念，把值得留下的理解存成本地卡片。'}</p>
+          <HelpTip label="首次使用说明">{platform === 'win32'
+            ? '配置支持图片的阅读服务后，框选词句、公式或图文，看中文、按需解释。'
+            : '截图读译文，解释概念并保存本地卡片。'}</HelpTip>
         </header>
 
         {recoveryNotice && (
@@ -273,15 +275,11 @@ export default function SetupGate({
             <span className="setup-choice-badge">推荐</span>
             <div className="setup-choice-icon" aria-hidden="true"><Check size={22} weight="bold" /></div>
             <div>
-              <h2>专业阅读</h2>
-              <p>读英文教材、论文和专业文章时，随手查清概念。</p>
+              <h2>专业阅读 <HelpTip label="专业阅读功能说明">
+                阅读教材、论文时随手查概念，支持原文对照、公式排版和本地概念卡片。
+              </HelpTip></h2>
+              <p>译文与概念解释</p>
             </div>
-            <ul>
-              <li><Check size={15} />完整中文翻译</li>
-              <li><Check size={15} />结合原文的术语解释</li>
-              <li><Check size={15} />可编辑、关联的本地概念卡片</li>
-              <li><Check size={15} />LaTeX 公式排版与原文对照</li>
-            </ul>
             <div className="setup-requirements" role="note">
               开始前需已有 API Key，或已安装并准备好 Ollama；在线服务可能收费。
             </div>
@@ -300,11 +298,10 @@ export default function SetupGate({
           <article className="setup-choice setup-choice--basic">
             <div className="setup-choice-icon" aria-hidden="true"><Translate size={22} /></div>
             <div>
-              <h2>只用基础翻译</h2>
-              <p>先体验英文原文的中文译文，无需填写模型密钥。</p>
-            </div>
-            <div className="setup-limit" role="note">
-              专业概念解释需要配置模型；基础模式中的选词查询提供翻译。
+              <h2>只用基础翻译 <HelpTip label="基础翻译功能说明">
+                专业概念解释需要配置模型；基础模式中的选词查询提供翻译。
+              </HelpTip></h2>
+              <p>无需 API Key · 提供译文</p>
             </div>
             <button
               type="button"
@@ -332,7 +329,7 @@ export default function SetupGate({
 
         <footer className="setup-privacy">
           <LockKey size={15} />
-          <span>专业阅读使用你选择的服务；基础翻译使用 Google / MyMemory。{platform === 'darwin' ? '截图默认留在本机，' : ''}剪贴板自动检测默认关闭。</span>
+          <span>专业阅读使用你选择的服务；基础翻译使用 Google / MyMemory。{platform === 'darwin' ? '启用图片试读后，选区图片交给当前服务。' : ''}剪贴板自动检测默认关闭。</span>
         </footer>
       </section>
     </main>

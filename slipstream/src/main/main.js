@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, ipcMain, screen, clipboard, dialog, shell, systemPreferences, desktopCapturer, globalShortcut } = require('electron');
+const { app, BrowserWindow, Tray, Menu, Notification, nativeImage, nativeTheme, ipcMain, screen, clipboard, dialog, shell, systemPreferences, desktopCapturer, globalShortcut } = require('electron');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
@@ -473,6 +473,7 @@ const LLM_PROCESSING_SETTING_KEYS = new Set([
   'customPrompt',
   'languageHint',
   'verificationPolicy',
+  'screenshotReadingMode',
 ]);
 const uiFixtureRuntime = uiFixtureMode.enabled
   ? uiFixtureMain.createUiFixtureRuntime({
@@ -583,7 +584,7 @@ function dispatchCaptureIngress(event) {
     && store.getAllSettings().setupMode !== 'unconfigured'
     && !quitRequestRegistry.hasPending(mainWindow?.webContents?.id)
     && !userDataResetRegistry.isLocked(mainWindow?.webContents?.id)) {
-    void readingPins.capture();
+    void readingPins.capture({ owner: mainWindow?.webContents?.id });
     return true;
   }
   if (explicitShortcut && (!mainWindow || mainWindow.isDestroyed())) {
@@ -1302,11 +1303,11 @@ function createMainWindow(settings = getStartupSettings()) {
         primaryWorkArea.height,
       ),
     frame: false,
-    // The compact capture surface may float above the current app, but the
-    // wide result and setup surfaces must let users switch to the source app
-    // or an official page without Slipstream covering it.
-    alwaysOnTop: uiFixtureMode.enabled || !storageReady ? false : !needsSetup,
-    transparent: true,
+    // Home, setup and settings are ordinary windows. Only independent reading
+    // cards and the active region selector use a floating window level.
+    alwaysOnTop: false,
+    transparent: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1e211f' : '#fffefa',
     resizable: true,
     useContentSize: isTextScaleNativeFixture,
     minWidth: 400,
@@ -1319,12 +1320,15 @@ function createMainWindow(settings = getStartupSettings()) {
     webPreferences,
   };
 
-  // Apply vibrancy on macOS
-  if (process.platform === 'darwin') {
-    windowOptions.vibrancy = 'hudWindow';
-  }
-
   mainWindow = new BrowserWindow(windowOptions);
+  const themedWindow = mainWindow;
+  const updateWindowBackground = () => {
+    if (!themedWindow.isDestroyed()) {
+      themedWindow.setBackgroundColor(nativeTheme.shouldUseDarkColors ? '#1e211f' : '#fffefa');
+    }
+  };
+  nativeTheme.on('updated', updateWindowBackground);
+  themedWindow.once('closed', () => nativeTheme.removeListener('updated', updateWindowBackground));
   mainWindowInitialLoadReady = uiFixtureMode.enabled;
   mainWindowRevealRequested = false;
   if (!uiFixtureMode.enabled) {
@@ -1690,7 +1694,7 @@ function setWindowMode(mode) {
 
   currentWindowMode = mode;
   mainWindow.setBounds(nextBounds, true);
-  mainWindow.setAlwaysOnTop(mode === 'capture');
+  mainWindow.setAlwaysOnTop(false);
   return true;
 }
 
@@ -1961,7 +1965,7 @@ function promoteRecoveredWindow(settings) {
     if (targetMode === 'capture') captureWindowBounds = getRecoveredCaptureBounds(settings);
     if (targetMode === currentWindowMode) {
       if (targetMode === 'capture') mainWindow.setBounds(captureWindowBounds, true);
-      mainWindow.setAlwaysOnTop(targetMode === 'capture');
+      mainWindow.setAlwaysOnTop(false);
       if (
         targetMode === 'setup'
         && Number.isFinite(settings.windowX)
@@ -2567,11 +2571,13 @@ function registerIpcHandlers() {
     if (discardResult) {
       verificationApprovalRegistry.revokeSender(event.sender.id);
     }
+    const readingCaptureSettlement = readingPins?.cancelCapture(event.sender.id);
     const activeTasks = [
       providerConnectionInFlight ? providerConnectionTask : null,
       llmRequestInFlight ? llmRequestSettlement?.promise : null,
       verificationRequestInFlight ? verificationRequestSettlement?.promise : null,
       captureRequestInFlight ? captureRequestSettlement?.promise : null,
+      readingCaptureSettlement,
     ];
     providerConnectionAbortController?.abort();
     llmAbortController?.abort();
@@ -2869,11 +2875,8 @@ function registerIpcHandlers() {
   // Screenshot capture flow: capture region -> OCR -> reading card
   ipcMain.handle(IPC_CHANNELS.SCREENSHOT_CAPTURE, async (event) => {
     assertTrustedIpc(event);
-    if (process.platform === 'win32') {
-      return { success: false, errorCode: 'screenshot-unsupported', error: 'Windows 预览暂不支持截图识字，请复制或粘贴文字开始阅读。' };
-    }
-    if (readingPins && store.getAllSettings().setupMode !== 'unconfigured') {
-      return readingPins.capture();
+    if (readingPins && (process.platform === 'win32' || store.getAllSettings().setupMode !== 'unconfigured')) {
+      return readingPins.capture({ owner: event.sender.id });
     }
     if (providerConnectionInFlight || llmRequestInFlight || verificationRequestInFlight) {
       return userError(USER_ERRORS.SCREENSHOT_BUSY);
@@ -2903,25 +2906,30 @@ app.on('ready', () => {
   if (!uiFixtureMode.enabled) registerIpcHandlers();
   createMainWindow(settings);
   if (uiFixtureMode.enabled) return;
+  if (process.platform === 'darwin') OCRService.prepareOCR().catch(() => {});
   const termCardStore = createTermCardStore(path.join(app.getPath('documents'), 'Slipstream', '术语卡片'));
   termLibrary = createTermLibrary({ BrowserWindow, ipcMain, shell, dialog, store: termCardStore });
   readingPins = createReadingPins({
     BrowserWindow, ipcMain, screen,
     captureAppName: isReadingPreview ? 'Slipstream 阅读预览' : 'Slipstream',
-    captureSupported: process.platform === 'darwin',
+    captureSupported: ['darwin', 'win32'].includes(process.platform),
+    localOcrSupported: process.platform === 'darwin',
     copyText: (text) => {
       if (app.isQuitting || userDataResetRegistry.isLocked(mainWindow?.webContents?.id)) throw new Error('reading-copy-unavailable');
       clipboardMonitor?.suppressNextText(text);
       clipboard.writeText(text);
     },
     saveTermCard: (input) => termCardStore.save(input),
+    findTermCard: (input) => termCardStore.findMatching(input),
     referenceStore: createReadingReferenceStore(path.join(app.getPath('documents'), 'Slipstream', '本文速查')),
     onOpenLibrary: (id) => termLibrary.open(id),
     getSettings: () => store.isStoreReady() ? store.getAllSettings() : null,
     getMainWindow: () => mainWindow,
-    captureRegion: ScreenshotService.captureSelectedRegion,
+    captureRegion: ScreenshotService.captureReadingRegion,
+    getCaptureWindow: OCRService.frontmostDocumentWindow,
     performOCR: OCRService.performReadingOCR,
     processReadingText: LLMService.processReadingText,
+    readScreenshot: LLMService.readScreenshot,
     recognizeReadingFormulas: LLMService.recognizeReadingFormulas,
     requestCapturePermission: requestScreenRecordingAccessForCapture,
     canCapture: () => !app.isQuitting && !captureRequestInFlight

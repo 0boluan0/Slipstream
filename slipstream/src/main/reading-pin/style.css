@@ -31,8 +31,12 @@ p { margin: 0; }
 .segment-tools { display: flex; align-items: center; gap: 5px; margin-bottom: 7px; color: var(--muted); font-size: 10px; }
 .segment-tools button { padding: 1px 5px; border: 0; min-height: 22px; color: var(--muted); font-size: 10px; }
 .source-paragraph { font: calc(var(--reading-size) - 1px)/1.75 Georgia, "Times New Roman", serif; color: var(--english); white-space: pre-wrap; overflow-wrap: anywhere; border-left: 2px solid var(--line); padding: 0 0 0 12px; margin: 0 0 11px; }
+.segment[data-code="true"] .source-paragraph, .segment[data-code="true"] .translation-paragraph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: calc(var(--reading-size) - 2px); line-height: 1.65; white-space: pre; overflow-x: auto; overflow-wrap: normal; }
 .source-paragraph::selection, .translation-paragraph::selection { background: #5eaa7e45; }
 .translation-paragraph { font-size: var(--reading-size); line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.scope-notice { margin-top: 8px; padding: 7px 10px; border-left: 2px solid var(--accent); background: var(--soft); color: var(--muted); font-size: 11px; line-height: 1.6; }
+.math-scroll-hint { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.math-scroll-hint button { min-height: 25px; padding: 2px 7px; font-size: 11px; }
 .segment[data-status="error"] .translation-paragraph { font-size: 12px; color: var(--muted); padding: 12px; background: var(--soft); border-radius: 6px; }
 .segment[data-status="pending"] .translation-paragraph, .segment[data-status="translating"] .translation-paragraph { color: var(--muted); font-size: 12px; }
 .term-list { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
@@ -50,11 +54,17 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 #source-preview { white-space: pre-wrap; font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
 #source-preview > [role="button"] { cursor: pointer; border-radius: 3px; }
 #source-preview > [role="button"]:hover { background: var(--soft); outline: 1px solid var(--line); }
+#source-preview > .math-needs-review { background: #c789312c; outline: 2px dashed #b7792a; outline-offset: 2px; }
+#source-preview > .math-fallback { background: #c789312c; outline: 2px solid #b7792a; outline-offset: 2px; }
 #correction-reference { background: var(--paper); padding-bottom: 8px; }
 #correction-reference .source-caption { margin: 0 0 7px; }
 #correction-image-frame { max-height: 170px; overflow: auto; border: 1px solid var(--line); border-radius: 4px; background: white; }
+#correction-image-content { position: relative; width: 100%; }
 #correction-image { display: block; width: 100%; height: auto; }
+#formula-source-marker { position: absolute; pointer-events: none; background: #dfac4140; outline: 2px solid #a96b12; outline-offset: 2px; }
+#correction-image-frame.zoomed #correction-image-content { width: max-content; }
 #correction-image-frame.zoomed #correction-image { width: auto; max-width: none; }
+#correction-image-frame.zoomed.formula-focused #correction-image { width: 100%; }
 .primary { background: var(--accent); color: var(--paper); border-color: var(--accent); }
 .primary:hover { opacity: .9; background: var(--accent); }
 .primary img { filter: brightness(0) invert(1); }
@@ -70,10 +80,14 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 #lookup-panel { border-top: 1px solid var(--line); background: var(--soft); padding: 10px 22px 17px; max-height: 48vh; overflow: auto; flex-shrink: 0; }
 .lookup-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
 #lookup-title { color: var(--muted); font-size: 11px; }
-#lookup-quote { margin: 0 0 8px; color: var(--accent); font: 16px/1.6 Georgia, serif; overflow-wrap: anywhere; white-space: pre-wrap; }
+#lookup-quote { margin: 0 0 8px; color: var(--accent); font: var(--reading-size)/1.6 Georgia, serif; overflow-wrap: anywhere; white-space: pre-wrap; }
+#lookup-basis { margin: 4px 0 6px; font-size: 11px; }
 .lookup-label { font-size: 10px; font-weight: 600; color: var(--muted); margin: 10px 0 4px; }
-#lookup-meaning { font-size: 14px; line-height: 1.8; overflow-wrap: anywhere; }
-#lookup-note { overflow-wrap: anywhere; }
+#lookup-meaning { font-size: var(--reading-size); line-height: 1.8; overflow-wrap: anywhere; }
+#lookup-note { font-size: calc(var(--reading-size) - 1px); overflow-wrap: anywhere; }
+#lookup-evidence { margin-top: 8px; color: var(--muted); font-size: 11px; }
+#lookup-evidence summary { padding: 3px 0; color: var(--accent); }
+#lookup-evidence-quote { margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.5; }
 #lookup-notice { color: var(--muted); font-size: 12px; line-height: 1.7; }
 #lookup-retry { margin-top: 8px; }
 .text-button { padding: 5px 0; border: none; color: var(--accent); font-size: 11px; }

@@ -27,6 +27,7 @@ app.whenReady().then(async () => {
   const window = BrowserWindow.getAllWindows()[0];
   const js = (code) => window.webContents.executeJavaScript(code);
   await until(async () => (await js('document.getElementById("term")?.textContent')) === 'conditional expectation', 'saved concept rendered');
+  assert.equal(window.isAlwaysOnTop(), false, 'the card box must stay at ordinary window level');
   assert.equal(await js('typeof require'), 'undefined');
   assert(await js('fetch("https://example.com").then(()=>false,()=>true)'));
   await js('document.getElementById("edit").click();document.getElementById("notes").value="给定信息后重新计算平均，不能只记中文译名。";document.getElementById("notes").dispatchEvent(new Event("input"))');
@@ -43,6 +44,10 @@ app.whenReady().then(async () => {
   await js('document.getElementById("search").value="";document.getElementById("search").dispatchEvent(new Event("input"))');
   library.open(first.card.id);
   await until(async () => (await js('document.getElementById("term").textContent')) === 'conditional expectation', 'open existing card');
+  window.minimize();
+  await until(() => window.isMinimized(), 'card box minimized');
+  library.open(first.card.id);
+  await until(() => !window.isMinimized() && window.isVisible(), 'reopening restores the minimized card box');
   if (screenshotIndex >= 0) {
     await pause(150);
     fs.writeFileSync(path.resolve(process.argv[screenshotIndex + 1]), (await window.webContents.capturePage()).toPNG());

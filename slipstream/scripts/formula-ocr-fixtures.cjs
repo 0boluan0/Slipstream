@@ -9,7 +9,7 @@ const definitions = [
 ];
 async function createFormulaFixtures(directory) {
   const win = new BrowserWindow({ show: false, width: 920, height: 240,
-    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+    webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   try {
     const files = [];
     for (const [name, tex] of definitions) {
@@ -22,7 +22,13 @@ async function createFormulaFixtures(directory) {
         + '<p>Consider the following mathematical expression.</p>' + rendered + '</body>';
       const htmlFile = path.join(directory, name + '.html');
       fs.writeFileSync(htmlFile, html); await win.loadFile(htmlFile);
-      await win.webContents.executeJavaScript('document.fonts.ready.then(() => true)');
+      // Request the fonts used by this layout before waiting for them; hidden
+      // windows can otherwise capture a font-display block with missing glyphs.
+      await win.webContents.executeJavaScript(`(async () => {
+        document.body.getBoundingClientRect();
+        await document.fonts.ready;
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      })()`);
       const file = path.join(directory, name + '.png');
       fs.writeFileSync(file, (await win.webContents.capturePage()).toPNG()); files.push({ name, file });
     }

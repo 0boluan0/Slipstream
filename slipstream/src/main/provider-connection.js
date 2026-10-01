@@ -43,6 +43,7 @@ const CONNECTION_CODES = Object.freeze({
   SERVICE_UNAVAILABLE: 'service-unavailable',
   HTTP_ERROR: 'http-error',
   STRUCTURED_OUTPUT_INVALID: 'structured-output-invalid',
+  IMAGE_NOT_SUPPORTED: 'image-not-supported',
   GENERATION_FAILED: 'generation-failed',
   BUSY: 'busy',
   CANCELLED: 'cancelled',

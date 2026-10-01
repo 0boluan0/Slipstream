@@ -10,7 +10,7 @@ const BUILD_IDENTITY_DESCRIPTIONS = Object.freeze({
   [BUILD_IDENTITIES.WINDOWS_PREVIEW]: Object.freeze({
     identity: BUILD_IDENTITIES.WINDOWS_PREVIEW,
     label: 'Windows 预览 · 未签名',
-    detail: '支持文字阅读与概念卡片；截图识字尚未支持。',
+    detail: '支持局部截图与文字阅读；截图需先启用支持图片的阅读服务。',
     isPublicDistribution: false,
   }),
   [BUILD_IDENTITIES.DEVELOPMENT]: Object.freeze({

@@ -147,15 +147,16 @@ async function main() {
     assert.doesNotMatch(source, /classifyProcessingError\(error, store\.getSettings\('activeBackend'\)\)/);
   });
 
-  await check('only the compact capture window stays above other apps', () => {
+  await check('home stays at ordinary window level through mode changes and recovery', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'src/main/main.js'), 'utf8');
-    assert.match(source, /alwaysOnTop:\s*uiFixtureMode\.enabled \|\| !storageReady \? false : !needsSetup/);
+    assert.match(source, /alwaysOnTop:\s*false/);
+    assert.match(source, /transparent:\s*false/);
     assert.match(source, /skipTaskbar:\s*!uiFixtureMode\.enabled && storageReady/,
       'a storage-recovery window must remain discoverable without a tray');
-    assert.match(source, /currentWindowMode = mode;\s*mainWindow\.setBounds\(nextBounds, true\);\s*mainWindow\.setAlwaysOnTop\(mode === 'capture'\)/,
-      'resize an onscreen macOS window before raising it to the floating layer');
-    assert.match(source, /if \(targetMode === 'capture'\) mainWindow\.setBounds\(captureWindowBounds, true\);\s*mainWindow\.setAlwaysOnTop\(targetMode === 'capture'\)/,
-      'storage recovery must restore capture bounds before raising the window');
+    assert.match(source, /currentWindowMode = mode;\s*mainWindow\.setBounds\(nextBounds, true\);\s*mainWindow\.setAlwaysOnTop\(false\)/,
+      'returning from setup or settings must not pin the home over other windows');
+    assert.match(source, /if \(targetMode === 'capture'\) mainWindow\.setBounds\(captureWindowBounds, true\);\s*mainWindow\.setAlwaysOnTop\(false\)/,
+      'storage recovery must retain ordinary window level');
   });
 
   await check('capture envelopes preserve source offsets and OCR provenance', () => {

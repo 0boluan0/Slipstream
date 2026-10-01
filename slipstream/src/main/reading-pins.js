@@ -5,17 +5,238 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { assessOcrReview } = require('./ocr-review');
 const { mathAssetUrls } = require('./reading-math-assets');
-const { needsMathReview, isMathOnly } = require('../shared/reading-math.cjs');
+const { mathRanges, firstInvalidMathDelimiter, needsMathReview, isMathOnly, firstBareFontCommand } = require('../shared/reading-math.cjs');
 const { formulaRecognitionAvailable } = require('./formula-recognition');
+const { imageReadingAvailable } = require('./reading-image');
+const { canRenderMath } = require('./formula-document');
 const { DEFAULTS } = require('../shared/constants.cjs');
 const { processingLocationForSettings } = require('../shared/endpoint-location.cjs');
 const { validateEndpointUrl, validateOllamaEndpointUrl } = require('./validation');
-const { readingTextFromOcr, readingSegments } = require('./reading-document');
-const { referenceKey, referenceOccurrences, isNotation } = require('./reading-references');
+const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, isCodeOnly, deduplicateReadingTerms } = require('./reading-document');
+const { referenceKey, referenceCandidateKey, referenceCandidateCovered, preferExplicitReferenceCandidates, referenceOccurrences, isNotation } = require('./reading-references');
+const { captureSource, paperForCapture, titleForCapture } = require('./reading-capture-source');
+const { createTaskSettlement } = require('./task-cancellation');
 
 const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
 const ENTRY_URL = pathToFileURL(ENTRY).href;
 const MAX_PINS = 12;
+
+function looksLikeOwnReadingUi(text) {
+  return /\b(?:Option|Alt)\s*\+\s*Shift\s*\+\s*S\b/iu.test(text)
+    || (/(?:截图阅读|读懂原文[，,]?留下概念)/u.test(text)
+      && /(?:卡片盒|本文速查|屏幕旁|术语卡片)/u.test(text));
+}
+
+function looksLikeCodeCapture(ocr) {
+  // Pseudocode often has comments and assignments but no conventional
+  // for/def anchor. Keep it in review: OCR can turn l2 into 12 while still
+  // reporting high confidence, and a wider crop cannot repair that glyph.
+  const lines = (ocr?.blocks || []).flatMap((block) =>
+    typeof block?.text === 'string' ? block.text.split(/\n/u) : []);
+  const assignments = lines.filter((line) => /^\s*[A-Za-z_]\w*\s*=\s*\S/u.test(line));
+  const calls = assignments.filter((line) => /\b[A-Za-z_]\w*\s*\(/u.test(line));
+  const comments = lines.filter((line) => /^\s*#\s*[A-Za-z_]/u.test(line));
+  return assignments.length >= 3 && calls.length >= 2
+    && (comments.length >= 1 || assignments.length >= 5);
+}
+
+function suspiciousCodeIdentifier(text) {
+  // A digit cannot begin a Python-like function name. Show the exact OCR
+  // token for inspection rather than guessing whether the glyph is l or I.
+  return /\b\d+[A-Za-z_]\w*(?=\s*\()/u.exec(text)?.[0] || null;
+}
+
+function looksLikeClippedProse(ocr, text = ocr?.text || '') {
+  // Text touching a selection edge can be read as a plausible fragment.
+  // The reader should inspect the screenshot before sending that text.
+  const blocks = ocr?.blocks || [];
+  if (blocks.filter((block) => block?.text?.trim().length >= 25
+    && Number.isFinite(block.boundingBox?.x) && Number.isFinite(block.boundingBox?.w)
+    && block.boundingBox.x + block.boundingBox.w >= 0.985).length >= 2) return 'right';
+  if (blocks.filter((block) => block?.text?.trim().length >= 25
+    && Number.isFinite(block.boundingBox?.x) && block.boundingBox.x <= 0.015).length >= 2) return 'left';
+  // A complete first line can sit a few pixels from the selection edge.
+  // Only a line actually touching the top is strong enough to block reading.
+  if (blocks.some((block) => block?.text?.trim().length >= 20
+    && Number.isFinite(block.boundingBox?.y) && Number.isFinite(block.boundingBox?.h)
+    && block.boundingBox.y + block.boundingBox.h >= 0.985)) return 'top';
+  // Vision coordinates start at the bottom. A final, unfinished line pressed
+  // against the lower edge means the reader may miss the rest of that sentence.
+  // A colon can deliberately end the selected lead-in to the next equation or
+  // claim; source pixels still catch an actual line cut through the bottom.
+  if (blocks.some((block) => block?.text?.trim().length > 0
+    && !/^\([A-Za-z]?\d+(?:[.-]\d+)*[a-z]?\)$/u.test(block.text.trim())
+    && !/^\d{1,3}$/u.test(block.text.trim())
+    && Number.isFinite(block.boundingBox?.y) && block.boundingBox.y <= 0.08)
+    && !/[.!?。！？:：]$/u.test(text.trim())) return 'bottom';
+  return null;
+}
+
+function looksLikeLeadingSentenceTail(text) {
+  // A selection can begin with the intact tail of an earlier sentence even
+  // when no ink touches the image edge. Do not silently translate that tail
+  // as the start of a new paragraph; keep this cue narrow to prose followed
+  // by a distinct sentence, not formulas or lower-case abbreviations.
+  return /^[a-z]{2,}\b[^.!?\n]{0,150}[.!?]\s+[A-Z]/u.test(text.trimStart());
+}
+
+function looksLikeUnfinishedTail(text) {
+  const value = text.trim();
+  return value.length > 80 && !/[.!?。！？]$/u.test(value)
+    && (/\b(?:[A-Za-z]|and|or|of|to|for|with|from|the|an|a)$/iu.test(value)
+      || /[,;，；-]$/u.test(value));
+}
+
+function suspiciousTimesGlyph(text) {
+  let prose = text;
+  for (const range of mathRanges(text).reverse()) {
+    prose = prose.slice(0, range.start) + ' '.repeat(range.end - range.start) + prose.slice(range.end);
+  }
+  return /\b[A-Za-z]{3,}\s+×\s+(?=(?:are|is|was|were|be|has|have|can|will|should|would|denotes?|represents?|refers?|means?)\b)/iu.test(prose);
+}
+
+function suspiciousCyrillicGlyph(text) {
+  const latinLookalikes = new Map([['а', 'a'], ['е', 'e'], ['о', 'o'], ['р', 'p'],
+    ['с', 'c'], ['у', 'y'], ['х', 'x'], ['і', 'i'], ['ј', 'j'],
+    ['А', 'A'], ['В', 'B'], ['Е', 'E'], ['К', 'K'], ['М', 'M'], ['Н', 'H'],
+    ['О', 'O'], ['Р', 'P'], ['С', 'C'], ['Т', 'T'], ['Х', 'X']]);
+  let prose = text;
+  for (const range of mathRanges(text).reverse()) {
+    prose = prose.slice(0, range.start) + ' '.repeat(range.end - range.start) + prose.slice(range.end);
+  }
+  const match = /(?:^|[\s([{])([аеорсухіјАВЕКМНОРСТХ])(?=$|[\s.,;:!?)}\]])/u.exec(prose);
+  return match ? { glyph: match[1], latin: latinLookalikes.get(match[1]) } : null;
+}
+
+function captureEdgeInk(imagePath) {
+  // OCR can omit glyphs cut by any selection edge. On a light page, the
+  // original pixels distinguish a genuinely cut line from an OCR box that
+  // merely sits close to a complete line. Keep OCR geometry as the fallback
+  // when the background is not light enough to make this check meaningful.
+  const edges = { top: null, right: null, bottom: null, left: null };
+  try {
+    const image = require('electron').nativeImage.createFromPath(imagePath);
+    if (image.isEmpty()) return edges;
+    const { width, height } = image.getSize();
+    if (width < 100 || height < 40 || width * height > 12_000_000) return edges;
+    const pixels = image.toBitmap();
+    if (pixels.length !== width * height * 4) return edges;
+    for (const edge of Object.keys(edges)) {
+      const horizontal = edge === 'top' || edge === 'bottom';
+      const length = horizontal ? width : height;
+      // PDF page frames can run down the selection edge. Skip their corner
+      // intersections when looking for a line cut along another edge.
+      const corner = Math.max(6, Math.min(24, Math.floor(length * .02)));
+      const sampledLength = length - corner * 2;
+      if (sampledLength < 40) continue;
+      // A clipped formula subscript can occupy only four dark pixels per
+      // bottom row. Require agreement across two rows below, so a lone pixel
+      // artifact is not enough to pause the reader.
+      const minInk = Math.max(edge === 'bottom' ? 4 : 6, Math.ceil(sampledLength * .004));
+      let lightStrips = 0, touchingStrips = 0, frameStrips = 0;
+      for (let strip = 0; strip < 3; strip++) {
+        let light = 0, ink = 0;
+        for (let position = corner; position < length - corner; position++) {
+          const x = horizontal ? position : edge === 'left' ? strip : width - strip - 1;
+          const y = horizontal ? edge === 'top' ? strip : height - strip - 1 : position;
+          const offset = (y * width + x) * 4;
+          const a = pixels[offset], b = pixels[offset + 1], c = pixels[offset + 2];
+          if (Math.min(a, b, c) > 220) light += 1;
+          if (Math.max(a, b, c) < 160) ink += 1;
+        }
+        // A cut printed line can cover more than 20% of a narrow PDF crop's
+        // edge. It is still a light page, and its dark strokes are exactly
+        // the evidence this check must retain.
+        if (light >= sampledLength * .6) {
+          lightStrips += 1;
+          if (ink >= minInk) touchingStrips += 1;
+          if (ink >= sampledLength * .75) frameStrips += 1;
+        }
+      }
+      // A continuous dark rule is framing, not evidence of clipped glyphs.
+      // Leave OCR geometry available as fallback if the frame hides a cut.
+      if (lightStrips >= 2 && frameStrips < 2) edges[edge] = touchingStrips >= 2;
+    }
+  } catch { /* OCR geometry remains the fallback */ }
+  return edges;
+}
+
+function looksLikeBrokenBrackets(text) {
+  let open = 0;
+  for (const char of text) {
+    if (char === '[') open += 1;
+    else if (char === ']') {
+      if (open === 0) return true;
+      open -= 1;
+    }
+  }
+  return open !== 0;
+}
+
+function looksLikeBrokenMathBraces(text) {
+  let open = 0, backslashes = 0;
+  for (const char of text) {
+    if (char === '\\') { backslashes += 1; continue; }
+    if (backslashes % 2 === 1) { backslashes = 0; continue; }
+    backslashes = 0;
+    if (char === '{') open += 1;
+    else if (char === '}') {
+      if (open === 0) return true;
+      open -= 1;
+    }
+  }
+  return open !== 0;
+}
+
+function looksLikeMissingQuotedCharacter(text) {
+  return /(?:^|[^\p{L}\p{N}])(?:""|“”|‘’)(?=\s|$)/u.test(text);
+}
+
+function looksLikeAiAlConfusion(text) {
+  // Vision can report full confidence for both readings of this glyph pair.
+  // A mixed capture is worth checking, but neither reading proves the other.
+  return /\bAI\b/u.test(text) && /\bAl\b/u.test(text);
+}
+
+function suspiciousDimensionToken(text) {
+  // A pointer or small glyph can turn the numeral in 1D into a letter while
+  // Vision still reports full confidence. Keep the printed token for review.
+  return /\b([IY]D)\b(?=\s+(?:sequence|images?|position|embeddings?)\b)/u.exec(text)?.[1] || null;
+}
+
+function ambiguousMultiplierToken(text) {
+  // Vision reads the printed multiplication glyph as X even when enlarged.
+  // A comparison word makes the use worth checking, but does not prove which
+  // character was printed. Keep the OCR spelling until the reader verifies it.
+  return /\b\d+(?:\.\d+)?[Xx]\b(?=\s+(?:faster|slower|larger|smaller|higher|lower|speedup|improvement)\b)/iu.exec(text)?.[0] || null;
+}
+
+function suspiciousRegularizerSubscript(text) {
+  // A formula decoder can confidently substitute the coefficient subscript
+  // of one quadratic penalty with the previous term's subscript. This is a
+  // cue to inspect the printed formula, not a license to rewrite its maths.
+  for (const range of mathRanges(text)) {
+    const compact = range.tex.replace(/\s+/gu, '');
+    for (const match of compact.matchAll(/\\frac\{\\lambda_\{([A-Za-z])\}\}\{2\}\\sum[^+]{0,100}?\\parallel([A-Za-z])_/gu)) {
+      if (match[1] !== match[2]) return { coefficient: match[1], variable: match[2] };
+    }
+  }
+  return null;
+}
+
+function conflictingProperNames(text) {
+  // A repeated long name with one different initial is more likely to be an
+  // OCR glyph swap than two unrelated concepts. Ask the reader; do not choose
+  // a spelling from frequency or an English word list.
+  const bySuffix = new Map();
+  for (const match of text.matchAll(/\b[A-Z][a-z]{7,}\b/gu)) {
+    const name = match[0], suffix = name.slice(1);
+    const earlier = bySuffix.get(suffix);
+    if (earlier && earlier !== name) return [earlier, name];
+    bySuffix.set(suffix, name);
+  }
+  return null;
+}
 
 function cardBounds(point, workArea) {
   const width = Math.min(460, workArea.width);
@@ -34,22 +255,24 @@ function readingDestination(settings) {
   if (settings.activeBackend === 'ollama') validateOllamaEndpointUrl(settings.ollamaBaseUrl);
   const location = processingLocationForSettings(settings);
   if (location === 'unknown') throw new Error('reading-unknown-destination');
+  const image = settings.screenshotReadingMode === 'image' && imageReadingAvailable(settings);
   if (settings.activeBackend === 'free_translate') {
     return '文字发送至 Google Translate；必要时使用 MyMemory。截图留在本机。';
   }
-  if (settings.activeBackend === 'ollama') return '文字由本机 Ollama 处理。截图留在本机。';
-  if (location === 'local-loopback') return '文字交给本机兼容服务；该服务可能继续联网。截图留在本机。';
+  if (settings.activeBackend === 'ollama') return image ? '选区图片与文字由本机 Ollama 处理。' : '文字由本机 Ollama 处理。截图留在本机。';
+  if (location === 'local-loopback') return image ? '选区图片与文字交给本机兼容服务；该服务可能继续联网。' : '文字交给本机兼容服务；该服务可能继续联网。截图留在本机。';
   const provider = { anthropic: 'Anthropic', openai: 'OpenAI', deepseek: 'DeepSeek', custom: '已配置的在线服务' }[settings.activeBackend];
   if (!provider) throw new Error('reading-unknown-destination');
-  return `文字发送至 ${provider}。截图留在本机。`;
+  return image ? `选区图片与文字发送至 ${provider}，共用当前配置。` : `文字发送至 ${provider}。截图留在本机。`;
 }
 
 function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMainWindow,
-  captureRegion, performOCR, processReadingText, recognizeReadingFormulas, requestCapturePermission, canCapture = () => true,
-  captureAppName = 'Slipstream', captureSupported = true,
-  copyText = () => {}, saveTermCard, referenceStore, onOpenLibrary = () => {}, onOpenSettings = () => {}, onError = () => {}, classifyError = () => '处理没有完成，请重试或检查设置。' }) {
+  captureRegion, getCaptureWindow = async () => null, performOCR, processReadingText, readScreenshot, recognizeReadingFormulas, requestCapturePermission, canCapture = () => true,
+  captureAppName = 'Slipstream', captureSupported = true, localOcrSupported = true,
+  copyText = () => {}, saveTermCard, findTermCard, referenceStore, onOpenLibrary = () => {}, onOpenSettings = () => {}, onError = () => {}, classifyError = () => '处理没有完成，请重试或检查设置。' }) {
   const pins = new Map();
   let selecting = null;
+  const captureTasks = new Map();
   let generation = 0;
   let disposed = false;
   let referenceData = { papers: [], activePaperId: null };
@@ -57,19 +280,18 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   let referencesLoaded = !referenceStore;
 
   const paperFor = (pin) => referenceData.papers.find((paper) => paper.id === pin.view.paperId);
-  const candidateKey = (entry) => JSON.stringify([referenceKey(entry.symbol), entry.evidence, entry.source]);
   function candidatesFor(pin) {
     if (!pin.view.paperId) return [];
-    const saved = new Set((paperFor(pin)?.entries || []).map(candidateKey));
+    const saved = paperFor(pin)?.entries || [];
     const candidates = new Map();
     for (const other of pins.values()) {
       if (other.view.paperId !== pin.view.paperId) continue;
       for (const entry of [...(other.referenceCandidates || []), ...other.view.segments.flatMap((segment) => segment.referenceCandidates || [])]) {
-        const key = candidateKey(entry);
-        if (!saved.has(key)) candidates.set(key, { ...entry, key });
+        const key = referenceCandidateKey(entry);
+        if (!saved.some((item) => referenceCandidateCovered(entry, item))) candidates.set(key, { ...entry, key });
       }
     }
-    return [...candidates.values()];
+    return preferExplicitReferenceCandidates([...candidates.values()]);
   }
 
   async function refreshReferences() {
@@ -92,7 +314,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const paper = paperFor(pin);
     const entries = paper?.entries || [];
     return { ...pin.view, revision: pin.revision,
-      segments: pin.view.segments.map((segment) => {
+      segments: deduplicateReadingTerms(pin.view.segments).map((segment) => {
         const seen = new Set();
         const referenceHits = entries.flatMap((entry) => {
           const key = referenceKey(entry.symbol);
@@ -126,7 +348,23 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   }
   function update(pin, patch) {
     if (!alive(pin)) return;
+    const hadLookup = Boolean(pin.view.lookup || pin.view.lookupNotice);
+    if (Object.hasOwn(patch, 'sourceText') && patch.sourceText !== pin.view.sourceText) {
+      if (!Object.hasOwn(patch, 'formulaUncertainStarts')) pin.view.formulaUncertainStarts = [];
+      if (!Object.hasOwn(patch, 'formulaRegions')) pin.view.formulaRegions = [];
+    }
     Object.assign(pin.view, patch);
+    const hasLookup = Boolean(pin.view.lookup || pin.view.lookupNotice);
+    if (hadLookup !== hasLookup && !pin.manuallyResized && !pin.view.collapsed && !pin.view.referenceOnly) {
+      const bounds = pin.window.getBounds(), area = screen.getDisplayMatching(bounds).workArea;
+      const compact = pin.compactLookupBounds;
+      const height = Math.min(area.height, hasLookup ? Math.max(bounds.height, 680) : compact?.height || bounds.height);
+      const proposedY = !hasLookup && bounds.y === pin.lookupExpandedY ? compact?.y ?? bounds.y : bounds.y;
+      const y = Math.max(area.y, Math.min(proposedY, area.y + area.height - height));
+      if (hasLookup) { pin.compactLookupBounds = bounds; pin.lookupExpandedY = y; }
+      if (height !== bounds.height || y !== bounds.y) pin.window.setBounds({ ...bounds, height, y });
+      if (!hasLookup) pin.compactLookupBounds = null;
+    }
     if (patch.phase === 'review' && patch.formulaStatus === 'local' && !pin.manuallyResized && !pin.reviewFitted) {
       pin.reviewFitted = true;
       const bounds = pin.window.getBounds(), area = screen.getDisplayMatching(bounds).workArea;
@@ -150,7 +388,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     for (const other of pins.values()) if (other.view.referenceOnly) publish(other);
   }
 
-  function createPin(image, referenceOnly = false, paperId = referenceData.activePaperId) {
+  function yieldToUtility(pin) {
+    // Opening settings, the library or references is an explicit handoff.
+    // Let that ordinary window cover this card, retaining the reader's pin
+    // choice so it takes effect again as soon as they return to the card.
+    if (pin && alive(pin) && pin.view.topmost) pin.window.setAlwaysOnTop(false);
+  }
+
+  function createPin(image, referenceOnly = false, paperId = referenceData.activePaperId, source = null) {
     const point = screen.getCursorScreenPoint();
     const display = screen.getDisplayNearestPoint(point);
     const window = new BrowserWindow({
@@ -158,7 +403,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       minWidth: Math.min(280, display.workArea.width),
       minHeight: Math.min(220, display.workArea.height),
       title: referenceOnly ? 'Slipstream · 本文速查' : 'Slipstream · 阅读卡片',
-      frame: false, resizable: true, show: false, alwaysOnTop: true,
+      frame: false, resizable: true, show: false, alwaysOnTop: !referenceOnly,
       skipTaskbar: true, backgroundColor: '#f9faf7',
       webPreferences: {
         preload: path.join(__dirname, 'reading-pin', 'preload.js'),
@@ -167,15 +412,16 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       },
     });
     const pin = { id: window.webContents.id, window, ready: false, revision: 0, generation, controller: null,
+      captureSource: source, referenceNotice: source && !paperId ? '检测到新文档。这张截图先作为临时阅读；选中或新建阅读后，下次截图会自动找回。' : '',
       lookupController: null, lookupCache: new Map(), lookupSequence: 0, manuallyResized: false, fitted: false,
       view: { phase: referenceOnly ? 'references' : 'ocr', referenceOnly, paperId, image, sourceText: '', translation: '', explanations: null,
         segments: [], lookup: null, lookupStatus: '', lookupNotice: '', saveStatus: '', savedCardId: null, collapsed: false,
-        notice: '', destination: '', topmost: true, explainSupported: false,
+        notice: '', destination: '', topmost: !referenceOnly, explainSupported: false,
         formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-        formulaStatus: '', formulaNotice: '', imageSent: false } };
+        formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], formulaRegions: [], imageSent: false, imageReading: false } };
     pins.set(pin.id, pin);
-    window.setAlwaysOnTop(true, 'floating');
-    window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    window.setAlwaysOnTop(pin.view.topmost, 'floating');
+    window.setVisibleOnAllWorkspaces(pin.view.topmost, { visibleOnFullScreen: true });
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event) => event.preventDefault());
     window.webContents.on('will-attach-webview', (event) => event.preventDefault());
@@ -189,6 +435,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         && !details.url.startsWith('data:image/png;base64,') });
     });
     window.on('closed', () => close(pin));
+    window.on('focus', () => {
+      if (alive(pin) && window.isAlwaysOnTop() !== pin.view.topmost) {
+        window.setAlwaysOnTop(pin.view.topmost, 'floating');
+      }
+    });
     window.on('page-title-updated', (event) => event.preventDefault());
     window.on('will-resize', () => { pin.manuallyResized = true; });
     window.webContents.on('render-process-gone', () => close(pin));
@@ -206,13 +457,13 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const saved = (paperFor(pin)?.entries || []).filter((entry) => referenceKey(entry.symbol) === referenceKey(quote));
     const pending = candidatesFor(pin).filter((entry) => referenceKey(entry.symbol) === referenceKey(quote)
       && pin.view.sourceText.includes(entry.evidence)).map((entry) => ({ ...entry, pending: true }));
-    const definitions = [...pending, ...saved];
+    const definitions = [...saved, ...pending];
     const only = definitions.length === 1 && !definitions[0].pending ? definitions[0] : null;
     return { quote, contextual: true, reference: true, definitions,
       meaning: only?.meaning || '', note: only?.scope || '', referenceSource: only?.source || '' };
   }
 
-  async function openReferences(paperId, draft) {
+  async function openReferences(paperId, draft, source = null, origin = null) {
     if (!referenceStore || disposed || !canCapture()) return false;
     await referencesReady;
     if (disposed) return false;
@@ -220,12 +471,20 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     let pin = [...pins.values()].find((item) => item.view.referenceOnly && item.view.paperId === selectedPaper);
     if (!pin) {
       if (pins.size >= MAX_PINS) { onError('请先关闭一张不用的卡片，再打开本文速查。'); return false; }
-      pin = createPin(null, true, selectedPaper);
+      pin = createPin(null, true, selectedPaper, source);
       pin.paperChosen = true;
     }
+    pin.referenceOrigin = origin && alive(origin)
+      ? { id: origin.id, paperId: origin.view.paperId, sourceKey: origin.captureSource?.key || null } : null;
+    pin.captureSource = source;
     if (draft) pin.referenceDraft = { ...draft, token: Date.now() };
     publish(pin);
-    if (pin.ready) pin.window.show();
+    if (origin !== pin) yieldToUtility(origin);
+    if (pin.ready) {
+      if (pin.window.isMinimized()) pin.window.restore();
+      pin.window.show();
+      pin.window.focus();
+    }
     return true;
   }
 
@@ -234,11 +493,13 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     await referencesReady;
     if (!alive(pin)) return false;
     try {
-      if (action === 'reference-open') return openReferences(pin.view.paperId);
+      if (action === 'reference-open') return openReferences(pin.view.paperId, null, pin.captureSource, pin);
       if (action === 'reference-draft') {
         const lookup = pin.view.lookup;
         return openReferences(pin.view.paperId, { symbol: lookup?.quote || '', meaning: lookup?.meaning || '',
-          source: pin.view.sourceText, evidence: '', scope: '', origin: 'manual' });
+          source: pin.view.sourceText,
+          evidence: lookup?.quote && pin.lookupEvidence?.includes(lookup.quote) ? pin.lookupEvidence : '',
+          scope: '', origin: 'manual' }, pin.captureSource, pin);
       }
       if (action === 'reference-refresh') { await refreshReferences(); return true; }
       if (action === 'paper-undo') {
@@ -252,11 +513,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       }
       if (action === 'paper-create' || action === 'paper-select') {
         if (action === 'paper-create') {
-          const name = payload.title || `阅读 · ${new Date().toLocaleDateString('zh-CN')}`;
-          const paper = await referenceStore.create(name);
+          const name = payload.title || titleForCapture(pin.captureSource);
+          const paper = await referenceStore.create(name, pin.captureSource?.key);
           pin.view.paperId = paper.id;
         } else {
-          await referenceStore.select(payload.paperId || null);
+          await referenceStore.select(payload.paperId || null, pin.captureSource?.key);
           pin.view.paperId = payload.paperId || null;
         }
         pin.paperChosen = true;
@@ -268,7 +529,30 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         pin.lookupCache.clear();
         pin.view.lookup = null;
         pin.view.lookupStatus = '';
-        pin.referenceNotice = pin.view.paperId ? '之后的新截图沿用这篇阅读；已打开的其他卡片保留各自归属。' : '之后的新截图作为临时阅读。';
+        pin.referenceNotice = pin.view.paperId
+          ? pin.captureSource ? '同一文档之后的截图会自动找回这篇阅读；已打开的其他卡片保留各自归属。'
+            : '已选为当前阅读。无法识别文档来源时，新截图仍从临时阅读开始。'
+          : '这张卡片已切换为临时阅读。';
+        const linked = pin.view.referenceOnly && pin.referenceOrigin && pins.get(pin.referenceOrigin.id);
+        if (linked && alive(linked) && linked.view.paperId === pin.referenceOrigin.paperId
+          && (linked.captureSource?.key || null) === pin.referenceOrigin.sourceKey) {
+          linked.view.paperId = pin.view.paperId;
+          linked.paperChosen = true;
+          linked.referenceController?.abort();
+          linked.referenceCandidates = [];
+          for (const segment of linked.view.segments) delete segment.referenceCandidates;
+          linked.lookupController?.abort();
+          linked.lookupSequence += 1;
+          linked.lookupCache.clear();
+          linked.view.lookup = null;
+          linked.view.lookupStatus = '';
+          linked.referenceNotice = linked.view.paperId
+            ? linked.captureSource ? '这张卡片已归入本文速查；同一文档之后的截图会自动找回。'
+              : '这张卡片已归入本文速查；无法识别文档来源时，新截图仍从临时阅读开始。'
+            : '这张卡片已切换为临时阅读。';
+          pin.referenceOrigin.paperId = linked.view.paperId;
+          pin.referenceNotice = linked.referenceNotice;
+        }
       } else {
         const paperId = pin.view.paperId;
         if (payload.paperId !== paperId || !paperId) throw new Error('reference-paper-changed');
@@ -280,7 +564,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         } else if (action === 'reference-extract') {
           if (!pin.view.sourceText || !['done', 'partial'].includes(pin.view.phase) || pin.referenceStatus === 'loading') return false;
           const configuration = settingsForReading();
-          if (configuration.settings.activeBackend === 'free_translate') { onOpenSettings(); return false; }
+          if (configuration.settings.activeBackend === 'free_translate') { yieldToUtility(pin); onOpenSettings(); return false; }
           const controller = new AbortController();
           pin.referenceController = controller;
           pin.referenceStatus = 'loading';
@@ -292,7 +576,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             const result = await processReadingText({ text: pin.view.sourceText, kind: 'references', settingsSnapshot: configuration.settings, signal: controller.signal });
             if (!alive(pin) || controller.signal.aborted || pin.view.paperId !== paperId || pin.revision !== revision || generation !== requestGeneration) return false;
             pin.referenceCandidates = result.references || [];
-            pin.referenceNotice = pin.referenceCandidates.length ? '已找到定义，请对照原文后留下。' : '这段没有找到明确的符号定义。可以截取定义所在段落，或手动记一条。';
+            const saved = paperFor(pin)?.entries || [];
+            const unsaved = pin.referenceCandidates.filter((entry) => !saved.some((item) => referenceCandidateCovered(entry, item)));
+            pin.referenceNotice = unsaved.length ? '已找到定义，请对照原文后留下。'
+              : pin.referenceCandidates.length ? '识别出的定义已在本文速查，可直接点文中的符号查看。'
+                : '这段没有找到明确的符号定义。可以截取定义所在段落，或手动记一条。';
           } finally {
             if (pin.referenceController === controller) { pin.referenceController = null; pin.referenceStatus = ''; }
           }
@@ -328,6 +616,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         pin.referenceStatus = '';
         pin.referenceNotice = error?.message === 'reference-conflict'
           ? '这条定义已在另一窗口修改。你的输入已保留，请重新打开最新条目后合并。'
+          : error?.message === 'reference-evidence-mismatch'
+            ? '原文依据与截图识别文字对不上。请核对引句或重新框选；已输入内容不会丢失。'
           : '这次操作未完成，输入和已保存的定义会保留。请重试。';
         publish(pin);
       }
@@ -361,12 +651,32 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
     if (kind === 'explain' && !pin.view.translation) return;
     if (kind === 'explain' && configuration.settings.activeBackend === 'free_translate') {
+      yieldToUtility(pin);
       onOpenSettings();
       return;
     }
     const source = typeof payload.text === 'string' ? payload.text.trim() : pin.view.sourceText;
     if (!source || source.length > DEFAULTS.MAX_TEXT_LENGTH) {
       update(pin, { notice: `请保留 1–${DEFAULTS.MAX_TEXT_LENGTH} 个字符后继续。` });
+      return;
+    }
+    const bareFontCommand = kind === 'translate' ? firstBareFontCommand(source) : '';
+    if (bareFontCommand) {
+      update(pin, { sourceText: source, phase: 'review',
+        notice: `公式中的“${bareFontCommand}”缺少 LaTeX 反斜杠，排版会把它当成字母。请对照截图校正后再翻译。` });
+      return;
+    }
+    const invalidDelimiter = kind === 'translate' ? firstInvalidMathDelimiter(source) : '';
+    if (invalidDelimiter) {
+      update(pin, { sourceText: source, phase: 'review',
+        notice: `公式标记“${invalidDelimiter}”未正确闭合或内容为空。请对照截图补全后再翻译。` });
+      return;
+    }
+    const unrenderableFormula = kind === 'translate'
+      ? mathRanges(source).find((range) => !canRenderMath(range.tex, range.display)) : null;
+    if (unrenderableFormula) {
+      update(pin, { sourceText: source, phase: 'review',
+        notice: '公式仍无法排版。请对照截图校正 LaTeX 后再翻译；原文已保留。' });
       return;
     }
     const controller = new AbortController();
@@ -407,23 +717,51 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
               report();
               continue;
             }
+            if (isCodeOnly(segment.source)) {
+              segment.translation = segment.source;
+              segment.terms = [];
+              segment.status = 'done';
+              segment.error = '';
+              report();
+              continue;
+            }
+            if (isIsolatedNumericRow(segment.source)) {
+              segment.translation = '这行数字请以截图为准。';
+              segment.terms = [];
+              segment.status = 'done';
+              segment.error = '';
+              report();
+              continue;
+            }
             segment.status = 'translating';
             report();
             try {
               const result = await processReadingText({ text: segment.source, kind: 'translate', withTerms: true,
                 withReferences: Boolean(referenceStore && requestPaperId),
-                settingsSnapshot: configuration.settings, signal: controller.signal });
+                settingsSnapshot: configuration.settings, signal: controller.signal,
+                onTranslation: (early) => {
+                  if (!active()) return;
+                  Object.assign(segment, { translation: early.translation, scopeNotice: early.scopeNotice || '',
+                    terms: [], termsStatus: 'reviewing', status: 'done', error: '' });
+                  report();
+                } });
               if (!active()) return;
               segment.translation = result.translation;
+              segment.scopeNotice = result.scopeNotice || '';
               segment.terms = result.terms || [];
+              segment.termsStatus = result.termsStatus || 'ready';
               segment.referenceCandidates = pin.view.paperId === requestPaperId ? result.references || [] : [];
               segment.status = 'done';
               segment.error = '';
             } catch (error) {
               if (!active()) return;
               segment.status = 'error';
-              segment.error = error?.message === 'reading-invalid-output'
-                ? '这一段的译文不完整，请重试。' : classifyError(error, configuration.settings.activeBackend);
+              segment.error = error?.message === 'reading-terminology-mismatch'
+                ? '这段把“标准正交”与“正交”混淆了。请对照原文后重试。'
+                : error?.message === 'reading-symbol-role-mismatch'
+                  ? '这段译文把输入、输出与公式符号的对应关系弄反了。请对照原文后重试。'
+                : error?.message === 'reading-invalid-output'
+                  ? '这一段的译文不完整，请重试。' : classifyError(error, configuration.settings.activeBackend);
             }
             report();
           }
@@ -459,8 +797,17 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       || payload.end - payload.start > 1500) throw new Error('Invalid reading selection');
     const quote = segment.source.slice(payload.start, payload.end);
     if (!quote.trim()) return;
-    const local = referenceLookup(pin, quote);
-    if (paperFor(pin) && (local.definitions.length || isNotation(quote))) {
+    let symbol = quote;
+    if (payload.referenceSymbol !== undefined) {
+      const entry = (paperFor(pin)?.entries || []).find((item) => item.symbol === payload.referenceSymbol);
+      if (!entry || !referenceOccurrences(segment.source, entry.symbol).some((hit) => hit.start === payload.start && hit.end === payload.end)) {
+        throw new Error('Invalid reading selection');
+      }
+      symbol = entry.symbol;
+    }
+    pin.lookupEvidence = segment.source;
+    const local = referenceLookup(pin, symbol);
+    if (paperFor(pin) && (local.definitions.length || isNotation(symbol))) {
       pin.lookupController?.abort();
       pin.lookupSequence += 1;
       update(pin, { lookup: local, lookupStatus: 'done', lookupNotice: '', saveStatus: '', savedCardId: null });
@@ -475,21 +822,38 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const sequence = ++pin.lookupSequence;
     const key = `${payload.segmentId}:${payload.start}:${payload.end}`;
     const cached = pin.lookupCache.get(key);
-    update(pin, { lookup: cached || { quote }, lookupStatus: cached ? 'done' : 'loading', lookupNotice: '', saveStatus: '', savedCardId: null });
-    if (cached) return;
+    update(pin, { lookup: { quote }, lookupStatus: 'loading', lookupNotice: '', saveStatus: '', savedCardId: null });
     const controller = new AbortController();
     pin.lookupController = controller;
+    const active = () => alive(pin) && !controller.signal.aborted
+      && sequence === pin.lookupSequence && pin.generation === generation;
     try {
+      let localNotice = '';
+      if (findTermCard) {
+        let card;
+        try { card = await findTermCard({ term: quote, source: pin.view.sourceText, kind: 'concept' }); }
+        catch { localNotice = '本地卡片未能读取，下面显示模型生成的解释。'; }
+        if (!active()) return;
+        if (card) {
+          update(pin, { lookup: { quote, meaning: card.meaning, note: card.context, contextual: true, localCard: true },
+            lookupStatus: 'done', saveStatus: 'saved', savedCardId: card.id });
+          return;
+        }
+      }
+      if (cached) { update(pin, { lookup: cached, lookupStatus: 'done', lookupNotice: localNotice }); return; }
       const result = await processReadingText({ text: pin.view.sourceText, kind: 'lookup', selection: quote,
         settingsSnapshot: configuration.settings, signal: controller.signal });
-      if (!alive(pin) || controller.signal.aborted || sequence !== pin.lookupSequence || pin.generation !== generation) return;
+      if (!active()) return;
       pin.lookupCache.set(key, result.lookup);
       if (pin.lookupCache.size > 30) pin.lookupCache.delete(pin.lookupCache.keys().next().value);
-      update(pin, { lookup: result.lookup, lookupStatus: 'done' });
+      update(pin, { lookup: result.lookup, lookupStatus: 'done', lookupNotice: localNotice });
     } catch (error) {
       if (!alive(pin) || controller.signal.aborted || sequence !== pin.lookupSequence) return;
       update(pin, { lookupStatus: 'error', lookupNotice: error?.message === 'reading-invalid-output' || error instanceof SyntaxError
-        ? '这次解释未能匹配所选原文，请重试。' : classifyError(error, configuration.settings.activeBackend) });
+        ? '这次解释未能匹配所选原文，请重试。'
+        : error?.message === 'reading-unsupported-claim'
+          ? '这次解释含有原文不能支持的说法，已停止展示。请重试或核对原文。'
+          : classifyError(error, configuration.settings.activeBackend) });
     } finally {
       if (pin.lookupController === controller) pin.lookupController = null;
     }
@@ -546,7 +910,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     try {
       const result = await recognizeReadingFormulas({ image: pin.view.image, settingsSnapshot: settings, signal: controller.signal });
       if (!active()) return false;
-      update(pin, { sourceText: result.text, phase: 'review', formulaStatus: 'done', segments: [], translation: '',
+      update(pin, { sourceText: result.text, phase: 'review', formulaStatus: 'done', formulaUncertainStarts: [], segments: [], translation: '',
         formulaNotice: result.uncertain.length ? `需要核对：${result.uncertain.join('；')}` : '转写已完成。请对照原图检查符号、上下标和公式边界。',
         notice: '公式识别结果待核对。确认后才会翻译与解释。' });
       return true;
@@ -562,10 +926,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
   }
 
-  async function capture() {
+  async function capture({ owner } = {}) {
     if (disposed || !canCapture()) return { success: false, cancelled: true };
     if (!captureSupported) {
-      const error = 'Windows 预览暂不支持截图识字。请复制英文后使用剪贴板阅读，或粘贴文字开始阅读。';
+      const error = '当前系统暂不支持截图。请复制或粘贴英文开始阅读。';
       onError(error);
       return { success: false, error };
     }
@@ -574,16 +938,31 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       onError(`已经有 ${MAX_PINS} 张阅读卡片，请关闭不用的卡片后再截图。`);
       return { success: false, cancelled: true };
     }
-    try { settingsForReading(); } catch {
+    try {
+      const { settings } = settingsForReading();
+      if (!localOcrSupported && !(settings.screenshotReadingMode === 'image' && readScreenshot && imageReadingAvailable(settings))) {
+        onError('先在设置中配置支持图片的阅读服务，完成图片试读并启用截图阅读。也可以直接粘贴英文。');
+        onOpenSettings();
+        return { success: false, error: 'image-reading-required' };
+      }
+    } catch {
       onOpenSettings();
       return { success: false, cancelled: true };
     }
     const controller = new AbortController();
+    const settlement = createTaskSettlement();
+    const task = { controller, settlement };
+    if (Number.isSafeInteger(owner)) captureTasks.set(owner, task);
     selecting = controller;
     let file = null;
     let hidden = [];
     let pin = null;
     try {
+      let frontWindow = null;
+      try { frontWindow = await getCaptureWindow(); } catch { /* A missing window never blocks capture. */ }
+      const source = captureSource(frontWindow);
+      await referencesReady;
+      const paperId = paperForCapture(referenceData, source);
       const permission = await requestCapturePermission();
       if (!permission.granted) {
         onError(`请在“系统设置 → 隐私与安全性 → 屏幕录制”中允许 ${captureAppName}，然后完全退出并重新打开应用。若开关已经打开，请先重启当前应用。`);
@@ -601,7 +980,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (controller.signal.aborted || disposed) return { success: false, cancelled: true };
       if ((await fs.stat(file)).size > 32 * 1024 * 1024) throw new Error('reading-image-too-large');
       const image = `data:image/png;base64,${(await fs.readFile(file)).toString('base64')}`;
-      pin = createPin(image);
+      pin = createPin(image, false, paperId, source);
+      pin.paperChosen = true;
+      if (!source) pin.referenceNotice = '未识别当前文档来源。这张截图先作为临时阅读，避免混入上一篇的局部定义。';
       pin.controller = controller;
       for (const window of hidden) {
         if (window !== main && !window.isDestroyed()) window.showInactive();
@@ -610,8 +991,27 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       // The selection mutex can be released while this card performs OCR.
       if (selecting === controller) selecting = null;
       showPendingCards();
-      const ocr = await performOCR(file, { signal: controller.signal });
-      if (!alive(pin) || controller.signal.aborted) return { success: true, pinned: true };
+      const configuration = settingsForReading();
+      if (configuration.settings.screenshotReadingMode === 'image' && readScreenshot && imageReadingAvailable(configuration.settings)) {
+        const edges = captureEdgeInk(file);
+        const names = { top: '上边', right: '右边', bottom: '下边', left: '左边' };
+        const touching = Object.keys(edges).filter(edge => edges[edge] === true);
+        await readImage(pin, { configuration, controller,
+          edgeNotice: touching.length ? `选区${touching.map(edge => names[edge]).join('、')}可能截断了文字。请再框完整这一段。` : '' });
+        return { success: true, pinned: true };
+      }
+      if (!localOcrSupported) throw new Error('image-reading-required');
+      const ocr = await performOCR(file, { signal: controller.signal, onProgress: stage => {
+        if (!alive(pin) || controller.signal.aborted) return;
+        update(pin, { notice: stage === 'initializing'
+          ? '正在准备本机识字，首次使用可能需要约半分钟。完成后会自动继续；关闭卡片可取消本次阅读。'
+          : '' });
+      } });
+      if (controller.signal.aborted) {
+        if (alive(pin)) close(pin);
+        return { success: false, cancelled: true };
+      }
+      if (!alive(pin)) return { success: true, pinned: true };
       if (typeof ocr.text !== 'string' || !ocr.text.trim()) {
         update(pin, { phase: 'error', notice: '没有识别到清晰文字，请重新框选一段英文。' });
       } else if (ocr.text.length > DEFAULTS.MAX_TEXT_LENGTH) {
@@ -619,32 +1019,131 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       } else {
         const document = readingTextFromOcr(ocr);
         const review = assessOcrReview({ source: 'ocr', text: ocr.text, capture: ocr });
+        const ownUiCapture = looksLikeOwnReadingUi(document.text);
+        const codeCapture = looksLikeCodeCapture(ocr);
+        const codeIdentifier = codeCapture ? suspiciousCodeIdentifier(document.text) : null;
+        const edgeInk = captureEdgeInk(file);
+        const geometry = looksLikeClippedProse(ocr, document.text);
+        const pixelEdges = ['top', 'right', 'left', 'bottom'].filter((edge) => edgeInk[edge] === true);
+        const pixelEdge = pixelEdges[0];
+        const clippedProse = pixelEdge || (geometry !== 'bottom'
+          && edgeInk[geometry] === false ? null : geometry);
+        const otherClippedEdges = pixelEdges.filter((edge) => edge !== clippedProse);
+        const edgeNames = { top: '顶部', right: '右侧', left: '左侧', bottom: '底部' };
+        const otherEdgeHint = otherClippedEdges.map((edge) => `选区${edgeNames[edge]}也可能截断正文。`).join(' ');
+        const leadingTail = looksLikeLeadingSentenceTail(document.text);
+        const unfinishedTail = looksLikeUnfinishedTail(document.text);
+        const timesGlyph = suspiciousTimesGlyph(document.text);
+        const cyrillicGlyph = suspiciousCyrillicGlyph(document.text);
+        const brokenBrackets = looksLikeBrokenBrackets(document.text);
+        const brokenMathBraces = looksLikeBrokenMathBraces(document.text);
+        const brokenGroupHint = `${brokenBrackets ? ' 方括号也可能漏识别，请校正符号。' : ''}${brokenMathBraces ? ' 花括号也可能漏识别，请校正集合或公式。' : ''}`;
+        const layoutHint = document.layoutReview && !codeCapture
+          ? ' 截图还可能包含并排的图与图注、多栏或表格；请核对阅读顺序，必要时只框选图注或其中一栏。' : '';
+        const missingQuotedCharacter = looksLikeMissingQuotedCharacter(document.text);
+        const ambiguousAiAl = looksLikeAiAlConfusion(document.text);
+        const nameConflict = conflictingProperNames(document.text);
+        const proseDisagreement = ocr.proseComparison?.disagree === true;
+        const proseGlyphConflict = ocr.proseGlyphConflicts?.[0];
+        const spellingConflict = document.proseSpellingConflicts?.[0];
+        const hyphenatedName = document.hyphenationReview?.[0];
+        const primeConflict = ocr.primeReviewConflicts?.[0];
+        const referenceConflict = ocr.referenceReviewConflicts?.[0];
+        const dimensionToken = suspiciousDimensionToken(document.text);
+        const multiplierToken = ambiguousMultiplierToken(document.text);
+        const regularizerMismatch = suspiciousRegularizerSubscript(document.text);
+        const symbolConflict = document.proseSymbolConflicts?.[0];
+        const spellingHint = spellingConflict
+          ? ` 两次识别对“${spellingConflict.source}”与“${spellingConflict.alternative}”有分歧，请核对拼写。` : '';
+        const hyphenationHint = hyphenatedName
+          ? ` 行末专名“${hyphenatedName.source}”已拼接为“${hyphenatedName.alternative}”；请对照截图核对。` : '';
+        const primeHint = primeConflict
+          ? ` 符号“${primeConflict.source}”也可能是“${primeConflict.alternative}”，请对照原图核对撇号。` : '';
+        const referenceHint = referenceConflict
+          ? ` 图号或式号“${referenceConflict.source}”也可能是“${referenceConflict.alternative}”，局部复读无法确认。` : '';
+        const dimensionHint = dimensionToken
+          ? ` “${dimensionToken}”疑似维度数字或字母误识别，请对照截图核对。` : '';
+        const multiplierHint = multiplierToken
+          ? ` “${multiplierToken}”末尾的字母可能是倍数符号“×”，请对照截图核对。` : '';
+        const regularizerHint = regularizerMismatch
+          ? ` 正则项中的 λ_${regularizerMismatch.coefficient} 与后面的 ${regularizerMismatch.variable} 下标不同；可能是原文写法，也可能是公式识别错误，请对照截图。` : '';
+        const proseGlyphHint = proseGlyphConflict
+          ? ` 原文符号“${proseGlyphConflict.source}”与“${proseGlyphConflict.alternative}”的本地读数有分歧；${proseGlyphConflict.verified ? '独立局部复读支持后者，已作为待核对原文。' : '局部复读未能确认，请手动核对。'}确认前不会发送文字。` : '';
         pin.controller = null;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* continue through explicit review */ }
         const changed = pin.generation !== generation;
         const mathReview = needsMathReview(document.text);
         const localFormula = ocr.formulaOcr;
+        const clippedBottomFormula = localFormula?.clippedBottom === true;
         const formulaIssue = localFormula?.status === 'failed' || (localFormula?.status === 'unavailable' && mathReview);
+        const uncertainStarts = Array.isArray(localFormula?.uncertainStarts) ? localFormula.uncertainStarts : [];
+        const markedUncertain = localFormula?.uncertain && uncertainStarts.length === localFormula.uncertain;
+        const denseFormula = localFormula?.count >= 8 && localFormula?.uncertain >= 4;
+        const unrenderableFormula = localFormula?.unrenderable > 0;
+        const repairedCaseDelimiter = localFormula?.caseDelimiterRepairs > 0;
+        const spacedOperator = document.spacedOperatorUnresolved > 0;
         const formulaNotice = localFormula?.count
-          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意）` : ''}。请对照原图核对。`
+          ? `已在本机识别 ${localFormula.count} 处公式${localFormula.uncertain ? `（${localFormula.uncertain} 处需留意${markedUncertain ? '，已在公式预览标出' : ''}）` : ''}。${unrenderableFormula ? `其中 ${localFormula.unrenderable} 处无法排版，保留了 LaTeX 原文；请校正后再翻译。` : ''}${repairedCaseDelimiter ? `已为 ${localFormula.caseDelimiterRepairs} 处分段公式补上仅用于排版的不可见右定界符，请与截图核对。` : ''}${spacedOperator ? '公式中的 e x p 可能是指数函数 exp，但本地读数不足以确认；请对照原图校正。' : ''}${denseFormula ? '这一框公式较密集。先点击标出的公式与截图逐一对照；若字形难辨，再缩小到一两条公式重框。' : '请对照原图核对。'}`
           : formulaIssue ? '本地公式识别组件未就绪，本次只完成了文字识别。若原文包含公式，请先对照截图校正。' : '';
         pin.generation = generation;
         update(pin, { sourceText: document.text, destination,
-          formulaNotice, formulaStatus: localFormula?.count ? 'local' : '',
+          formulaNotice: `${formulaNotice}${referenceHint}${dimensionHint}${primeHint}${spellingHint}${hyphenationHint}${multiplierHint}${regularizerHint}${proseGlyphHint}`.trim(),
+          formulaStatus: localFormula?.count ? 'local' : '', formulaUncertainStarts: uncertainStarts,
+          formulaRegions: Array.isArray(document.formulaRegions) ? document.formulaRegions : [],
           formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-          phase: review.required || changed || document.layoutReview || mathReview || formulaIssue ? 'review' : 'waiting',
-          notice: review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
-            : document.layoutReview ? '这张截图可能包含多栏或表格。请对照截图确认阅读顺序，或重新框选其中一栏。'
+          phase: ownUiCapture || codeCapture || clippedBottomFormula || clippedProse || leadingTail || unfinishedTail || timesGlyph || cyrillicGlyph || brokenBrackets || brokenMathBraces || missingQuotedCharacter || ambiguousAiAl || nameConflict || proseDisagreement || proseGlyphConflict || spellingConflict || hyphenatedName || primeConflict || referenceConflict || dimensionToken || multiplierToken || regularizerMismatch || symbolConflict || review.required || changed || document.layoutReview || document.rowRecovered || document.proseOrderUnresolved || document.interiorUnresolved || document.edgeRecovered || mathReview || formulaIssue || unrenderableFormula || repairedCaseDelimiter || spacedOperator ? 'review' : 'waiting',
+          notice: ownUiCapture ? '选区似乎包含 Slipstream 窗口。请对照截图核对，确认前不会发送文字。'
+            : clippedBottomFormula ? `选区底边截断了公式，残缺的一行已略去。请在底部多留白重新框选，并核对保留的公式。${spellingHint}`
+            : codeCapture ? `这是代码式或伪代码截图。OCR 可能混淆 l/1、0/O、下划线和括号${codeIdentifier ? `；“${codeIdentifier}”不是合法的函数名，尤其需要核对` : ''}。请对照原图逐行校正后再翻译；放大原文或只框几行可能更易核对。${pixelEdges.length ? `选区${edgeNames[pixelEdge]}也可能截断内容。` : ''}`
+            : missingQuotedCharacter ? '引号之间可能漏识别了一个字符。请对照截图核对这一处，再确认翻译。'
+            : ambiguousAiAl ? '同一选区出现 AI 和 Al；大写 I 与小写 l 可能被识错。请对照截图核对后再翻译。'
+            : nameConflict ? `同一选区出现 ${nameConflict[0]} 和 ${nameConflict[1]} 两种近似专名。请对照截图核对拼写，确认前不会发送文字。`
+            : clippedProse === 'right' ? `选区右侧可能截断了正文。请对照截图；如果句尾不完整，重新框选并在右侧多留一点空白。${otherEdgeHint}${layoutHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'left' ? `选区左侧可能截断了正文。请对照截图；如果行首不完整，重新框选并在左侧多留一点空白。${otherEdgeHint}${layoutHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'top' ? `选区顶部可能截断了正文。请对照截图；如果开头不完整，重新框选并在顶部多留一点空白。${otherEdgeHint}${layoutHint}${brokenGroupHint}${spellingHint}`
+            : clippedProse === 'bottom' ? `选区底部可能截断了正文。请对照截图；如果句子不完整，重新框选并在底部多留一点空白。${otherEdgeHint}${layoutHint}${brokenGroupHint}${spellingHint}`
+            : leadingTail ? '这段原文似乎从上一句的尾部开始。请对照截图核对开头，必要时从完整句子重新框选。'
+            : timesGlyph ? `正文里的“×”后面直接接谓语，可能把字母 x 识成乘号。请对照原图校正，确认前不会发送文字。${unfinishedTail ? '末句也可能还在截图外或下一页。' : ''}`
+            : cyrillicGlyph ? `正文中的“${cyrillicGlyph.glyph}”是西里尔字母，形似英文“${cyrillicGlyph.latin}”，可能是识别错误。请对照原图校正，确认前不会发送文字。${unfinishedTail ? '末句也可能还在截图外或下一页。' : ''}`
+            : unfinishedTail ? '末句停在一个词或符号后，可能还在截图外或下一页。请对照截图核对，必要时续截。'
+            : brokenBrackets ? '方括号可能漏识别，特殊 token 或公式的含义可能失真。请对照截图校正。'
+            : brokenMathBraces ? '花括号可能漏识别，集合或公式的含义可能失真。请对照截图校正。'
+            : referenceConflict || dimensionToken || primeConflict || spellingConflict
+              ? `识别有分歧：${referenceHint}${dimensionHint}${primeHint}${spellingHint}${multiplierHint} 请对照截图核对后再翻译。`
+            : hyphenatedName ? hyphenationHint.trim()
+            : multiplierToken ? `${multiplierHint.trim()} 确认前不会发送文字。`
+            : proseDisagreement ? ocr.proseComparison.glyphRecovered
+              ? '两次本地识别对短符号有分歧，局部复读已选择有图像支持的字形。请对照截图核对后再翻译。'
+              : ocr.proseComparison.recovered
+                ? '两次本地识别对正文有分歧，已选较完整的候选。请对照截图核对后再翻译。'
+              : '两次本地识别对正文有分歧。请对照截图核对后再翻译。'
+            : symbolConflict ? `字形“${symbolConflict.source}”与“${symbolConflict.alternative}”的识别有分歧，已按同一位置的其他读数改为“${symbolConflict.alternative}”。请对照截图核对，确认前不会发送文字。`
+            : unrenderableFormula ? `有 ${localFormula.unrenderable} 处公式暂时无法排版。请对照截图校正 LaTeX，确认前不会发送文字。`
+            : repairedCaseDelimiter ? '分段公式缺少排版用的右定界符，已补上不可见定界符。请对照截图核对后再翻译。'
+            : document.proseOrderUnresolved ? '公式旁的多行正文识别顺序有分歧，局部复读未能确认。请对照原图逐行核对或重框。'
+            : spacedOperator ? '公式中的 e x p 可能是指数函数 exp，但本地读数不足以确认。请对照原图校正后再翻译。'
+            : document.rowRecovered ? '正文识别有冲突，已结合原图中的独立读数修复。请对照截图核对文字和顺序。'
+            : review.required ? '部分文字识别不够清楚。请对照截图核对，确认前不会发送文字。'
+            : document.layoutReview ? '这张截图可能包含并排的图与图注、多栏或表格。请对照截图确认阅读顺序，必要时只框选图注或其中一栏。'
+            : document.interiorUnresolved ? '两次本地识别对段落中间的文字有分歧，局部复读仍无法确认。请对照截图补齐文字，或重新框选这一段。'
+            : document.interiorRecovered ? '段落中间有漏识别的正文，已在原图局部复读后补齐。请对照截图核对文字和顺序。'
+            : document.edgeRecovered ? '截图上边缘的正文已补读。请对照原图核对开头文字。'
+            : regularizerMismatch ? regularizerHint.trim()
             : formulaNotice || (mathReview ? '检测到数学符号。请对照原始截图核对符号、上下标和分式。'
               : changed ? '处理服务已经改变，请核对处理位置后继续。' : '') });
         maybeStart(pin);
       }
       return { success: true, pinned: true };
     } catch (error) {
-      if (controller.signal.aborted || error?.isCancellation) return { success: false, cancelled: true };
+      if (controller.signal.aborted || error?.isCancellation) {
+        if (pin && alive(pin)) close(pin);
+        return { success: false, cancelled: true };
+      }
       if (pin && alive(pin)) {
-        update(pin, { phase: 'error', notice: '文字识别没有完成，请重新框选清晰的一段英文。' });
+        update(pin, { phase: 'error', notice: error.code === 'ocr-initialization-failed'
+          ? '本机识字准备没有完成，请再次截图重试。原图仍可在这张卡片中查看。'
+          : '文字识别没有完成，请重新框选清晰的一段英文。' });
         return { success: true, pinned: true };
       }
       onError(error.code === 'capture-timeout' ? '框选等待时间较长，已结束本次截图。请按快捷键重新框选。'
@@ -656,7 +1155,65 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (selecting === controller) selecting = null;
       showPendingCards();
       if (pin?.controller === controller) pin.controller = null;
+      if (captureTasks.get(owner) === task) captureTasks.delete(owner);
+      settlement.resolve();
     }
+  }
+
+  async function readImage(pin, { configuration, controller = new AbortController(), edgeNotice = '' } = {}) {
+    if (!alive(pin) || disposed || !readScreenshot) return false;
+    try { configuration ||= settingsForReading(); } catch {
+      update(pin, { phase: 'error', notice: '请先在设置中完成图片试读，再重新框选。' }); return false;
+    }
+    pin.lookupController?.abort(); pin.referenceController?.abort(); pin.lookupSequence += 1;
+    pin.lookupCache.clear(); pin.referenceCandidates = []; pin.referenceStatus = '';
+    pin.controller = controller; pin.generation = generation;
+    const revision = ++pin.revision, requestGeneration = generation, paperId = pin.view.paperId;
+    const active = () => alive(pin) && !controller.signal.aborted && pin.revision === revision && generation === requestGeneration;
+    update(pin, { phase: 'recognizing', imageReading: true, imageSent: true,
+      destination: configuration.destination, notice: '', lookup: null, lookupStatus: '', lookupNotice: '',
+      translation: '', segments: [], formulaNotice: '', formulaStatus: '', explainSupported: true });
+    const publishResult = result => {
+      if (!active()) return;
+      const segment = { id: 0, start: 0, end: result.text.length, source: result.text,
+        translation: result.translation, status: 'done', error: '', terms: result.terms || [],
+        termsStatus: result.termsStatus || 'ready', referenceCandidates: pin.view.paperId === paperId ? result.references || [] : [] };
+      update(pin, { sourceText: result.text, translation: result.translation, segments: [segment], phase: 'done', notice: '' });
+    };
+    try {
+      const result = await readScreenshot({ image: pin.view.image, settingsSnapshot: configuration.settings,
+        signal: controller.signal, onTranslation: result => {
+          if (!edgeNotice && !result.uncertain?.length && !looksLikeOwnReadingUi(result.text)) publishResult(result);
+        } });
+      if (!active()) return false;
+      if (looksLikeOwnReadingUi(result.text)) {
+        update(pin, { phase: 'error', notice: '这张图包含 Slipstream 自己的界面。请回到原文，再框选要读的英文。' });
+        return false;
+      }
+      if (edgeNotice || result.uncertain.length) {
+        publishResult(result);
+        update(pin, {
+          formulaStatus: 'uncertain', formulaNotice: result.uncertain.join('；'),
+          notice: edgeNotice || `有一处没看清：${result.uncertain.join('；')}。这里仅显示读清的内容，可重新框完整这一段。` });
+        return true;
+      }
+      publishResult(result); return true;
+    } catch (error) {
+      if (!active()) return false;
+      update(pin, { phase: 'error', notice: error?.message === 'reading-image-math-mismatch'
+        ? '返回的译文改动了公式，已停止显示。原图保留在“截图”中；请重试，或缩小到这一段重新框选。'
+        : /^reading-(?:image-invalid-output|symbol-role-mismatch|terminology-mismatch)$/u.test(error?.message || '') || error instanceof SyntaxError
+          ? '这张图没有读完整，原图已保留。请重试，或重新框选清晰的一段英文。'
+          : classifyError(error, configuration.settings.activeBackend) });
+      return false;
+    } finally { if (pin.controller === controller) pin.controller = null; }
+  }
+
+  function cancelCapture(owner) {
+    const task = captureTasks.get(owner);
+    if (!task) return null;
+    task.controller.abort();
+    return task.settlement.promise;
   }
 
   ipcMain.handle('reading-pin:action', (event, action, payload) => {
@@ -671,7 +1228,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
     if (action === 'close') { close(pin); return true; }
     if (action.startsWith('reference-') || action.startsWith('paper-')) return referenceAction(pin, action, payload);
-    if (action === 'library') { onOpenLibrary(pin.view.savedCardId); return true; }
+    if (action === 'library') { yieldToUtility(pin); onOpenLibrary(pin.view.savedCardId); return true; }
     if (action === 'recognize-formulas') {
       if (!payload || payload.revision !== pin.revision || payload.sendImage !== true) return false;
       if (payload.text !== undefined && (typeof payload.text !== 'string' || payload.text.length > DEFAULTS.MAX_TEXT_LENGTH)) return false;
@@ -724,7 +1281,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       return true;
     }
     if (action === 'copy') {
-      if (pin.view.phase !== 'done' || !pin.view.translation) return false;
+      if (!['done', 'translating'].includes(pin.view.phase) || !pin.view.translation
+        || !pin.view.segments.length || pin.view.segments.some((segment) => segment.status !== 'done')) return false;
       copyText(pin.view.translation);
       return true;
     }
@@ -748,6 +1306,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
     if (action === 'toggle-top') {
       pin.window.setAlwaysOnTop(!pin.view.topmost, 'floating');
+      pin.window.setVisibleOnAllWorkspaces(!pin.view.topmost, { visibleOnFullScreen: true });
       update(pin, { topmost: !pin.view.topmost });
       return { state: state(pin) };
     }
@@ -756,11 +1315,13 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         || (payload.text !== undefined && (typeof payload.text !== 'string' || payload.text.length > DEFAULTS.MAX_TEXT_LENGTH))) {
         throw new Error('Invalid reading request');
       }
-      void process(pin, action, payload);
+      if (action === 'translate' && payload.retryFailed && pin.view.imageReading && !pin.view.sourceText
+        && payload.revision === pin.revision) void readImage(pin);
+      else void process(pin, action, payload);
       return true;
     }
     if (action === 'retake') { void capture().then((result) => { if (result.pinned && alive(pin)) close(pin); }); return true; }
-    if (action === 'settings') { onOpenSettings(); return true; }
+    if (action === 'settings') { yieldToUtility(pin); onOpenSettings(); return true; }
     throw new Error('Unsupported reading action');
   });
 
@@ -774,6 +1335,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       pin.referenceStatus = '';
       pin.lookupSequence += 1;
       pin.lookupCache.clear();
+      if (pin.view.imageReading) { pin.controller?.abort(); pin.controller = null; }
       if (pin.view.lookupStatus === 'loading') update(pin, { lookupStatus: 'error', lookupNotice: '处理服务已改变，请重新翻译后查询。' });
       if (pin.view.phase === 'ocr' || pin.view.phase === 'done' || pin.view.phase === 'partial') continue;
       pin.controller?.abort();
@@ -793,11 +1355,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   function clear() {
     generation += 1;
     selecting?.abort();
+    for (const task of captureTasks.values()) task.controller.abort();
     for (const pin of [...pins.values()]) close(pin);
   }
-  return { capture, openText, openReferences, invalidateProcessing, clear,
+  return { capture, cancelCapture, openText, openReferences, invalidateProcessing, clear,
     dispose() { disposed = true; clear(); ipcMain.removeHandler('reading-pin:action'); },
   };
 }
 
-module.exports = { createReadingPins, cardBounds, readingDestination };
+module.exports = { createReadingPins, cardBounds, readingDestination, looksLikeClippedProse, looksLikeCodeCapture,
+  looksLikeUnfinishedTail, suspiciousTimesGlyph, suspiciousCyrillicGlyph,
+  suspiciousDimensionToken, ambiguousMultiplierToken, suspiciousRegularizerSubscript };

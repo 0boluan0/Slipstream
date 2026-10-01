@@ -237,6 +237,10 @@ if (
 
 const adHocArguments = buildArguments(false, '/tmp/slipstream-check');
 const signedArguments = buildArguments(true, '/tmp/slipstream-check');
+const releaseArguments = buildArguments(true, '/tmp/slipstream-check', { sourceRevision: 'a'.repeat(40) });
+if (!releaseArguments.includes(`-c.extraMetadata.slipstreamSourceRevision=${'a'.repeat(40)}`)) {
+  throw new Error('signed releases must embed the exact source revision');
+}
 const buildIdentityArgumentPrefix = '-c.extraMetadata.slipstreamBuildIdentity=';
 
 for (const args of [adHocArguments, signedArguments]) {

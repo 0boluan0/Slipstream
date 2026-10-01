@@ -7,6 +7,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { nativeImage } = require('electron');
 const manifest = require('./local-formula-models.json');
+const { proseSuperscript, conditionalAccentCandidate } = require('./formula-document');
 
 function cancelled(signal, deadline) {
   if (signal?.aborted) {
@@ -61,15 +62,15 @@ function detectBoxes(output, size) {
   // The published model labels display formulas 5 and inline formulas 15.
   for (let i = 0; i < data.length; i += 7) {
     const label = data[i], score = data[i + 1];
-    if ((label !== 5 && label !== 15) || score < .2) continue;
+    if ((label !== 5 && label !== 15) || score < .1) continue;
     const x = Math.max(0, Math.floor(data[i + 2] - margin) - 1);
     const y = Math.max(0, Math.floor(data[i + 3] - margin));
     const right = Math.min(size.width, Math.ceil(data[i + 4] - margin) + 1);
     const bottom = Math.min(size.height, Math.ceil(data[i + 5] - margin));
     const w = right - x, h = bottom - y;
-    // Isolated symbols receive weaker layout scores than equations. Only let
-    // compact inline candidates reach the recognizer at the lower threshold.
-    if (score < .3 && (label !== 15 || w > h * 2 || h > size.height * .12)) continue;
+    // Isolated symbols and short notation lists receive weaker layout scores
+    // than equations. Recognition below enforces their mathematical structure.
+    if (score < .3 && (label !== 15 || w > h * 6 || h > size.height * .12)) continue;
     if (w > 0 && h > 0) boxes.push({ x, y, w, h, score, display: label === 5 });
   }
   const selected = [];
@@ -93,6 +94,373 @@ function trimFormulaCrop(image) {
   if (left > right || top > bottom) return image;
   left = Math.max(0, left - 1); top = Math.max(0, top - 1);
   return image.crop({ x: left, y: top, width: Math.min(width - left, right - left + 2), height: Math.min(height - top, bottom - top + 2) });
+}
+
+function removePriorLineInk(image, box) {
+  // Trace ink across the crop's top edge in the original image. A preceding
+  // line's descender may contribute only its last 2-3 rows to this formula.
+  // Keep detached accents, strokes mostly inside the formula, and components
+  // too large to classify within this bounded trace.
+  if (box.y === 0) return null;
+  const size = image.getSize(), bitmap = image.toBitmap(), seen = new Set();
+  const pixels = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h }).toBitmap();
+  const ink = (at) => (bitmap[at * 4] + bitmap[at * 4 + 1] + bitmap[at * 4 + 2]) / 3 < 230;
+  let removed = false;
+  for (let x = box.x; x < box.x + box.w; x++) {
+    const origin = box.y * size.width + x;
+    if (seen.has(origin) || !ink(origin)) continue;
+    const queue = [origin]; seen.add(origin);
+    let top = box.y, bottom = box.y, inside = 0;
+    for (let i = 0; i < queue.length && queue.length < 20000; i++) {
+      const px = queue[i] % size.width, py = Math.floor(queue[i] / size.width);
+      top = Math.min(top, py); bottom = Math.max(bottom, py);
+      if (py >= box.y) inside++;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const xx = px + dx, yy = py + dy, at = yy * size.width + xx;
+        if (xx < 0 || xx >= size.width || yy < 0 || yy >= size.height || seen.has(at) || !ink(at)) continue;
+        seen.add(at); queue.push(at);
+      }
+    }
+    if (seen.size >= 50000) return null;
+    if (queue.length >= 20000 || box.y - top < box.h * .4
+      || bottom - box.y > box.h * .12 || inside > queue.length * .2) continue;
+    for (const at of queue) {
+      const xx = at % size.width - box.x, yy = Math.floor(at / size.width) - box.y;
+      if (xx < 0 || xx >= box.w || yy < 0 || yy >= box.h) continue;
+      pixels.fill(255, (yy * box.w + xx) * 4, (yy * box.w + xx) * 4 + 4);
+      removed = true;
+    }
+  }
+  return removed ? nativeImage.createFromBitmap(pixels, { width: box.w, height: box.h }) : null;
+}
+
+function padFormulaCrop(image, ratio) {
+  const size = image.getSize(), margin = Math.max(1, Math.round(size.height * ratio));
+  const paddedSize = { width: size.width + margin * 2, height: size.height + margin * 2 };
+  const source = image.toBitmap(), pixels = Buffer.alloc(paddedSize.width * paddedSize.height * 4, 255);
+  for (let y = 0; y < size.height; y++) source.copy(pixels,
+    ((y + margin) * paddedSize.width + margin) * 4, y * size.width * 4, (y + 1) * size.width * 4);
+  return nativeImage.createFromBitmap(pixels, paddedSize);
+}
+
+function styledAtom(latex) {
+  // Both \\mathcal{H} and {\\mathcal H} denote the same single glyph.
+  const compact = latex.replace(/\\(mathcal|mathbb|mathfrak|mathscr)\s+([A-Za-z])\b/g, '\\$1{$2}')
+    .replace(/\s+/g, '').replace(/^\{(\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\})\}([,.;:!?]?)$/, '$1$2');
+  return /^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}[,.;:!?]?$/.test(compact) ? compact : null;
+}
+
+function accentedAtom(latex) {
+  // A weak layout candidate may still contain a clearly printed accent over
+  // one letter. Require the math recognizer to agree on that exact atom under
+  // three crop margins before letting it replace Vision's plain letter.
+  const compact = latex.replace(/\s+/g, '');
+  const match = compact.match(/^\\(hat|bar|tilde|vec|dot|ddot)(?:\{([A-Za-z])\}|([A-Za-z]))([,.;:!?]?)$/);
+  return match ? `\\${match[1]}{${match[2] || match[3]}}${match[4]}` : null;
+}
+
+function accentSignature(latex) {
+  const compact = latex.replace(/\s+/g, '');
+  return [...compact.matchAll(/\\(?:hat|bar|tilde|vec|breve|check|dot|ddot|widehat|widetilde)\{?[A-Za-z]\}?/g)]
+    .map((match) => match[0]).join('|');
+}
+
+function confirmedConditionalAccent(latex, readings) {
+  const candidate = conditionalAccentCandidate(latex);
+  if (!candidate || readings.length !== 2) return null;
+  const compact = (value) => value.replace(/\s+|\\[,;:!]/gu, '');
+  if (readings.some((reading) => !Number.isFinite(reading.confidence) || reading.confidence < .9
+    || compact(reading.latex) !== compact(candidate))) return null;
+  return { latex: readings[0].latex, confidence: Math.min(...readings.map((reading) => reading.confidence)) };
+}
+
+function weakAccentGeometry(box, size) {
+  return !box.display && box.w < box.h * 2 && box.h < size.height * .12;
+}
+
+function visualAtom(latex) {
+  let compact = latex.replace(/\\(mathcal|mathbb|mathfrak|mathscr)\s+([A-Za-z])\b/gu, '\\$1{$2}')
+    .replace(/\s+/gu, '').replace(/[,.;:!?]$/u, '');
+  // The decoder may wrap a single styled glyph in an extra brace pair.
+  // It remains the same visible atom after surrounding whitespace is trimmed.
+  const styled = styledAtom(compact);
+  if (styled) return styled;
+  const wrapped = compact.match(/^\\(?:boldsymbol|mathbf|mathrm)\{(.*)\}$/u);
+  if (wrapped) compact = wrapped[1];
+  if (/^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}$/u.test(compact)) return compact;
+  if (/^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)$/u.test(compact)) return compact;
+  if (/^\\(?:in|notin|subset|subseteq|supset|supseteq)$/u.test(compact)) return compact;
+  return null;
+}
+
+function matchingCallAtom(latex, source) {
+  const compact = latex.replace(/\s+/gu, '').replace(/\\(?:left|right)/gu, '');
+  return compact === source ? compact : null;
+}
+
+function inlineCallCandidate(chars, characters, index, size) {
+  // Vision sometimes inserts an OCR-only space into P(A), yielding P (A).
+  // Build a crop from the four printed glyphs, excluding that textual space.
+  const match = chars.slice(index, index + 6).join('').match(/^([A-Za-z])(\s{0,2})\(([A-Za-z])\)/u);
+  if (!match || /[\p{L}\p{N}]/u.test(chars[index - 1] || '')
+    || /[\p{L}\p{N}]/u.test(chars[index + match[0].length] || '')) return null;
+  const gap = match[2].length;
+  const boxes = [0, 1 + gap, 2 + gap, 3 + gap]
+    .map((offset) => characters[index + offset]?.boundingBox);
+  if (boxes.some((box) => !box || box.w <= 0 || box.h <= 0)) return null;
+  const letter = boxes[0], parenthesis = boxes[1];
+  if ((parenthesis.x - letter.x - letter.w) * size.width
+    > Math.max(letter.h, parenthesis.h) * size.height * .6) return null;
+  const x = Math.min(...boxes.map((box) => box.x)), y = Math.min(...boxes.map((box) => box.y));
+  const right = Math.max(...boxes.map((box) => box.x + box.w));
+  const top = Math.max(...boxes.map((box) => box.y + box.h));
+  return { token: `${match[1]}(${match[3]})`, length: match[0].length,
+    boundingBox: { x, y, w: right - x, h: top - y } };
+}
+
+function parameterTupleCandidate(chars, characters, index) {
+  if (chars[index] !== '4' || chars[index - 1] !== '(') return null;
+  const before = chars.slice(Math.max(0, index - 80), index).join('');
+  // Vision can read a printed Delta as 4 inside an inline parameter list.
+  // Recheck the entire printed tuple: Vision gives "(4," one shared glyph
+  // rectangle, so a crop of just the apparent digit also contains punctuation.
+  if (!/\bparameters?\s*\(\s*$/iu.test(before)) return null;
+  const match = chars.slice(index - 1, index + 35).join('').match(/^\(4\s*,\s*([A-Z])\s*,\s*([A-Z])\s*,\s*([A-Z])\s*\)/u);
+  if (!match) return null;
+  const boxes = characters.slice(index - 1, index - 1 + match[0].length)
+    .map((char) => char?.boundingBox).filter((box) => box?.w > 0 && box?.h > 0);
+  if (!boxes.length) return null;
+  const x = Math.min(...boxes.map((box) => box.x)), y = Math.min(...boxes.map((box) => box.y));
+  const right = Math.max(...boxes.map((box) => box.x + box.w));
+  const top = Math.max(...boxes.map((box) => box.y + box.h));
+  return { length: match[0].length, letters: match.slice(1),
+    boundingBox: { x, y, w: right - x, h: top - y } };
+}
+
+function matchingParameterTupleAtom(latex, letters) {
+  const compact = latex.replace(/\s+/gu, '')
+    .replace(/\\(?:boldsymbol|mathbf|mathit)\{([A-Z])\}/gu, '$1')
+    .replace(/,$/u, '');
+  return compact === `(\\Delta,${letters.join(',')})` ? latex : null;
+}
+
+function completeGlyphBox(pixels, size, box) {
+  if (box.tupleLetters) return box;
+  const columnHasInk = (x) => {
+    for (let y = box.y; y < box.y + box.h; y++) {
+      const at = (y * size.width + x) * 4;
+      if ((pixels[at] + pixels[at + 1] + pixels[at + 2]) / 3 < 160) return true;
+    }
+    return false;
+  };
+  // Vision may call a clipped omega "I" and omit its right foot from the
+  // glyph rectangle, or cut the closing parenthesis of a short f(x) call.
+  // Extend only an ink-cut side, up to the first blank column within a small
+  // glyph-height margin. Never cross a blank gutter.
+  const limit = Math.ceil(box.h * .3), originalRight = box.x + box.w - 1;
+  let left = box.x, right = originalRight;
+  while (left > Math.max(0, box.x - limit) && columnHasInk(left)) left--;
+  while (right < Math.min(size.width - 1, originalRight + limit) && columnHasInk(right)) right++;
+  if (columnHasInk(left) || columnHasInk(right) || left === box.x && right === originalRight) return box;
+  return { ...box, x: left, w: right - left + 1, extendedGlyph: true };
+}
+
+function characterCandidates(ocr, size, formulas) {
+  const candidates = [];
+  for (const block of ocr?.blocks || []) {
+    const chars = Array.from(block.text || '');
+    if (chars.length !== block.characters?.length) continue;
+    let skipThrough = -1;
+    for (let i = 0; i < chars.length; i++) {
+      if (i <= skipThrough) continue;
+      const first = block.characters[i].boundingBox, second = block.characters[i + 1]?.boundingBox;
+      // Vision often gives every character of a short inline notation such as
+      // P(A) or f(x) the same box. Recheck that entire printed token instead
+      // of treating its P/f and A/x as unrelated single-letter candidates.
+      const call = inlineCallCandidate(chars, block.characters, i, size);
+      if (call) skipThrough = i + call.length - 1;
+      const tuple = parameterTupleCandidate(chars, block.characters, i);
+      if (tuple) skipThrough = i + tuple.length - 2;
+      // Vision can split one printed mathematical glyph into two text
+      // characters (observed Ω -> S2) while giving both the same pixel box.
+      // An ordinary S2 has two separate boxes and stays untouched.
+      const splitGlyph = /^[A-Za-z]$/u.test(chars[i]) && /^[0-9]$/u.test(chars[i + 1] || '')
+        && first && second && ['x', 'y', 'w', 'h'].every((key) => first[key] === second[key])
+        && !/[\p{L}\p{N}]/u.test(chars[i - 1] || '')
+        && !/[\p{L}\p{N}]/u.test(chars[i + 2] || '');
+      // A lowercase standalone article is ordinary prose even if the math
+      // recognizer confidently sees an epsilon-shaped glyph in its crop.
+      // Uppercase A can name a mathematical set, and subject verbs keep a
+      // lowercase variable eligible too.
+      const nextWord = chars.slice(i + 1).join('').match(/^\s+([A-Za-z]{3,})\b/u)?.[1]?.toLowerCase();
+      if (chars[i] === 'a' && nextWord
+        && !/^(?:is|was|has|can|may|will|denotes?|represents?|equals?|satisfies|belongs?|varies|lies|means|follows|maps|contains|forms|spans|yields|produces|converges|divides|multiplies)$/u.test(nextWord)) continue;
+      // Vision can render an isolated Ω as S, &, or $ across macOS versions.
+      if (!call && !splitGlyph && !tuple && (!/^[A-Za-z€&$]$/u.test(chars[i])
+        || /[\p{L}\p{N}]/u.test(chars[i - 1] || '')
+        || /[\p{L}\p{N}]/u.test(chars[i + 1] || ''))) continue;
+      const source = tuple?.boundingBox || call?.boundingBox || first;
+      if (!source || source.w <= 0 || source.h <= 0) continue;
+      const x = Math.max(0, Math.floor(source.x * size.width));
+      const y = Math.max(0, Math.floor((1 - source.y - source.h) * size.height));
+      const right = Math.min(size.width, Math.ceil((source.x + source.w) * size.width));
+      const bottom = Math.min(size.height, Math.ceil((1 - source.y) * size.height));
+      const placeholder = /^[€&$]$/u.test(chars[i]);
+      let box = { x, y, w: right - x, h: bottom - y };
+      // On another macOS Vision build, one printed Ω became a narrow '$'
+      // box that excluded its right stroke. Restore only a modest glyph-width
+      // margin for OCR placeholders; wider crops can admit nearby punctuation.
+      if (placeholder && box.w < box.h * .6) {
+        const extra = Math.min(4, Math.ceil((box.h * .6 - box.w) / 2));
+        const left = Math.max(0, box.x - extra), widenedRight = Math.min(size.width, box.x + box.w + extra);
+        box = { ...box, x: left, w: widenedRight - left };
+      }
+      // Vision's tall character box can overlap an already decoded formula
+      // by just under the area threshold. Its center still identifies it as
+      // the same printed glyph, so avoid emitting the formula twice.
+      const centerX = box.x + box.w / 2, centerY = box.y + box.h / 2;
+      // A single-line screenshot can be only 60px tall. Its printed omega
+      // occupies most of that height when Vision calls it a standalone w.
+      // Recheck this one ambiguous glyph at its pixels, with review required.
+      const maxGlyphHeight = Math.max(size.height * (placeholder ? .17 : .15),
+        chars[i] === 'w' && size.height < 120 ? 48 : 0);
+      if (box.w < 8 || box.h < 10 || box.w > box.h * (tuple ? 7 : call ? 3.5 : 2)
+        || box.h > maxGlyphHeight
+        || formulas.some((formula) => overlap(formula, box) > .65
+          || (centerX >= formula.x && centerX <= formula.x + formula.w
+            && centerY >= formula.y && centerY <= formula.y + formula.h))) continue;
+      // A currency-shaped OCR placeholder in ordinary prose is more likely
+      // to hide a missed math glyph than an English article. Check its pixels
+      // first so slower machines do not exhaust the bounded recheck deadline.
+      candidates.push({ ...box, sourceToken: call?.token || null, tupleLetters: tuple?.letters || null,
+        sourceGlyph: chars[i],
+        priority: splitGlyph ? -2 : placeholder || tuple ? -1 : call || block.text.length <= 45 ? 0 : 1,
+        rowLength: block.text.length });
+    }
+  }
+  return candidates.sort((a, b) => a.priority - b.priority || a.rowLength - b.rowLength
+    || a.y - b.y || a.x - b.x).slice(0, size.width <= 900 ? 24 : 16);
+}
+
+function sourceDisagreesOnDelta(formula, ocr, size) {
+  if (!/^\\(?:var)?Delta\b/u.test(formula.latex)) return false;
+  return (ocr?.blocks || []).some((block) => block.characters?.some((character) => {
+    if (character.text !== 'A' || !character.boundingBox) return false;
+    const { x, y, w, h } = character.boundingBox;
+    const centerX = (x + w / 2) * size.width;
+    const centerY = (1 - y - h / 2) * size.height;
+    return centerX >= formula.x && centerX <= formula.x + formula.w * .4
+      && centerY >= formula.y && centerY <= formula.y + formula.h;
+  }));
+}
+
+function maskFormulaRegions(image, formulas, size) {
+  const bitmap = image.toBitmap();
+  for (const box of formulas) for (let y = box.y; y < box.y + box.h; y++) {
+    bitmap.fill(255, (y * size.width + box.x) * 4, (y * size.width + box.x + box.w) * 4);
+  }
+  return formulas.length ? nativeImage.createFromBitmap(bitmap, size).toPNG() : null;
+}
+
+function stronglyCutAtBottom(image, box, size) {
+  // Detector boxes are rounded to the image edge even for a complete final
+  // line with a few descender pixels. A truly cut line has sustained ink all
+  // along that edge; count within this box rather than across unrelated text.
+  const x = Math.max(0, Math.floor(box.x));
+  const width = Math.min(size.width - x, Math.ceil(box.x + box.w) - x);
+  if (width <= 0 || size.height < 2) return false;
+  const pixels = image.crop({ x, y: size.height - 2, width, height: 2 }).toBitmap();
+  const minimum = Math.max(8, Math.ceil(width * .12));
+  for (let row = 0; row < 2; row++) {
+    let dark = 0;
+    for (let col = 0; col < width; col++) {
+      const offset = (row * width + col) * 4;
+      if (Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) < 160) dark++;
+    }
+    if (dark < minimum) return false;
+  }
+  return true;
+}
+
+async function recognizeCrop(model, image, signal, deadline) {
+  cancelled(signal, deadline);
+  const encoded = await model.encoder.run({ pixel_values: rgbTensor(image, 384, true, model.ort) });
+  const ids = [1];
+  let confidence = 1;
+  for (let step = 0; step < 384; step++) {
+    cancelled(signal, deadline);
+    const output = await model.decoder.run({
+      input_ids: new model.ort.Tensor('int64', BigInt64Array.from(ids, BigInt), [1, ids.length]),
+      encoder_hidden_states: encoded.last_hidden_state,
+    });
+    const logits = output.logits.data, vocab = output.logits.dims[2], offset = logits.length - vocab;
+    let best = 0;
+    for (let i = 1; i < vocab; i++) if (logits[offset + i] > logits[offset + best]) best = i;
+    let sum = 0;
+    for (let i = 0; i < vocab; i++) sum += Math.exp(logits[offset + i] - logits[offset + best]);
+    confidence = Math.min(confidence, 1 / sum);
+    ids.push(best);
+    if (best === 2) break;
+  }
+  if (ids.at(-1) !== 2) throw new Error('formula-token-limit');
+  const latex = model.decode(ids);
+  if (!latex || latex.includes('�')) throw new Error('formula-invalid-latex');
+  return { latex, confidence };
+}
+
+function regularizerTerms(latex) {
+  const pattern = /\\frac\s*\{\s*\\lambda\s*_\s*\{\s*([A-Za-z])\s*\}\s*\}\s*\{\s*2\s*\}\s*\\sum[^+]{0,120}?\\parallel\s*([A-Za-z])\s*_/gu;
+  return [...latex.matchAll(pattern)].map((match) => ({ coefficient: match[1], variable: match[2],
+    structure: match[0].replace(/\s+/gu, '').replace(/\\lambda_\{[A-Za-z]\}/u, '\\lambda_{?}') }));
+}
+
+function interlineGap(image) {
+  const { width, height } = image.getSize();
+  if (height < 50) return null;
+  const pixels = image.toBitmap();
+  const first = Math.floor(height * .3), last = Math.ceil(height * .7);
+  const minimum = Math.max(5, Math.floor(height * .035));
+  let start = null, best = null;
+  for (let y = first; y <= last; y++) {
+    let dark = 0;
+    if (y < last) for (let x = 0; x < width; x++) {
+      const offset = (y * width + x) * 4;
+      if (Math.max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) < 160) dark++;
+    }
+    if (y < last && dark <= Math.max(2, Math.floor(width * .002))) {
+      if (start === null) start = y;
+    } else if (start !== null) {
+      const length = y - start;
+      if (length >= minimum && (!best || length > best.length)) best = { start, length };
+      start = null;
+    }
+  }
+  return best?.start ?? null;
+}
+
+async function recheckMultilineRegularizer(model, crop, latex, confidence, signal, deadline) {
+  const original = regularizerTerms(latex);
+  if (!latex.includes('\\\\') || original.length < 2
+    || original.filter((term) => term.coefficient !== term.variable).length !== 1) return { latex, rechecked: false };
+  const split = interlineGap(crop);
+  if (split === null) return { latex, rechecked: false };
+  const { width, height } = crop.getSize();
+  const lower = trimFormulaCrop(crop.crop({ x: 0, y: split, width, height: height - split }));
+  const focused = await recognizeCrop(model, lower, signal, deadline);
+  if (focused.confidence < Math.max(.75, confidence + .15)) return { latex, rechecked: false };
+  const closer = regularizerTerms(focused.latex);
+  if (closer.length !== original.length || closer.some((term, i) => term.variable !== original[i].variable
+    || term.structure !== original[i].structure || term.coefficient !== term.variable)) return { latex, rechecked: false };
+  let index = 0;
+  const corrected = latex.replace(/\\frac\s*\{\s*\\lambda\s*_\s*\{\s*([A-Za-z])\s*\}\s*\}\s*\{\s*2\s*\}\s*\\sum[^+]{0,120}?\\parallel\s*([A-Za-z])\s*_/gu,
+    (match) => {
+      const term = original[index], replacement = closer[index];
+      index++;
+      if (term.coefficient === replacement.coefficient) return match;
+      return match.replace(/(\\lambda\s*_\s*\{\s*)[A-Za-z](\s*\})/u,
+        (_, before, after) => `${before}${replacement.coefficient}${after}`);
+    });
+  return { latex: corrected, rechecked: corrected !== latex };
 }
 
 // Decode the published ByteLevel tokenizer without importing a language-model
@@ -141,7 +509,11 @@ function createLocalFormulaOcr(modelDir) {
     // One capture at a time bounds native model memory and CPU competition.
     const run = queue.then(async () => {
       clearTimeout(idle);
-      const started = Date.now(), deadline = started + 25000;
+      // A fresh install must hash and open all three models before its first
+      // inference. Give that one cold start more time; subsequent captures
+      // keep the shorter interactive deadline.
+      const started = Date.now();
+      let deadline = started + (sessions ? 25000 : 60000);
       cancelled(signal, deadline);
       const model = await load();
       cancelled(signal, deadline);
@@ -151,51 +523,218 @@ function createLocalFormulaOcr(modelDir) {
       const detected = await model.detector.run(detectorInput(image, model.ort));
       cancelled(signal, deadline);
       const boxes = detectBoxes(detected.fetch_name_0, size);
+      // A wide, shallow crop of a numbered algorithm can make the layout
+      // model classify every equation as prose. Revisit overlapping 1000px
+      // strips at a readable scale, and discard regions cut by an inner seam.
+      if (!boxes.some((box) => box.score >= .3)
+        && size.width >= 1200 && size.width > size.height * 2) {
+        const width = 1000;
+        const last = size.width - width;
+        const count = Math.min(6, Math.ceil(last / (width * .6)) + 1);
+        for (let index = 0; index < count; index++) {
+          cancelled(signal, deadline);
+          const x = Math.round(last * index / (count - 1));
+          const tile = image.crop({ x, y: 0, width, height: size.height });
+          const inferred = await model.detector.run(detectorInput(tile, model.ort));
+          for (const candidate of detectBoxes(inferred.fetch_name_0, tile.getSize())) {
+            if (candidate.score < .3 || (x > 0 && candidate.x <= 2)
+              || (x + width < size.width && candidate.x + candidate.w >= width - 2)) continue;
+            const box = { ...candidate, x: candidate.x + x };
+            const duplicate = boxes.findIndex((existing) => overlap(existing, box) > .65);
+            if (duplicate < 0) boxes.push(box);
+            else if (box.score > boxes[duplicate].score) boxes[duplicate] = box;
+          }
+        }
+        boxes.sort((a, b) => a.y - b.y || a.x - b.x);
+      }
+      // Wide excerpts shrink an isolated accent to a few detector pixels.
+      // Inspect overlapping halves at higher effective resolution, but admit
+      // only small candidates whose accent survives three math-model crops.
+      if (size.width >= 1200 && size.width > size.height * 2) {
+        const width = Math.round(size.width * .6), tiled = [];
+        for (const x of [0, size.width - width]) {
+          cancelled(signal, deadline);
+          const tile = image.crop({ x, y: 0, width, height: size.height });
+          const inferred = await model.detector.run(detectorInput(tile, model.ort));
+          for (const candidate of detectBoxes(inferred.fetch_name_0, tile.getSize())) {
+            const box = { ...candidate, x: candidate.x + x, tiled: true };
+            if (box.score < .12 || !weakAccentGeometry(box, size)
+              || boxes.some((existing) => overlap(existing, box) > .65)) continue;
+            const duplicate = tiled.findIndex((existing) => overlap(existing, box) > .65);
+            if (duplicate < 0) tiled.push(box);
+            else if (box.score > tiled[duplicate].score) tiled[duplicate] = box;
+          }
+        }
+        boxes.push(...tiled.sort((a, b) => b.score - a.score).slice(0, 12));
+        boxes.sort((a, b) => a.y - b.y || a.x - b.x);
+      }
       if (boxes.length > 60) throw new Error('formula-region-limit');
+      // A dense page needs more decoder passes than a short excerpt. Keep the
+      // common path quick, while bounding formula-heavy captures to one minute.
+      deadline = Math.max(deadline, started + Math.min(60000, 20000 + boxes.length * 2500));
       const formulas = [];
+      let clippedBottomY = null;
+      let accentRechecks = 0, conditionalRechecks = 0;
       for (const box of boxes) {
         cancelled(signal, deadline);
-        const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
-        const pixels = rgbTensor(trimFormulaCrop(crop), 384, true, model.ort);
-        const encoded = await model.encoder.run({ pixel_values: pixels });
-        const ids = [1];
-        let confidence = 1;
-        for (let step = 0; step < 384; step++) {
-          cancelled(signal, deadline);
-          const output = await model.decoder.run({
-            input_ids: new model.ort.Tensor('int64', BigInt64Array.from(ids, BigInt), [1, ids.length]),
-            encoder_hidden_states: encoded.last_hidden_state,
-          });
-          const logits = output.logits.data, vocab = output.logits.dims[2], offset = logits.length - vocab;
-          let best = 0;
-          for (let i = 1; i < vocab; i++) if (logits[offset + i] > logits[offset + best]) best = i;
-          let sum = 0;
-          for (let i = 0; i < vocab; i++) sum += Math.exp(logits[offset + i] - logits[offset + best]);
-          confidence = Math.min(confidence, 1 / sum);
-          ids.push(best);
-          if (best === 2) break;
+        const touchingBottom = size.height - (box.y + box.h) <= 2;
+        // A detected region touching the lower edge may contain only the top
+        // of the next line. A strong detector score is insufficient when ink
+        // runs through the crop edge: the decoder can invent a complete
+        // formula from those partial glyphs. A mostly blank edge can instead
+        // be a complete, tightly framed final line, which we retain for review.
+        if (touchingBottom && (box.score < .5 || stronglyCutAtBottom(image, box, size))) {
+          clippedBottomY = clippedBottomY === null ? box.y : Math.min(clippedBottomY, box.y);
+          continue;
         }
-        if (ids.at(-1) !== 2) throw new Error('formula-token-limit');
-        const latex = model.decode(ids);
-        if (!latex || latex.includes('�')) throw new Error('formula-invalid-latex');
-        // A low layout score alone must not turn a prose word into mathematics.
-        // Require a confidently recognized Greek atom, based on its pixels.
-        if (box.score < .3 && (confidence < .75 || !/^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(?:[_^]\{[a-zA-Z0-9]+\})?[,.;:!?]?$/i.test(latex.replace(/\s+/g, '')))) continue;
-        formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score) });
+        const crop = image.crop({ x: box.x, y: box.y, width: box.w, height: box.h });
+        const trimmed = trimFormulaCrop(crop);
+        let { latex, confidence } = await recognizeCrop(model, trimmed, signal, deadline);
+        const regularizer = await recheckMultilineRegularizer(model, crop, latex, confidence, signal, deadline);
+        latex = regularizer.latex;
+        // Re-read only when the original pixels show an outside glyph's tail
+        // crossing this crop. Two confident readings must agree on every
+        // mathematical symbol, with only the suspect accent removed.
+        const reviewConditionalAccent = Boolean(conditionalAccentCandidate(latex));
+        if (reviewConditionalAccent && conditionalRechecks++ < 4) {
+          const cleaned = removePriorLineInk(image, box);
+          if (cleaned) {
+            const readings = [];
+            for (const ratio of [.15, .25]) readings.push(await recognizeCrop(model,
+              padFormulaCrop(trimFormulaCrop(cleaned), ratio), signal, deadline));
+            const confirmed = confirmedConditionalAccent(latex, readings);
+            if (confirmed) { latex = confirmed.latex; confidence = confirmed.confidence; }
+          }
+        }
+        let agreedStyledAtom = false;
+        // Tight isolated glyphs can look like another font or letter when
+        // stretched to the model input. Recheck only uncertain styled atoms;
+        // two modest margins must agree in case, font and punctuation.
+        if (!box.display && box.w < box.h * 2 && box.h < size.height * .12 && confidence < .75
+          && /\\(?:boldsymbol|mathbf|mathcal|mathbb|mathfrak|mathscr)\b/.test(latex)) {
+          const first = await recognizeCrop(model, padFormulaCrop(trimmed, .1), signal, deadline);
+          const second = await recognizeCrop(model, padFormulaCrop(trimmed, .2), signal, deadline);
+          const atom = styledAtom(first.latex);
+          if (atom && atom === styledAtom(second.latex) && Math.min(first.confidence, second.confidence) >= .6
+            && Math.max(first.confidence, second.confidence) > confidence + .1) {
+            latex = atom;
+            confidence = Math.min(first.confidence, second.confidence);
+            agreedStyledAtom = true;
+          }
+        }
+        let agreedAccentAtom = false;
+        if (weakAccentGeometry(box, size) && box.score >= (box.tiled ? .12 : .2)
+          && (box.tiled || box.score < .3) && confidence >= .95) {
+          const atom = accentedAtom(latex);
+          if (atom) {
+            const first = await recognizeCrop(model, padFormulaCrop(trimmed, .1), signal, deadline);
+            const second = await recognizeCrop(model, padFormulaCrop(trimmed, .2), signal, deadline);
+            if (atom === accentedAtom(first.latex) && atom === accentedAtom(second.latex)
+              && Math.min(first.confidence, second.confidence) >= .95) {
+              latex = atom;
+              agreedAccentAtom = true;
+            }
+          }
+        }
+        // A high-confidence decoder can still invent an accent inside a long
+        // expression. Compare its accent labels under two crop margins; any
+        // disagreement asks the reader to check rather than silently changing
+        // the mathematics. Bound extra passes on dense pages.
+        let reviewAccent = reviewConditionalAccent;
+        const signature = accentSignature(latex);
+        if (signature && confidence >= .7 && box.score >= .7 && !agreedAccentAtom && !reviewConditionalAccent) {
+          if (accentRechecks++ >= 8) reviewAccent = true;
+          else {
+            const first = await recognizeCrop(model, padFormulaCrop(trimmed, .1), signal, deadline);
+            const second = await recognizeCrop(model, padFormulaCrop(trimmed, .2), signal, deadline);
+            reviewAccent = accentSignature(first.latex) !== signature
+              || accentSignature(second.latex) !== signature
+              || Math.min(first.confidence, second.confidence) < .75;
+          }
+        }
+        // A weak detection is not enough to turn prose into mathematics. Admit
+        // only confident notation. Bare Latin atoms need stronger recognition;
+        // the English words a/A/I still belong to prose in this weak-layout path.
+        const compact = latex.replace(/\s+/g, '');
+        const greek = /^\\(?:var)?(?:alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(?:[_^]\{[a-zA-Z0-9]+\})?[,.;:!?]?$/i.test(compact);
+        const styled = /^\\(?:mathcal|mathbb|mathfrak|mathscr)\{[A-Za-z]\}[,.;:!?]?$/.test(compact);
+        const list = /^(?:[A-Za-z],){2,}[A-Za-z][.;:!?]?$/.test(compact);
+        const latin = /^[B-HJ-Zb-z][,.;:!?]?$/.test(compact);
+        const indexed = /^(?:[A-Za-z]|\d+)(?:[_^]\{[A-Za-z0-9+-]+\}){1,2}[,.;:!?]?$/.test(compact);
+        const annotatedProse = !box.display && confidence >= .99 && proseSuperscript(latex);
+        // The faintest layout candidates need near-certain short notation.
+        // Do not extend the lower detector floor to words or font guesses.
+        if (box.tiled && !agreedAccentAtom) continue;
+        if (box.score < .12 && !(confidence >= .99 && (latin || indexed))) continue;
+        if (box.score < .3 && !(agreedStyledAtom || agreedAccentAtom || annotatedProse || confidence >= .75 && (greek || styled || list)
+          || confidence >= .95 && (latin || indexed))) continue;
+        if (touchingBottom && confidence < .3) {
+          clippedBottomY = clippedBottomY === null ? box.y : Math.min(clippedBottomY, box.y);
+          continue;
+        }
+        formulas.push({ ...box, latex, confidence: Math.min(confidence, box.score), reviewAccent,
+          reviewSymbol: regularizer.rechecked, reviewEdge: touchingBottom });
       }
       // Mask only recognized regions; Vision will read the remaining prose.
-      const bitmap = image.toBitmap();
-      for (const box of formulas) for (let y = box.y; y < box.y + box.h; y++) {
-        bitmap.fill(255, (y * size.width + box.x) * 4, (y * size.width + box.x + box.w) * 4);
-      }
-      const masked = formulas.length ? nativeImage.createFromBitmap(bitmap, size).toPNG() : null;
-      return { formulas, masked, size, milliseconds: Date.now() - started };
+      const masked = maskFormulaRegions(image, formulas, size);
+      return { formulas, masked, size, milliseconds: Date.now() - started, clippedBottomY };
     });
     queue = run.catch(() => {});
     try { return await run; }
     finally { idle = setTimeout(() => { queue = queue.then(cleanup).catch(() => {}); }, 120000); idle.unref(); }
   }
-  return { recognize, cleanup: () => { queue = queue.then(cleanup); return queue; } };
+  async function recheckCharacters(imagePath, original, detected, { signal } = {}) {
+    const run = queue.then(async () => {
+      clearTimeout(idle);
+      const image = nativeImage.createFromPath(imagePath), size = image.getSize();
+      if (image.isEmpty() || !detected.formulas.length) return detected;
+      const baseline = detected.formulas.map((formula) => ({ ...formula,
+        reviewSymbol: formula.reviewSymbol || sourceDisagreesOnDelta(formula, original, size) }));
+      const candidates = characterCandidates(original, size, baseline);
+      if (!candidates.length) return { ...detected, formulas: baseline };
+      const model = await load(), deadline = Date.now() + 20000;
+      const pixels = image.toBitmap();
+      const supplements = [];
+      for (const candidate of candidates) {
+        cancelled(signal, deadline);
+        const box = completeGlyphBox(pixels, size, candidate);
+        // Vision's character box is already wider than the printed ink here.
+        // Expanding it admits neighboring prose and can turn a calligraphic A
+        // into a different symbol in all three recognizer passes.
+        // Vision's character rectangle can include several blank pixels. At
+        // small screenshot sizes the decoder can mistake that blank border for
+        // an empty subscript, making otherwise agreeing symbol reads disagree.
+        const crop = trimFormulaCrop(image.crop({ x: box.x, y: box.y, width: box.w, height: box.h }));
+        let readings;
+        try {
+          readings = await Promise.all([0, .1, .2].map((ratio) => recognizeCrop(model,
+            ratio ? padFormulaCrop(crop, ratio) : crop, signal, deadline)));
+        } catch (error) {
+          if (signal?.aborted || error?.isCancellation) throw error;
+          if (Date.now() >= deadline) break;
+          continue;
+        }
+        const atoms = readings.map(({ latex }) => box.sourceToken
+          ? matchingCallAtom(latex, box.sourceToken)
+          : box.tupleLetters ? matchingParameterTupleAtom(latex, box.tupleLetters) : visualAtom(latex));
+        const minimum = box.sourceToken || box.tupleLetters ? .65 : .45;
+        const maximum = box.sourceToken || box.tupleLetters ? .95 : .65;
+        if (!atoms[0] || !atoms.every((atom) => atom === atoms[0])
+          || Math.min(...readings.map(({ confidence }) => confidence)) < minimum
+          || Math.max(...readings.map(({ confidence }) => confidence)) < maximum) continue;
+        supplements.push({ ...box, latex: atoms[0], confidence: Math.min(...readings.map(({ confidence }) => confidence)),
+          score: .7, display: false, reviewSymbol: Boolean(box.tupleLetters || box.sourceGlyph === 'w' || box.extendedGlyph) });
+      }
+      if (!supplements.length) return { ...detected, formulas: baseline };
+      const formulas = [...baseline, ...supplements].sort((a, b) => a.y - b.y || a.x - b.x);
+      return { ...detected, formulas, masked: maskFormulaRegions(image, formulas, size) };
+    });
+    queue = run.catch(() => {});
+    try { return await run; }
+    finally { idle = setTimeout(() => { queue = queue.then(cleanup).catch(() => {}); }, 120000); idle.unref(); }
+  }
+  return { recognize, recheckCharacters, cleanup: () => { queue = queue.then(cleanup); return queue; } };
 }
 
-module.exports = { createLocalFormulaOcr, detectBoxes, tokenDecoder };
+module.exports = { createLocalFormulaOcr, detectBoxes, tokenDecoder, characterCandidates,
+  confirmedConditionalAccent, removePriorLineInk, completeGlyphBox };

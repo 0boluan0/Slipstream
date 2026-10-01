@@ -1,7 +1,7 @@
 {
   "name": "slipstream",
-  "version": "1.2.1",
-  "description": "A macOS English reading companion for Chinese speakers, with contextual term explanations and local concept cards.",
+  "version": "1.3.0",
+  "description": "A macOS and Windows companion for local lookups during professional reading.",
   "author": "Slipstream",
   "license": "MIT",
   "repository": {
@@ -18,10 +18,10 @@
   "packageManager": "npm@11.7.0",
   "main": "src/main/main.js",
   "overrides": {
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.8",
     "js-yaml": "4.3.2",
     "nanoid": "3.3.18",
-    "undici@>=7 <8": "7.29.0"
+    "undici@>=7 <8": "7.30.0"
   },
   "scripts": {
     "dev": "concurrently \"vite\" \"electron . --dev\"",
@@ -71,7 +71,7 @@
     "check:credential-visibility": "node scripts/check-credential-visibility.mjs",
     "check:deepseek-live": "node scripts/check-deepseek-live.js",
     "check:deepseek-quality-live": "node scripts/check-deepseek-quality-live.js",
-    "check:provider-connection": "node scripts/check-provider-connection.js",
+    "check:provider-connection": "node scripts/check-provider-connection.js && node scripts/check-reading-readiness.js",
     "check:user-errors": "node scripts/check-user-facing-errors.js",
     "check:redaction": "node scripts/check-settings-redaction.js",
     "check:prompts": "node scripts/check-prompt-templates.js",
@@ -81,7 +81,7 @@
     "check:capture-integrity": "node scripts/check-capture-integrity.js",
     "check:ocr-environment": "node scripts/check-ocr-environment.js",
     "check:ocr-runtime": "node scripts/check-vision-ocr-runtime.js",
-    "check:ocr-review": "node scripts/check-ocr-review.mjs && node scripts/check-ocr-review-gate.mjs",
+    "check:ocr-review": "node scripts/check-ocr-review.mjs && node scripts/check-ocr-review-gate.mjs && node scripts/check-prose-ocr-reconciliation.js",
     "check:ocr-languages": "node scripts/check-ocr-languages.js",
     "check:truncation": "node scripts/check-truncation-warning.js",
     "check:progress-feedback": "node scripts/check-truthful-progress.js",
@@ -139,7 +139,7 @@
     "check:release-artifacts": "node scripts/check-release-artifacts.js",
     "check:release-manifest": "node scripts/check-release-artifacts.js --manifest-only",
     "check:macos-metadata": "node scripts/check-macos-metadata.js",
-    "test": "npm run check:core && npm run check:electron-ui-fixture && npm run check:electron-ui-fixture-runtime && npm run check:startup-benchmark-mode && npm run check:renderer-startup-harness && npm run check:startup-evidence-harness && npm run check:startup-first-interaction && npm run check:capture-ingress-readiness && npm run check:first-run && npm run check:renderer-icons && npm run check:renderer-ipc-boundary && npm run check:renderer-lazy-boundaries && npm run check:renderer-lazy-file-runtime && npm run check:saved-terms-deferral-runtime && npm run check:result-stylesheet-deferral-runtime && npm run check:endpoint-boundary && npm run check:endpoint-location && npm run check:endpoint-validation-invariant && npm run check:custom-analysis-boundary && npm run check:ollama-analysis-boundary && npm run check:shortcut-readiness && npm run check:processing-recovery && npm run check:translation-fallback && npm run check:credential-exit && npm run check:credential-removal-dialog && npm run check:settings-transition-dialog && npm run check:settings-accessibility && npm run check:screen-reader-semantics && npm run check:reduced-motion && npm run check:contrast-preferences && npm run check:credential-visibility && npm run check:settings-load-recovery && npm run check:full-data-reset && npm run check:clear-undo && npm run check:manual-clipboard-read && npm run check:session-recovery && npm run check:action-progress && npm run check:task-closure && npm run check:background-task-status && npm run check:background-task-handoff && npm run check:task-cancellation && npm run check:quit-safety && npm run check:settings-menu && npm run check:modal-ownership && npm run check:settings-reset-dialog && npm run check:clipboard-quit-safety && npm run check:clipboard-monitor-consent && npm run check:clipboard-monitor-visibility && npm run check:clipboard-monitor-collisions && npm run check:active-capture-collisions && npm run check:foreground-capture-guard && npm run check:guided-reply-capture-ownership && npm run check:settings-capture-guard && npm run check:first-use-capture-intent && npm run check:clipboard-privacy && npm run check:clipboard-residue-risk && npm run check:reply-clipboard-lifecycle && npm run check:clipboard-exit-privacy && npm run check:source-actions && npm run check:provider-connection && npm run check:user-errors && npm run check:capture-integrity && npm run check:ocr-environment && npm run check:ocr-runtime && npm run check:ocr-review && npm run check:action-brief && npm run check:action-dependencies && npm run check:reply-progress-consistency && npm run check:action-brief-service && npm run check:renderer-evidence && npm run check:deadline-urgency && npm run check:action-progress && npm run check:task-closure && npm run check:verification && npm run check:storage-startup && npm run check:storage-privacy && npm run check:term-transfer && npm run check:saved-term-trust && npm run check:saved-term-removal && npm run check:build-identity && npm run check:file-provider-conflicts && npm run check:support-diagnostics && npm run check:login-item && npm run check:auto-update && npm run check:redaction && npm run check:prompts && npm run check:model-quality-benchmark && npm run check:long-text && npm run check:screenshot-shortcut && npm run check:ocr-languages && npm run check:truncation && npm run check:progress-feedback && npm run check:macos-metadata && npm run check:dev-dependency-security && npm run check:reading-pins && npm run check:reading-home && npm run check:apple-tool-retry",
+    "test": "npm run check:core && npm run check:electron-ui-fixture && npm run check:electron-ui-fixture-runtime && npm run check:startup-benchmark-mode && npm run check:renderer-startup-harness && npm run check:startup-evidence-harness && npm run check:startup-first-interaction && npm run check:capture-ingress-readiness && npm run check:first-run && npm run check:renderer-icons && npm run check:renderer-ipc-boundary && npm run check:renderer-lazy-boundaries && npm run check:renderer-lazy-file-runtime && npm run check:saved-terms-deferral-runtime && npm run check:result-stylesheet-deferral-runtime && npm run check:endpoint-boundary && npm run check:endpoint-location && npm run check:endpoint-validation-invariant && npm run check:custom-analysis-boundary && npm run check:ollama-analysis-boundary && npm run check:shortcut-readiness && npm run check:processing-recovery && npm run check:translation-fallback && npm run check:credential-exit && npm run check:credential-removal-dialog && npm run check:settings-transition-dialog && npm run check:settings-accessibility && npm run check:screen-reader-semantics && npm run check:reduced-motion && npm run check:contrast-preferences && npm run check:credential-visibility && npm run check:settings-load-recovery && npm run check:full-data-reset && npm run check:clear-undo && npm run check:manual-clipboard-read && npm run check:session-recovery && npm run check:action-progress && npm run check:task-closure && npm run check:background-task-status && npm run check:background-task-handoff && npm run check:task-cancellation && npm run check:quit-safety && npm run check:settings-menu && npm run check:modal-ownership && npm run check:settings-reset-dialog && npm run check:clipboard-quit-safety && npm run check:clipboard-monitor-consent && npm run check:clipboard-monitor-visibility && npm run check:clipboard-monitor-collisions && npm run check:active-capture-collisions && npm run check:foreground-capture-guard && npm run check:guided-reply-capture-ownership && npm run check:settings-capture-guard && npm run check:first-use-capture-intent && npm run check:clipboard-privacy && npm run check:clipboard-residue-risk && npm run check:reply-clipboard-lifecycle && npm run check:clipboard-exit-privacy && npm run check:source-actions && npm run check:provider-connection && npm run check:user-errors && npm run check:capture-integrity && npm run check:ocr-environment && npm run check:ocr-runtime && npm run check:ocr-startup && npm run check:ocr-review && npm run check:action-brief && npm run check:action-dependencies && npm run check:reply-progress-consistency && npm run check:action-brief-service && npm run check:renderer-evidence && npm run check:deadline-urgency && npm run check:action-progress && npm run check:task-closure && npm run check:verification && npm run check:storage-startup && npm run check:storage-privacy && npm run check:term-transfer && npm run check:saved-term-trust && npm run check:saved-term-removal && npm run check:build-identity && npm run check:file-provider-conflicts && npm run check:support-diagnostics && npm run check:login-item && npm run check:auto-update && npm run check:redaction && npm run check:prompts && npm run check:model-quality-benchmark && npm run check:long-text && npm run check:screenshot-shortcut && npm run check:ocr-languages && npm run check:truncation && npm run check:progress-feedback && npm run check:macos-metadata && npm run check:dev-dependency-security && npm run check:reading-pins && npm run check:reading-home && npm run check:apple-tool-retry && npm run check:window-policy && npm run check:term-library-layout && npm run check:reading-presentation",
     "check:release": "npm run check:package-config && npm run check:runtime-dependencies && npm run check:release-info && npm run check:release-artifacts && npm test && npm run lint && npm run check:history && npm run check:release-manifest",
     "check:signing": "node scripts/check-signing-readiness.js",
     "check:notarization-env": "node scripts/check-notarization-env.js",
@@ -147,24 +147,31 @@
     "diagnose:screen-permission": "electron scripts/check-screen-permission-runtime.js",
     "release:checksums": "node scripts/write-release-checksums.js",
     "format": "prettier --write 'src/**/*.{js,jsx,css,html}'",
-    "check:reading-pins": "node scripts/check-reading-service.js && node scripts/check-term-cards.js && electron scripts/check-reading-pins-native.js && electron scripts/check-term-library-native.js && npm run check:reading-math && npm run check:reading-preview-config && npm run check:reading-references",
-    "check:reading-math": "node scripts/check-reading-math.js && electron scripts/check-reading-math-native.js",
+    "check:reading-pins": "node scripts/check-reading-service.js && npm run check:reading-image && node scripts/check-term-cards.js && electron scripts/check-reading-term-aliases-native.js && electron scripts/check-reading-saved-card-native.js && electron scripts/check-reading-pins-native.js && electron scripts/check-term-library-native.js && npm run check:reading-math && npm run check:reading-preview-config && npm run check:reading-references",
+    "check:reading-math": "node scripts/check-reading-math.js && electron scripts/check-reading-math-native.js && electron scripts/check-formula-prose-order-native.js && electron scripts/check-prose-glyph-native.js",
     "build:reading-preview": "npm run build:renderer && node scripts/build-reading-preview.js",
-    "release:notarize-preview": "node scripts/notarize-reading-preview.js",
-    "check:preview-distribution": "node scripts/check-preview-distribution.js",
-    "check:preview-notarization": "node scripts/check-preview-notarization.js",
     "check:reading-preview-config": "node scripts/check-reading-preview-config.js",
     "check:reading-home": "npm run build:renderer && electron scripts/check-reading-home-native.js",
     "check:apple-tool-retry": "node scripts/check-apple-tool-retry.js",
     "build:windows": "npm run build:renderer && node scripts/build-windows.js",
     "check:windows": "node scripts/check-windows.js",
     "check:windows-ui": "node scripts/check-reading-home.js",
-    "check:reading-references": "node scripts/check-reading-references.js && electron scripts/check-reading-references-native.js && npm run check:reading-usability",
+    "check:reading-references": "node scripts/check-reading-references.js && electron scripts/check-reading-references-native.js && electron scripts/check-reading-capture-source-native.js && npm run check:reading-usability",
     "check:reading-usability": "electron scripts/check-reading-usability-native.js",
     "check:reading-references-live": "node scripts/check-reading-references-live.js",
     "setup:formula-models": "node scripts/setup-formula-models.js",
     "check:formula-ocr": "electron scripts/check-local-formula-ocr.js",
-    "check:formula-models": "node scripts/check-formula-models.js"
+    "check:formula-models": "node scripts/check-formula-models.js",
+    "check:ocr-startup": "node scripts/check-ocr-startup.js && electron scripts/check-ocr-startup-native.js",
+    "check:reading-image": "node scripts/check-reading-image.js && node scripts/check-capture-overlay.js",
+    "check:paired-release": "node scripts/check-paired-release.js",
+    "release:pair": "node scripts/paired-release.js",
+    "release:notarize-preview": "node scripts/notarize-reading-preview.js",
+    "check:preview-distribution": "node scripts/check-preview-distribution.js",
+    "check:preview-notarization": "node scripts/check-preview-notarization.js",
+    "check:reading-presentation": "npm run build:renderer && electron scripts/check-reading-presentation-native.js",
+    "check:window-policy": "electron scripts/check-window-policy-native.js && electron scripts/check-reading-window-handoff-native.js",
+    "check:term-library-layout": "electron scripts/check-term-library-layout-native.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
@@ -240,7 +247,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "signIgnore": "\\.pak$",
       "extendInfo": {
-        "NSScreenCaptureUsageDescription": "Slipstream 仅在你主动框选时读取该屏幕区域，并在本机完成截图与文字识别。 Slipstream only captures the region you select and runs OCR locally."
+        "NSScreenCaptureUsageDescription": "Slipstream 仅在你主动框选时读取选区。启用图片试读后，选区图片交给你配置的服务阅读。 Slipstream reads only your selected region. When image reading is enabled, the selection is sent to your configured service."
       },
       "notarize": false,
       "artifactName": "${productName}-${version}-${arch}.${ext}"
@@ -275,7 +282,7 @@
     "@phosphor-icons/react": "2.1.10",
     "@vitejs/plugin-react": "^6.0.3",
     "concurrently": "^8.2.0",
-    "electron": "^43.1.0",
+    "electron": "^43.7.6",
     "electron-builder": "^26.15.3",
     "eslint": "^8.50.0",
     "eslint-plugin-react": "^7.33.0",
