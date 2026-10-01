@@ -27,8 +27,8 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm run check:package-config
       - run: npm run setup:formula-models
-      - run: npm run check:formula-ocr
       - run: npm test
       - run: npm run lint
       - run: npm run build:renderer
       - run: xcrun swiftc -typecheck scripts/VisionOCR.swift
+      - run: npm run check:formula-ocr

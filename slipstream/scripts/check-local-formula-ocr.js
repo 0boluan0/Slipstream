@@ -19,14 +19,33 @@ const { createFormulaFixtures, createFormulaFixtureWindow } = require('./formula
 const compact = (value) => value.replace(/\s+/g, '');
 const results = [];
 let manager, service;
+const suiteStarted = Date.now();
+let currentStage = 'startup', stageStarted = suiteStarted;
+function stage(name) {
+  const now = Date.now();
+  console.log(JSON.stringify({ formulaOcrStage: name, elapsedMs: now - suiteStarted,
+    previousStage: currentStage, previousStageMs: now - stageStarted }));
+  currentStage = name; stageStarted = now;
+}
+async function readingOCR(file, options) {
+  stage(`ocr:${path.basename(file)}`);
+  const result = await service.performReadingOCR(file, options);
+  stage(`assert:${path.basename(file)}`);
+  return result;
+}
 // This authored image suite includes disputed-row rereads. The watchdog is
 // a suite limit, not a product recognition deadline.
-setTimeout(() => { console.error('Local formula OCR exceeded 240 seconds'); app.exit(1); }, 240000).unref();
+setTimeout(() => {
+  console.error(JSON.stringify({ error: 'Local formula OCR exceeded 240 seconds', currentStage,
+    stageMs: Date.now() - stageStarted, elapsedMs: Date.now() - suiteStarted }));
+  app.exit(1);
+}, 240000).unref();
 
 async function fixture(name, html, { width = 900, height = 360,
   bodyStyle = 'padding:30px;font:24px/1.6 Georgia;background:white;color:black' } = {}) {
   // Preserve the recorded fixture content: these case heights originally
   // included a 32px titlebar. Do not add whitespace when removing native chrome.
+  stage(`render:${name}`);
   const contentHeight = height - 32;
   const win = createFormulaFixtureWindow(width, contentHeight);
   const css = pathToFileURL(path.join(path.dirname(require.resolve('katex/package.json')), 'dist/katex.min.css')).href;
@@ -45,7 +64,9 @@ async function fixture(name, html, { width = 900, height = 360,
   assert.equal(png.readUInt32BE(16), width * 2, 'authored OCR input must keep its fixed 2x pixel width');
   assert.equal(png.readUInt32BE(20), contentHeight * 2, 'authored OCR input must keep its fixed pixel height');
   fs.writeFileSync(imagePath, png);
-  win.destroy(); return imagePath;
+  win.destroy();
+  stage(`source-check:${name}`);
+  return imagePath;
 }
 
 app.whenReady().then(async () => {
@@ -76,8 +97,10 @@ app.whenReady().then(async () => {
     'removing a preceding-line tail must preserve every other source pixel');
   assert.equal(removePriorLineInk(cleanedGeometry, { x: 0, y: 0, w: 120, h: 50 }), null,
     'a screenshot edge supplies no evidence of an outside glyph');
+  stage('shared-fixtures');
   const formulaFixtures = await createFormulaFixtures(work);
   const captureFixture = formulaFixtures.find(item => item.name === 'fraction').file;
+  stage('prepare-native-ocr');
   require('./prepare-ocr-test')(captureFixture);
   // The OCR path must work without credentials and without any HTTP request.
   const denyNetwork = () => { throw new Error('OCR attempted network access'); };
@@ -92,7 +115,7 @@ app.whenReady().then(async () => {
     + `<div>${math('1-\\alpha\\leq\\mathbb{P}(Y_{test}\\in C(X_{test}))\\leq1-\\alpha+\\frac{1}{n+1}', true)}</div>`
     + '<div>The resulting marginal coverage is an average property over random test points. See Figure 1 for examples.</div>',
     { width: 920, height: 282, bodyStyle: 'margin:0;padding:8px 46px;font:18px/1.32 Georgia,serif;background:white;color:#111' });
-  const weakAccentResult = await service.performReadingOCR(weakAccent);
+  const weakAccentResult = await readingOCR(weakAccent);
   assert.match(weakAccentResult.text, /Using\s+\$\\hat\{f\}\$\s+and/, 'a weak isolated accent in a wide screenshot must not silently become a plain letter');
   const accentText = await service.performOCR(weakAccent, { characters: true });
   const figureRow = accentText.blocks.find((block) => /Figure 1\b/u.test(block.text));
@@ -269,7 +292,7 @@ app.whenReady().then(async () => {
     </div>`,
     { width: 1492, height: 402,
       bodyStyle: 'margin:0;padding:18px 68px;font:26px/1.45 Georgia,serif;background:white;color:#111' });
-  const wideAlgorithmResult = await service.performReadingOCR(wideAlgorithm);
+  const wideAlgorithmResult = await readingOCR(wideAlgorithm);
   assert.match(wideAlgorithmResult.text, /\\tilde\s*\{?\s*q\s*\}?\s*_\s*\{?\s*i/u,
     'a wide algorithm excerpt must preserve the marked orthogonalized vector');
   assert.match(wideAlgorithmResult.text, /\\(?:Vert|\|)\s*\\tilde/u,
@@ -290,7 +313,7 @@ app.whenReady().then(async () => {
     + '<div>Third, revisit the original page whenever the explanation is unclear.</div>',
     { width: 1492, height: 402,
       bodyStyle: 'margin:0;padding:18px 68px;font:26px/1.45 Georgia,serif;background:white;color:#111' });
-  const wideProseResult = await service.performReadingOCR(wideProse);
+  const wideProseResult = await readingOCR(wideProse);
   assert.equal(wideProseResult.formulaOcr.count, 0,
     'the wide-crop fallback must not turn numbered prose into mathematics');
   results.push({ case: 'wide-numbered-prose', ...wideProseResult.formulaOcr });
@@ -300,7 +323,7 @@ app.whenReady().then(async () => {
       <div>In other words, we can form the zero vector as a linear combination of the vectors, with coefficients that are not all zero.</div>`,
     { width: 1692, height: 422,
       bodyStyle: 'margin:0;padding:18px 28px;font:26px/1.45 Georgia,serif;background:white;color:#111' });
-  const articleResult = await service.performReadingOCR(articleBesideMath);
+  const articleResult = await readingOCR(articleBesideMath);
   assert.match(articleResult.text, /zero vector as a linear combination/u,
     'an ordinary article beside a mathematical definition must remain prose');
   assert.doesNotMatch(articleResult.text, /\\(?:varepsilon|epsilon)/u,
@@ -338,7 +361,7 @@ app.whenReady().then(async () => {
   const authoredTuple = await fixture('parameter-tuple-delta',
     `<div>Concretely, S4 models are defined with four parameters ${math('(\\Delta,\\boldsymbol{A},\\boldsymbol{B},\\boldsymbol{C})')}, which define a sequence-to-sequence transformation.</div>`,
     { width: 1140, height: 145, bodyStyle: 'margin:0;padding:15px 28px;font:23px/1.4 Georgia,serif;background:white;color:#111' });
-  const authoredTupleResult = await service.performReadingOCR(authoredTuple);
+  const authoredTupleResult = await readingOCR(authoredTuple);
   assert.match(authoredTupleResult.text, /four parameters \$[^$]*\\Delta[^$]*\$|four parameters \(Δ,/u,
     'the reading text must keep Delta in the stated S4 parameter tuple');
   results.push({ case: 'authored-parameter-tuple-delta', ...authoredTupleResult.formulaOcr,
@@ -346,7 +369,7 @@ app.whenReady().then(async () => {
   const numericTuple = await fixture('parameter-tuple-numeric-control',
     `<div>For this example, the four parameters (4, A, B, C) define a sequence-to-sequence transformation.</div>`,
     { width: 1140, height: 125, bodyStyle: 'margin:0;padding:15px 28px;font:23px/1.4 Georgia,serif;background:white;color:#111' });
-  const numericTupleResult = await service.performReadingOCR(numericTuple);
+  const numericTupleResult = await readingOCR(numericTuple);
   assert.match(numericTupleResult.text, /four parameters\s+\(4, A, B, C\)/u,
     'a genuine numeric first tuple member must remain 4');
   assert.doesNotMatch(numericTupleResult.text, /\\Delta/u,
@@ -358,7 +381,7 @@ app.whenReady().then(async () => {
     + '<div>Using f and the calibration data, we construct a prediction set for a new observation.</div>'
     + '<div>The argument below explains why this set has marginal coverage over repeated samples.</div>',
     { width: 920, height: 282, bodyStyle: 'margin:0;padding:8px 46px;font:18px/1.32 Georgia,serif;background:white;color:#111' });
-  const plainLetterResult = await service.performReadingOCR(plainLetter);
+  const plainLetterResult = await readingOCR(plainLetter);
   assert.doesNotMatch(plainLetterResult.text, /\\hat\s*\{?f/u,
     'wide prose with a plain f must not acquire a mathematical accent');
   results.push({ case: 'wide-plain-letter-no-accent', ...plainLetterResult.formulaOcr,
@@ -392,7 +415,7 @@ app.whenReady().then(async () => {
   const plainDimensions = await fixture('plain-matrix-dimensions',
     `<div>Let ${math('W_0\\in\\mathbb{R}^{d\\times k}')} be the original matrix. Its update uses ${math('B\\in\\mathbb{R}^{d\\times r}')} and ${math('A\\in\\mathbb{R}^{r\\times k}')}.</div>`,
     { width: 1040, height: 175, bodyStyle: 'margin:0;padding:16px 28px;font:22px/1.45 Georgia,serif;background:white;color:#111' });
-  const plainDimensionsResult = await service.performReadingOCR(plainDimensions);
+  const plainDimensionsResult = await readingOCR(plainDimensions);
   const dimensionRanges = mathRanges(plainDimensionsResult.text);
   assert(dimensionRanges.length >= 1, 'self-authored matrix dimensions must reach formula review');
   for (const range of dimensionRanges.filter((item) => /\\(?:breve|vec|hat|tilde|bar)\s*\{?\s*k/u.test(item.tex))) {
@@ -402,7 +425,7 @@ app.whenReady().then(async () => {
   results.push({ case: 'authored-plain-matrix-dimensions', ...plainDimensionsResult.formulaOcr,
     text: plainDimensionsResult.text });
   for (const { name, file } of formulaFixtures) {
-    const result = await service.performReadingOCR(file);
+    const result = await readingOCR(file);
     assert.equal(result.formulaOcr.status, 'done', name);
     const tex = compact(result.text);
     if (name === 'fraction') { assert.match(tex, /\\(?:c)?frac/); assert.match(tex, /\\sqrt/); }
@@ -415,7 +438,7 @@ app.whenReady().then(async () => {
     String.raw`\begin{aligned}E &= \frac{1}{2}\sum_i (R_i - Y_i)^2 \\ &+ \frac{\lambda_Y}{2}\sum_i\parallel Y_i\parallel^2 + \frac{\lambda_Y}{2}\sum_j\parallel V_j\parallel^2 + \frac{\lambda_W}{2}\sum_k\parallel W_k\parallel^2\end{aligned}`,
     { displayMode: true, throwOnError: true }),
   { width: 830, height: 280, bodyStyle: 'margin:0;padding:36px;background:white' });
-  const mismatchResult = await service.performReadingOCR(authoredMismatch);
+  const mismatchResult = await readingOCR(authoredMismatch);
   assert.deepEqual(suspiciousRegularizerSubscript(mismatchResult.text),
     { coefficient: 'Y', variable: 'V' },
     'an intentionally printed coefficient mismatch must not be silently normalized by the focused recheck');
@@ -423,7 +446,7 @@ app.whenReady().then(async () => {
     text: mismatchResult.text });
   const matrix = await fixture('matrix', '<p>A symmetric matrix and a sample mean:</p>' + katex.renderToString(
     String.raw`A=\begin{pmatrix}a&b\\b&c\end{pmatrix},\qquad \bar{x}=\frac{1}{n}\sum_{i=1}^{n}x_i`, { displayMode: true }));
-  const matrixResult = await service.performReadingOCR(matrix);
+  const matrixResult = await readingOCR(matrix);
   const matrixTex = compact(matrixResult.text);
   assert.match(matrixTex.replace(/\{([abc])\}/g, '$1'), /\\begin\{[pb]?matrix\}a&b\\\\b&c/);
   assert.match(matrixTex, /\\frac\{1\}\{n\}/);
@@ -431,17 +454,17 @@ app.whenReady().then(async () => {
   results.push({ case: 'authored-matrix', ...matrixResult.formulaOcr, text: matrixResult.text });
   const derivatives = await fixture('derivatives', '<p>Time derivatives:</p>' + katex.renderToString(
     String.raw`\dot{x}(t)=v(t),\qquad \ddot{x}(t)=a(t)`, { displayMode: true }));
-  const derivativeResult = await service.performReadingOCR(derivatives);
+  const derivativeResult = await readingOCR(derivatives);
   assert.match(compact(derivativeResult.text), /\\dot\{x\}/, 'genuine derivative dots must survive cropping');
   assert.match(compact(derivativeResult.text), /\\ddot\{x\}/);
   results.push({ case: 'authored-derivatives', ...derivativeResult.formulaOcr, text: derivativeResult.text });
   const prose = await fixture('prose', '<p>Correlation does not imply causation.</p><p>The meeting starts on Friday. Bring the blue notebook.</p>');
-  const proseResult = await service.performReadingOCR(prose);
+  const proseResult = await readingOCR(prose);
   assert.equal(proseResult.formulaOcr.count, 0, 'ordinary prose must not acquire invented formulas');
   assert.match(proseResult.text, /Correlation does not imply causation/);
   results.push({ case: 'authored-prose', ...proseResult.formulaOcr });
   const ordinary = await fixture('ordinary-symbol-lookalikes', '<p>I read a paper and tested a model.</p><p>We report the 1st and 2nd estimates from 2024.</p>');
-  const ordinaryResult = await service.performReadingOCR(ordinary);
+  const ordinaryResult = await readingOCR(ordinary);
   assert.equal(ordinaryResult.formulaOcr.count, 0, 'articles, pronouns, ordinals and years must not acquire formulas');
   assert.match(ordinaryResult.text, /I read a paper/);
   results.push({ case: 'authored-ordinary-symbol-lookalikes', ...ordinaryResult.formulaOcr, text: ordinaryResult.text });
@@ -454,7 +477,7 @@ app.whenReady().then(async () => {
       '<div>The printed accent is part of this mathematical definition.</div>'
       + `<div>In this example, ${math(latex)} denotes a transformed value.</div>`,
       { width: 920, height: 180, bodyStyle: 'margin:0;padding:16px 28px;font:24px/1.4 Georgia;background:white;color:black' });
-    const result = await service.performReadingOCR(image);
+    const result = await readingOCR(image);
     assert.equal(mathRanges(result.text).length, 1, 'the accented expression must stay intact');
     assert.match(compact(mathRanges(result.text)[0].tex), expected,
       'real printed accents must survive the conditional-accent recheck');
@@ -471,6 +494,7 @@ app.whenReady().then(async () => {
       `${result.case}: an uncertain marker must point to a formula in the displayed source`);
   }
 
+  stage('missing-models-and-cancellation');
   const missing = createLocalFormulaOcr(path.join(work, 'missing-models'));
   await assert.rejects(missing.recognize(prose), { code: 'ENOENT' });
   await missing.cleanup();
@@ -482,6 +506,7 @@ app.whenReady().then(async () => {
   await assert.rejects(pending, (error) => error.isCancellation);
 
   if (pixelsOnly) {
+    stage('pixels-complete');
     fs.writeFileSync(path.join(work, 'results.json'), JSON.stringify(results, null, 2));
     console.log(JSON.stringify({ scope: 'offline pixels and cancellation; no reading-window acceptance', passed: results.map((item) => item.case), evidence: work }));
     return;
@@ -498,7 +523,9 @@ app.whenReady().then(async () => {
     processReadingText: async () => { providerCalls++; throw new Error('Unconfirmed formula reached translator'); },
     copyText() {}, saveTermCard() {},
   });
+  stage('capture-to-review');
   const captureResult = await manager.capture();
+  stage('review-ipc-ready');
   assert.equal(captureResult.pinned, true);
   const pin = BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Slipstream · 阅读卡片');
   assert(pin, 'capture must create its reading window');
@@ -512,7 +539,9 @@ app.whenReady().then(async () => {
   assert(state, 'reading card IPC must return state');
   assert.equal(state.phase, 'review'); assert.equal(state.formulaStatus, 'local'); assert.equal(state.imageSent, false);
   assert.equal(providerCalls, 0);
+  stage('review-fonts');
   await pin.webContents.executeJavaScript('document.fonts.ready');
+  stage('review-render-and-select');
   assert(await pin.webContents.executeJavaScript('document.querySelectorAll("#source-preview .katex").length >= 1'));
   assert(await pin.webContents.executeJavaScript('document.getElementById("formula-preview").open && !document.getElementById("source-correction").open'));
   await pin.webContents.executeJavaScript('document.querySelector("#source-preview > [role=button]").click()');
@@ -528,7 +557,9 @@ app.whenReady().then(async () => {
     const footer = document.querySelector('footer').getBoundingClientRect();
     return image.bottom <= editor.top && editor.top >= image.top && editor.top + 45 < footer.top;
   })()`), 'the reference screenshot must not cover the selected formula in the editor');
+  stage('review-screenshot');
   fs.writeFileSync(path.join(work, 'local-formula-review.png'), (await pin.webContents.capturePage()).toPNG());
+  stage('review-edit-and-compare');
   await pin.webContents.executeJavaScript(`(() => {
     const editor = document.getElementById('source-editor');
     editor.setRangeText('Q_0', editor.selectionStart, editor.selectionEnd, 'select');
@@ -540,5 +571,5 @@ app.whenReady().then(async () => {
   assert.equal(providerCalls, 0, 'editing and comparing must not send source text');
   fs.writeFileSync(path.join(work, 'results.json'), JSON.stringify(results, null, 2));
   console.log(JSON.stringify({ passed: results.map((item) => ({ case: item.case, status: item.status, count: item.count, elapsedMs: item.elapsedMs, milliseconds: item.milliseconds })), evidence: work }));
-}).then(async () => { manager?.dispose(); await service?.cleanup(); app.exit(0); })
+}).then(async () => { stage('cleanup'); manager?.dispose(); await service?.cleanup(); stage('complete'); app.exit(0); })
   .catch(async (error) => { console.error(error); manager?.dispose(); await service?.cleanup(); app.exit(1); });
