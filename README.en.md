@@ -10,7 +10,7 @@ Slipstream helps Chinese readers with English textbooks, papers and professional
 
 [Current preview: v1.3.0-preview.2](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0-preview.2)
 
-- [macOS 12+, Apple silicon DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Reading-Preview-1.3.0-preview.2-arm64.dmg): Developer ID signed, not notarized. Drag the app into Applications.
+- [macOS 12+, Apple silicon DMG](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Reading-Preview-1.3.0-preview.2-arm64.dmg): Developer ID signed and Apple notarized. Drag the app into Applications.
 - [Windows 11 x64 installer](https://github.com/0boluan0/Slipstream/releases/download/v1.3.0-preview.2/Slipstream-Windows-Preview-1.3.0-preview.2-x64-Setup.exe): unsigned; Windows may show a warning. See the [installation guide](./docs/windows-preview.md#下载与安装).
 
 Preview apps have separate identities. Checksums and build manifests accompany the installers. [macOS v1.2.1](https://github.com/0boluan0/Slipstream/releases/tag/v1.2.1) also provides Apple silicon and Intel builds with local text/formula recognition and review before translation.

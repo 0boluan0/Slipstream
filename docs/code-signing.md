@@ -1,6 +1,12 @@
 # Code signing policy
 
-Mac stable releases use Developer ID signing and Apple notarization. Mac reading previews use Developer ID signing and are not notarized. Windows previews are unsigned and may trigger SmartScreen or other installation restrictions. See the [installation guide](./windows-preview.md#下载与安装).
+Current Mac stable releases and reading previews use Developer ID signing and Apple notarization. Local preview builds must complete the distribution checks below before publication. Windows previews are unsigned and may trigger SmartScreen or other installation restrictions. See the [installation guide](./windows-preview.md#下载与安装).
+
+## Current preview verification
+
+On 2026-10-01, the Mac installer for [v1.3.0-preview.2](https://github.com/0boluan0/Slipstream/releases/tag/v1.3.0-preview.2) was repackaged with notarization tickets. Apple accepted both the application and DMG submissions. The final DMG and the application mounted from it passed signature, stapled-ticket and Gatekeeper checks. The original application's signed code hash and `app.asar` hash remained unchanged. The Windows installer was unchanged.
+
+The final Mac DMG SHA-256 is `676f02e1bb75d189fa5dd5d907628b3e3fef24ac95a0b016f62b7155b0b990bc`. Users who downloaded the earlier unnotarized DMG can download the current file from the same release. Historical previews retain their original release status.
 
 ## Notarize a reading-preview installer
 

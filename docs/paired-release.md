@@ -2,7 +2,7 @@
 
 阅读预览共用一个版本号、一个构建源码提交和一个发行页。Mac 为 Apple 芯片 DMG，Windows 为 x64 NSIS 安装包，均使用独立预览资料目录。
 
-Mac 预览使用 Developer ID 签名，未公证；Windows 安装包未签名。正式 Mac 更新渠道独立于预览。
+当前 Mac 预览使用 Developer ID 签名，应用与 DMG 均已通过 Apple 公证并附有票据；Windows 安装包未签名。正式 Mac 更新渠道独立于预览。
 
 ## 构建与配对
 
