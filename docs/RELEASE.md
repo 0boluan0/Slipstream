@@ -21,3 +21,9 @@ Release from a reviewed, clean commit with the intended package version. Run the
 Create the version tag from the build commit and attach the installer assets, update metadata and checksums. Release notes describe changes, installation and user-relevant limitations. Verify the actual uploaded assets and description after publication.
 
 Apple tools retry recognized temporary network failures. After a completed notarization upload, resume waiting on its submission ID instead of starting a duplicate upload. Permanent failures stop the release.
+
+## Runtime privacy
+
+- Clipboard monitoring remains off by default; enabling requires destination-specific confirmation, the active destination and off action stay visible on the main task surface and macOS menu, and a new copy cannot silently replace a task, draft, verification, or completed result. Only the latest waiting copy remains in renderer memory, the native menu receives no text, and processing it requires an explicit user action after active work settles. Closing discards the waiting copy, affects future copies without misrepresenting an active task as cancelled, and failed enable/disable writes preserve and explain the last confirmed state without leaving a second generic retry path.
+
+- Same-window interruption recovery remains bounded to temporary session storage, expires after 30 minutes, clears on restore/discard/explicit clear/window-session end, never becomes history or sync data, excludes settings drafts, secrets, clipboard authority, copy receipts, request/task/version identities, and full reply-model content, and never resumes tasks or official-lookup approvals automatically. An unsent reply may restore its bounded text, status, and selection, but any stale-checklist exception must be confirmed again and the restored reply must begin as not copied.
