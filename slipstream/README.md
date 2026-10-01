@@ -70,4 +70,6 @@ npm run build:reading-preview
 
 阅读版从 1.1.0 开始提供正式安装包，使用 `com.slipstream.app` 与既有应用内更新渠道。正式发布运行 `npm run release:signed`，核对两个架构的签名、公证、安装包、更新元数据和校验和后，再发布同一提交的版本标签。
 
+对外提供阅读预览 DMG 前，还须运行 `npm run release:notarize-preview` 和 `npm run check:preview-distribution`；命令参数与清单更新见[预览公证流程](../docs/code-signing.md#notarize-a-reading-preview-installer)。
+
 公证凭据可通过已验证的 Keychain profile 提供：设置 `APPLE_KEYCHAIN` 为钥匙串路径，`APPLE_KEYCHAIN_PROFILE` 为 profile 名称。凭据保留在本机钥匙串，不写入仓库。完整流程见[发布说明](../docs/RELEASE.md)。

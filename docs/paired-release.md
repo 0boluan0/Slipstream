@@ -9,7 +9,9 @@ Mac 预览使用 Developer ID 签名，未公证；Windows 安装包未签名。
 1. 从干净且可审查的提交冻结应用源码和版本，运行相关检查。
 2. Mac 运行 `npm run build:reading-preview -- --dmg`，Windows 运行 `npm run build:windows`。
 3. 将两份安装包及各自 `.manifest.json` 放入同一目录，运行 `npm run release:pair -- /absolute/path/to/directory`。
-4. 检查配对的版本、包内 `slipstreamSourceRevision`、文件大小与 SHA-256，再建立同版本发行页。
+4. 对 Mac DMG 运行 `npm run release:notarize-preview -- --input /absolute/path/original.dmg --output /absolute/path/notarized.dmg`，只使用公证成功后的输出。具体凭据与失败处理见[签名说明](./code-signing.md#notarize-a-reading-preview-installer)。
+5. 公证会改变安装包字节。用最终文件重新生成 Mac manifest、`release.json` 与 `SHA256SUMS.txt`；保留原版本号和包内源码提交。
+6. 上传前运行 `npm run check:preview-distribution -- /absolute/path/notarized.dmg`，并检查两端版本、包内 `slipstreamSourceRevision`、文件大小与 SHA-256。全部通过后再建立或更新同版本发行页。
 
 Windows 工作流只上传构建产物，不会单独发布版本。配对检查验证工程产物的一致性，实际操作与内容质量另行判断。
 
