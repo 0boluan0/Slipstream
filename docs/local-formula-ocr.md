@@ -6,6 +6,8 @@
 
 低分辨率截图，尤其是小字号公式与密集正文，可能漏掉符号或整行文字。建议先放大原文再框选，并对照原图核对；排版完整不代表识别准确。
 
+不同版本 macOS 的局部复读结果也可能不同。例如字母 O 与数字 0 的读数冲突，需要两个局部读数共同支持才会自动改正；证据不足时保留原读数，仍需读者核对。程序回归验证这项保守处理规则，并单独报告实际识别引擎是否成功消除歧义；两者不能互相替代。
+
 ## 实现与复现
 
 - [PP-DocLayoutV3 ONNX](https://huggingface.co/PaddlePaddle/PP-DocLayoutV3_onnx) 检测行内与独立公式，Apache 2.0；[Pix2Text MFR 1.5](https://huggingface.co/breezedeus/pix2text-mfr-1.5) 将公式图像转为 LaTeX，MIT。仅使用这两个专用组件。

@@ -199,18 +199,63 @@ app.whenReady().then(async () => {
   const mistakenRow = { ...zeroRow, text: zeroRow.text.slice(0, zeroIndex) + 'O' + zeroRow.text.slice(zeroIndex + 1),
     characters: zeroRow.characters.map((char, i) => i === zeroIndex ? { ...char, text: 'O' } : char) };
   const mistakenZero = { blocks: [mistakenRow] };
-  const correctedZero = await service.recheckAmbiguousProseZero(eigenvalueZero, mistakenZero,
-    { blocks: [zeroRow] }, work);
+  // Separate the conservative reconciliation contract from Vision's ability
+  // to corroborate this particular crop on every supported macOS version.
+  const strongZero = { blocks: [{ ...zeroRow, confidence: 1 }] };
+  const strongMistake = { blocks: [{ ...mistakenRow, confidence: 1 }] };
+  const confirmedCrops = [];
+  const correctedZero = await service.recheckAmbiguousProseZero(eigenvalueZero, strongMistake,
+    strongZero, work, { recognize: async (file) => {
+      assert(fs.existsSync(file), 'confirmation must receive an actual source-pixel crop');
+      confirmedCrops.push(file);
+      return { text: 'eigenvalue 0. Then', confidence: 1 };
+    } });
+  assert.equal(confirmedCrops.length, 2, 'both independently sized crops must confirm the digit');
+  assert.notEqual(confirmedCrops[0], confirmedCrops[1]);
+  assert.equal(correctedZero.blocks[0].text, zeroRow.text, 'only the disputed character may change');
   assert.match(correctedZero.blocks[0].text, /eigenvalue 0\. Then/u,
-    'two source-pixel crops must restore the numeric eigenvalue after masked OCR disagreement');
+    'two confident crop responses must restore the numeric eigenvalue after masked OCR disagreement');
   assert.deepEqual(correctedZero.verifiedGlyphConflicts, [{ source: 'O', alternative: '0' }],
     'the image-backed correction must remain visible for reader review');
-  assert.equal((await service.recheckAmbiguousProseZero(eigenvalueZero, mistakenZero,
-    { blocks: [] }, work)).blocks[0].text, mistakenRow.text,
+  assert.deepEqual(await service.recheckAmbiguousProseZero(eigenvalueZero, strongMistake,
+    { blocks: [] }, work), strongMistake,
   'a crop cannot change prose without a same-location masked candidate');
-  assert.equal((await service.recheckAmbiguousProseZero(eigenvalueZero, mistakenZero,
-    { blocks: [zeroRow] }, work, { recognize: async () => ({ text: 'eigenvalue O. Then', confidence: 1 }) })).blocks[0].text,
-  mistakenRow.text, 'a competing source-pixel reading cannot silently change the digit');
+  for (const response of [{ text: 'eigenvalue O. Then', confidence: 1 },
+    { text: 'eigenvalue 0. Then', confidence: .89 }]) {
+    assert.deepEqual(await service.recheckAmbiguousProseZero(eigenvalueZero, strongMistake,
+      strongZero, work, { recognize: async () => response }), strongMistake,
+    'a conflicting or weak crop must preserve the entire source without a verified flag');
+  }
+  let splitCropCalls = 0;
+  assert.deepEqual(await service.recheckAmbiguousProseZero(eigenvalueZero, strongMistake,
+    strongZero, work, { recognize: async () => ({
+      text: ++splitCropCalls === 1 ? 'eigenvalue 0. Then' : 'eigenvalue O. Then', confidence: 1,
+    }) }), strongMistake, 'one confirming crop cannot override a second conflicting crop');
+  assert.equal(splitCropCalls, 2);
+
+  const nativeCrops = [];
+  const nativeZero = await service.recheckAmbiguousProseZero(eigenvalueZero, mistakenZero,
+    { blocks: [zeroRow] }, work, { recognize: async (file, options) => {
+      const result = await service.performOCR(file, options);
+      nativeCrops.push({ crop: path.basename(file), readings: (result.blocks?.length ? result.blocks : [result])
+        .map(({ text, confidence }) => ({ text, confidence })) });
+      return result;
+    } });
+  const nativeCorroborated = nativeZero.blocks[0].text === zeroRow.text;
+  if (nativeCorroborated) {
+    assert.equal(nativeCrops.length, 2, 'a native correction requires both crop readings');
+    for (const crop of nativeCrops) assert(crop.readings.some(reading => reading.confidence >= .9
+      && /0\.\s+Then/u.test(reading.text)), 'a native correction requires confident source-pixel support');
+    assert.deepEqual(nativeZero.verifiedGlyphConflicts, [{ source: 'O', alternative: '0' }]);
+  } else {
+    assert.deepEqual(nativeZero, mistakenZero,
+      'inconclusive native corroboration must retain the injected source with no false verified flag');
+  }
+  const nativeEvidence = { case: 'eigenvalue-zero-corroboration', wholeImageReadZero: true,
+    originalConfidence: zeroRow.confidence, outcome: nativeCorroborated ? 'corroborated' : 'unresolved',
+    crops: nativeCrops };
+  fs.writeFileSync(path.join(work, 'native-corroboration.json'), JSON.stringify(nativeEvidence, null, 2));
+  console.log(JSON.stringify({ nativeOcrCorroboration: nativeEvidence }));
   results.push({ case: 'weak-inline-accent-wide-excerpt', ...weakAccentResult.formulaOcr,
     text: weakAccentResult.text });
   const wideAlgorithm = await fixture('wide-numbered-algorithm',
