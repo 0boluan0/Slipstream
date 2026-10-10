@@ -5717,7 +5717,7 @@ export default function FloatingPanel({
                   <span>
                     <strong>{LEGACY_WORKSPACE_DEMO ? '先用安全示例体验' : '数学试读'}</strong>
                     {readingStart ? <HelpTip label="阅读示例说明">
-                      特征向量与特征值，带公式的自拟英文。{READING_DEMO ? '点击“开始阅读”查看固定回复。' : '点击“开始阅读”才会发送。'}
+                      自拟特征向量短文。{READING_DEMO ? '点击“开始阅读”查看固定回复。' : '点击“开始阅读”才会发送。'}
                     </HelpTip> : <small>{LEGACY_WORKSPACE_DEMO ? '载入一封虚构英文邮件先看看效果；不会读取剪贴板，也不会自动处理。' : '特征向量与特征值 · 带公式的自拟英文，载入后再开始阅读。'}</small>}
                   </span>
                   <button type="button" onClick={handleLoadExample}>{LEGACY_WORKSPACE_DEMO ? '载入安全示例（不会生成）' : '载入数学试读'}</button>
