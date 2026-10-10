@@ -33,7 +33,7 @@ import SettingsTransitionDialog from './SettingsTransitionDialog';
 import constants from '../../shared/constants';
 import * as readingSetup from '../../shared/reading-setup.mjs';
 import readingSetupImage from '../../shared/reading-setup.png';
-import readingMath from '../../shared/reading-math.cjs';
+import * as readingMathModule from '../../shared/reading-math.cjs';
 import katex from 'katex';
 import { useIpc } from '@renderer-ipc';
 import {
@@ -281,6 +281,8 @@ function ShortcutKeycaps({ value }) {
 }
 
 function ReadingSampleText({ value }) {
+  // The shared parser publishes a browser global when Vite serves it unbundled.
+  const readingMath = readingMathModule.default || globalThis.readingMath;
   const pieces = [];
   let cursor = 0;
   for (const range of readingMath.mathRanges(value)) {
