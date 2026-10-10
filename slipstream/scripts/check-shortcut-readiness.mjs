@@ -102,7 +102,7 @@ const clipboardConflict = normalizeShortcutStatus({
 });
 assert.equal(clipboardConflict.allRegistered, false);
 assert.equal(clipboardConflict.hasKnownFailure, true);
-assert.match(describeShortcutReadiness(clipboardConflict).title, /剪贴板解释/);
+assert.match(describeShortcutReadiness(clipboardConflict).title, /复制文字阅读/);
 assert.match(describeShortcutReadiness(clipboardConflict).detail, /你仍可使用界面里的读取剪贴板和框选截图按钮/);
 assert.equal(shortcutFailureCode(new Error('shortcut-conflict:clipboardShortcut')), 'shortcut-conflict');
 assert.equal(shortcutFailureCode(new Error('shortcut-duplicate:screenshotShortcut')), 'shortcut-duplicate');

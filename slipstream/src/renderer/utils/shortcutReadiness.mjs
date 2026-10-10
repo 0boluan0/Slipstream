@@ -12,8 +12,8 @@ const SHORTCUT_DEFAULTS = Object.freeze({
 });
 
 const SHORTCUT_LABELS = Object.freeze({
-  clipboard: '剪贴板解释',
-  screenshot: '截图 OCR',
+  clipboard: '复制文字阅读',
+  screenshot: '截图阅读',
 });
 
 function safeAccelerator(value, fallback) {

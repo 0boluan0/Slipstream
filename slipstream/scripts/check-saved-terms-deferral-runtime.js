@@ -1075,7 +1075,7 @@ if (process.type === 'renderer') {
             const analyze = document.querySelector('.process-button');
             const harness = window.slipstreamSavedTermsHarness?.getSummary();
             return Boolean(
-              textarea?.value.startsWith('Correlation')
+              textarea?.value.startsWith('An eigenvector')
               && analyze
               && !analyze.disabled
               && document.activeElement === textarea
@@ -1094,7 +1094,7 @@ if (process.type === 'renderer') {
             const analyze = document.querySelector('.process-button');
             const harness = window.slipstreamSavedTermsHarness.getSummary();
             return {
-              sourceLoaded: textarea?.value.startsWith('Correlation') || false,
+              sourceLoaded: textarea?.value.startsWith('An eigenvector') || false,
               sourceFocused: document.activeElement === textarea,
               analyzeEnabled: Boolean(analyze && !analyze.disabled),
               termsReadStillPending: harness.pendingTermsGetRequest === 1,

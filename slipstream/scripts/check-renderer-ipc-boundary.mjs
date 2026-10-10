@@ -76,7 +76,7 @@ assert.match(demoPreviewData, /SAFE_SAMPLE_SOURCE_TEXT/u,
 const safeSampleSource = fs.readFileSync(safeSampleSourcePath, 'utf8');
 assert.match(safeSampleSource, /const SAFE_SAMPLE_SOURCE_TEXT = `Dear Student,/u,
   'the historical sample remains available for compatibility fixtures');
-assert.match(safeSampleSource, /const READING_SAMPLE_SOURCE_TEXT = `Correlation/u,
+assert.match(safeSampleSource, /const READING_SAMPLE_SOURCE_TEXT = READING_SETUP_SOURCE/u,
   'the reading sample must remain separate from the historical result fixture');
 
 const floatingPanelPath = path.join(rendererRoot, 'components', 'FloatingPanel.jsx');

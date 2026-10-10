@@ -714,7 +714,7 @@ function assertRuntimeProof(proof, networkTrap, expectedEvidenceDirectory) {
     'Saved Terms import completion must expose the outcome exactly once',
   );
   assertAx(proof.ax.setupBefore, 'main', null, 'setup');
-  assertAx(proof.ax.setupBefore, 'heading', '从下一段英文开始', 'setup');
+  assertAx(proof.ax.setupBefore, 'heading', '读懂数学论文中的这一小段', 'setup');
   assertAx(proof.ax.setupBefore, 'button', '先用基础翻译', 'setup');
   assertAx(proof.ax.setupAfter, 'main', null, 'capture handoff');
   assertAx(proof.ax.setupAfter, 'textbox', '要解释的完整原文', 'capture handoff');
