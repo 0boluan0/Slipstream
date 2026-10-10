@@ -46,7 +46,7 @@ function main() {
   assert.equal(diagnostics.system.architectureLabel, 'Apple 芯片（arm64）');
   assert.equal(diagnostics.screenRecording.status, 'denied');
   assert.equal(diagnostics.screenRecording.label, '未允许');
-  assert.equal(diagnostics.mode.label, '完整分析');
+  assert.equal(diagnostics.mode.label, '专业阅读');
   assert.equal(diagnostics.analysis.label, '在线 · OpenAI · gpt-4o-mini');
   assert.equal(diagnostics.analysis.processingLocation, 'online');
   assert.equal(diagnostics.savedTermCount, 3);
@@ -149,7 +149,7 @@ function main() {
   assert.equal(localCustom.analysis.backend, 'custom');
   assert.equal(localCustom.analysis.processingLocation, 'local-loopback');
   assert.equal(localCustom.analysis.label, '本机兼容服务 · 回环 · local-model');
-  assert.match(localCustom.summaryText, /分析方式：本机兼容服务 · 回环 · local-model/);
+  assert.match(localCustom.summaryText, /阅读服务：本机兼容服务 · 回环 · local-model/);
   assert.doesNotMatch(JSON.stringify(localCustom), /127\.42\.8\.9|8000|\/v1/);
 
   const remoteCustom = createSupportDiagnostics({

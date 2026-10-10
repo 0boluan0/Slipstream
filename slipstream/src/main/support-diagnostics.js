@@ -15,7 +15,7 @@ const ALLOWED_SCREEN_RECORDING_STATUSES = new Set([
 ]);
 
 const MODE_LABELS = Object.freeze({
-  full: '完整分析',
+  full: '专业阅读',
   'translation-only': '基础翻译',
   unconfigured: '尚未完成配置',
 });
@@ -216,10 +216,9 @@ function createSupportDiagnostics(input = {}) {
     `构建信任：${buildDescription.detail}`,
     `系统：${systemName} ${systemVersion} · ${architectureLabel}`,
     `功能模式：${diagnostics.mode.label}`,
-    `分析方式：${analysisLabel}`,
+    `阅读服务：${analysisLabel}`,
     `屏幕录制权限：${diagnostics.screenRecording.label}`,
     `剪贴板自动检测：${diagnostics.clipboardMonitoring ? '开启' : '关闭'}`,
-    `官方来源核验：${diagnostics.verification.label}`,
     `快捷键：剪贴板 ${displayShortcutAccelerator(clipboardShortcut)}（${clipboardRegistered === true ? '已启用' : clipboardRegistered === false ? '不可用' : '未确认'}） · 截图 ${displayShortcutAccelerator(screenshotShortcut)}（${screenshotRegistered === true ? '已启用' : screenshotRegistered === false ? '不可用' : '未确认'}）`,
     `已保存术语：${savedTermCount} 条（不包含术语内容）`,
     `生成时间：${generatedAt}`,

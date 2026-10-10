@@ -218,7 +218,7 @@ export default function ApiKeyInput({
       });
       return true;
     } catch {
-      setDeleteError(`${label} 删除未完成；凭据仍安全保存在这台 Mac，完整分析可能已暂停。请重试，或保留凭据后重新验证。`);
+      setDeleteError(`${label} 删除未完成；凭据仍安全保存在这台 Mac，专业阅读可能已暂停。请重试，或保留凭据后重新验证。`);
       return false;
     } finally {
       deleteInFlightRef.current = false;
@@ -385,7 +385,7 @@ export default function ApiKeyInput({
           error={deleteError}
           title={`删除 ${label}？`}
           busyTitle={`正在删除 ${label}`}
-          description="这会从这台 Mac 的加密设置中删除该凭据，无法撤销，并暂停完整分析。以后使用此在线服务时，需要重新输入并验证。"
+          description="这会从这台 Mac 的加密设置中删除该凭据，无法撤销，并暂停专业阅读。以后使用此在线服务时，需要重新输入并验证。"
           reassurance="当前原文、结果和其他设置都会保留；删除凭据不会向服务商发送请求。"
           cancelLabel="保留凭据"
           confirmLabel={`删除 ${label}`}
