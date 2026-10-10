@@ -104,6 +104,83 @@ async function run() {
       : JSON.stringify({ translation, terms: [], references: [] }))({ image, settingsSnapshot }), /reading-image-math-mismatch/u,
     'missing, duplicated, invented tokens and regenerated equations stay blocked');
   }
+  const recoverySource = 'Let $r=a+b$ denote the residual. The scale is $s=a-b$.';
+  const recoveredTranslation = '令 [[SLIPSTREAM_MATH_0]] 表示残差。尺度为 [[SLIPSTREAM_MATH_1]]。';
+  const restoredTranslation = '令 $r=a+b$ 表示残差。尺度为 $s=a-b$。';
+  const recoveryTerms = [{ quote: 'residual', label: '残差', role: 'core' }, { quote: 'scale', label: '尺度', role: 'core' }];
+  const recoveryReferences = [{ symbol: 'r', meaning: '残差', evidence: 'Let $r=a+b$ denote the residual.' }];
+  for (const translation of [
+    '[[SLIPSTREAM_MATH_0]] [[SLIPSTREAM_MATH_0]] [[SLIPSTREAM_MATH_1]]',
+    '[[SLIPSTREAM_MATH_0]] [[SLIPSTREAM_MATH_1]] [[SLIPSTREAM_MATH_2]]',
+    '[[SLIPSTREAM_MATH_1]]',
+  ]) {
+    step = 0; firstShown = false;
+    const responseStages = [], usageCalls = [];
+    const onUsage = value => usageCalls.push(value);
+    const recovered = await createImageReader(async (_s, _b, _m, prompt, content, _l, _selection, _signal, _structured, options) => {
+      step += 1;
+      assert.equal(options.onUsage, onUsage);
+      options.onUsage({ step });
+      if (step === 1) return JSON.stringify({ source: recoverySource, uncertain: [] });
+      if (step === 2) return JSON.stringify({ translation, terms: recoveryTerms, references: recoveryReferences });
+      if (step === 3) {
+        assert.deepEqual(JSON.parse(content), { excerpt: 'Let [[SLIPSTREAM_MATH_0]] denote the residual. The scale is [[SLIPSTREAM_MATH_1]].' });
+        assert.match(prompt, /opaque, indivisible mathematical expression/u);
+        assert.equal(options.timeoutMs, 12000); assert.equal(options.retries, 1);
+        return JSON.stringify({ translation: recoveredTranslation, terms: [], references: [] });
+      }
+      assert.equal(step, 4, 'one recovery followed only by the existing term review');
+      return '{"keep":[0,1]}';
+    })({ image, settingsSnapshot, onUsage, onResponse: (_raw, info) => responseStages.push(info.stage),
+      onTranslation: value => { firstShown = true; assert.equal(step, 3); assert.equal(value.translation, restoredTranslation); } });
+    assert.equal(recovered.translation, restoredTranslation); assert.equal(firstShown, true);
+    assert.deepEqual(recovered.terms.map(term => term.quote), ['residual', 'scale']);
+    assert.equal(recovered.references[0].symbol, 'r', 'recovery cannot replace original source-grounded references');
+    assert.deepEqual(responseStages, ['transcription', 'text', 'text', 'text']);
+    assert.equal(usageCalls.length, 4);
+  }
+  for (const repaired of [
+    null, 'x'.repeat(45001), '{"keep":[0]}', 'not JSON', JSON.stringify({ translation: 1 }), JSON.stringify({ translation: '' }),
+    JSON.stringify({ translation: 'x'.repeat(40001) }), JSON.stringify({ translation: '\t' + recoveredTranslation }),
+    JSON.stringify({ translation: recoveredTranslation }) + '\n\n⚠️ 注意：回复可能被截断，内容可能不完整。',
+    JSON.stringify({ translation: '[[SLIPSTREAM_MATH_0]] [[SLIPSTREAM_MATH_0]] [[SLIPSTREAM_MATH_1]]' }),
+    JSON.stringify({ translation: '[[SLIPSTREAM_MATH_1]] [[SLIPSTREAM_MATH_0]]' }),
+    JSON.stringify({ translation: '令 $r=a-b$ 表示残差。尺度为 $s=a-b$。' }),
+    JSON.stringify({ translation: recoveredTranslation + ' $z=1$' }),
+  ]) {
+    step = 0; firstShown = false;
+    await assert.rejects(createImageReader(async () => {
+      step += 1;
+      if (step === 1) return JSON.stringify({ source: recoverySource, uncertain: [] });
+      if (step === 2) return JSON.stringify({ translation: '[[SLIPSTREAM_MATH_1]]', terms: recoveryTerms });
+      assert.equal(step, 3, 'a failed recovery cannot retry again'); return repaired;
+    })({ image, settingsSnapshot, onTranslation: () => { firstShown = true; } }), /reading-image-math-mismatch/u);
+    assert.equal(step, 3); assert.equal(firstShown, false);
+  }
+  step = 0;
+  const duringRecovery = new AbortController();
+  await assert.rejects(createImageReader(async () => {
+    if (++step === 1) return JSON.stringify({ source: recoverySource, uncertain: [] });
+    if (step === 2) return JSON.stringify({ translation: '[[SLIPSTREAM_MATH_1]]', terms: [] });
+    duringRecovery.abort(); return JSON.stringify({ translation: recoveredTranslation });
+  })({ image, settingsSnapshot, signal: duringRecovery.signal }), /reading-cancelled/u);
+  assert.equal(step, 3);
+  step = 0;
+  const recoveryNetworkError = new Error('provider-unavailable');
+  await assert.rejects(createImageReader(async () => {
+    if (++step === 1) return JSON.stringify({ source: recoverySource, uncertain: [] });
+    if (step === 2) return JSON.stringify({ translation: '[[SLIPSTREAM_MATH_1]]', terms: [] });
+    throw recoveryNetworkError;
+  })({ image, settingsSnapshot }), error => error === recoveryNetworkError);
+  assert.equal(step, 3, 'network failure stays actionable without more attempts');
+  step = 0; firstShown = false;
+  await assert.rejects(createImageReader(async () => {
+    if (++step === 1) return JSON.stringify({ source: recoverySource, uncertain: [] });
+    if (step === 2) return JSON.stringify({ translation: recoveredTranslation + ' $z=1$', terms: recoveryTerms });
+    assert.equal(step, 3, 'extra raw math is blocked by image validation, not sent for recovery');
+    return '{"keep":[0,1]}';
+  })({ image, settingsSnapshot, onTranslation: () => { firstShown = true; } }), /reading-image-math-mismatch/u);
+  assert.equal(firstShown, false);
   console.log('image reading transport, cancellation, formula integrity and term review checks passed');
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });
