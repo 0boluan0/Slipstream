@@ -4,7 +4,7 @@
 
 **Select the part that stops you, understand it, and keep reading.**
 
-Slipstream helps Chinese readers with English textbooks, papers and professional articles. Select a word, short passage, formula or small image region to see Chinese beside the source, then request a contextual explanation when needed. Useful concepts can be saved as local Markdown cards.
+Slipstream helps Chinese readers with English mathematics papers and textbooks. Select a word, short passage, formula or small image region to see Chinese beside the source, then request a contextual explanation when needed. Useful concepts can be saved as local Markdown cards.
 
 ## Download
 
