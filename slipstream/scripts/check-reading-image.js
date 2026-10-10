@@ -23,6 +23,21 @@ async function run() {
     'independent display formulas remain separate when prose moves');
   assert.equal(sameMath('$x_i \\text{ are raw input vectors}$', '$x_i \\text{ 是原始输入向量}$'), true);
   assert.equal(sameMath('$x$ then $y$.', '$y$，然后 $x$。'), true);
+  const separateLabels = 'Probability $q$    $a$';
+  assert.equal(sameMath(separateLabels, '以概率$q$出现，权重$a$'), true,
+    'independent adjacent labels remain intact when translated prose separates them');
+  for (const translation of ['以概率$q$出现，权重$b$', '以概率$q$出现',
+    '以概率$q$出现，权重$a$，另有$a$', '以概率$q$出现，权重$a$，另有$z$']) {
+    assert.equal(sameMath(separateLabels, translation), false, 'label identity and multiplicity remain exact');
+  }
+  assert.equal(sameMath('$q$ $q$ $a$', '$q$ 和 $a$'), false, 'repeated source labels cannot disappear');
+  assert.equal(sameMath('$x+y$ $a$', '$x-y$ 和 $a$'), false, 'prose changes cannot hide a sign change');
+  let labelStep = 0;
+  const labelResult = await createImageReader(async () => ++labelStep === 1
+    ? JSON.stringify({ source: separateLabels, uncertain: [] })
+    : JSON.stringify({ translation: '以概率[[SLIPSTREAM_MATH_0]]出现，权重[[SLIPSTREAM_MATH_1]]', terms: [] }))({ image, settingsSnapshot });
+  assert.equal(labelResult.translation, '以概率$q$出现，权重$a$');
+  assert.equal(labelStep, 2, 'intact adjacent labels need no additional translation request');
   assert.throws(() => validateReadingImage('data:image/png;base64,aGVsbG8='), /reading-invalid-image/u);
   let calls = 0;
   const read = createImageReader(async (_settings, backend, model, _prompt, content) => {

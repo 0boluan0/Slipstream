@@ -13,11 +13,11 @@ function sameMath(source, translation) {
   if (ordinalValues.some(value => !translatedOrdinals.includes(value))) return false;
   // Natural-language annotations may be translated inside \text{}. Keep
   // identifiers/operator names and every mathematical token in the comparison.
-  const expressions = text => {
+  const expressions = (text, mergeAdjacent = false) => {
     const ranges = [];
     for (const range of mathRanges(text)) {
       const previous = ranges.at(-1);
-      if (previous && !previous.display && !range.display
+      if (mergeAdjacent && previous && !previous.display && !range.display
         && /^\s*$/u.test(text.slice(previous.end, range.start))) {
         previous.tex += ' ' + range.tex; previous.end = range.end;
       } else ranges.push({ ...range });
@@ -37,7 +37,9 @@ function sameMath(source, translation) {
     return mathematical ? [mathematical] : [];
     }).sort();
   };
-  return JSON.stringify(expressions(source)) === JSON.stringify(expressions(translation));
+  // Separate labels may gain prose between them; merge only for split formulas.
+  return JSON.stringify(expressions(source)) === JSON.stringify(expressions(translation))
+    || JSON.stringify(expressions(source, true)) === JSON.stringify(expressions(translation, true));
 }
 
 function imageReadingAvailable(settings) {
