@@ -174,6 +174,8 @@ app.whenReady().then(async () => {
   assert.equal(await js('document.querySelector("textarea").value'), '', 'accepted text transfers into the independent card');
   await pin.webContents.executeJavaScript('document.querySelector(".term-chip").click()');
   await until(async () => (await stateOf(pin)).lookupStatus === 'done', 'contextual term explanation');
+  assert(await pin.webContents.executeJavaScript('Boolean(document.querySelector("#reading-content .katex"))'), 'the reading card renders mathematical notation');
+  assert(await pin.webContents.executeJavaScript('Boolean(document.querySelector("#lookup-note .katex"))'), 'the concept explanation renders mathematical notation');
   assert(await pin.webContents.executeJavaScript('document.getElementById("save-term").getBoundingClientRect().bottom <= document.querySelector("footer").getBoundingClientRect().top'), 'save stays visible in a compact reading card');
   pin.setSize(460, 660);
   await shot(pin, '03-reading-concept.png');
