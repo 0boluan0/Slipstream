@@ -38,6 +38,16 @@ async function run() {
     : JSON.stringify({ translation: '以概率[[SLIPSTREAM_MATH_0]]出现，权重[[SLIPSTREAM_MATH_1]]', terms: [] }))({ image, settingsSnapshot });
   assert.equal(labelResult.translation, '以概率$q$出现，权重$a$');
   assert.equal(labelStep, 2, 'intact adjacent labels need no additional translation request');
+  const splitDifference = 'The difference is $x$ $-$ $y$.';
+  assert.equal(sameMath(splitDifference, '差为 $y$ $-$ $x$。'), false,
+    'the order of adjacent fragments remains part of a formula');
+  let differenceStep = 0, differenceShown = false;
+  await assert.rejects(createImageReader(async () => ++differenceStep === 1
+    ? JSON.stringify({ source: splitDifference, uncertain: [] })
+    : JSON.stringify({ translation: '差为 [[SLIPSTREAM_MATH_2]] [[SLIPSTREAM_MATH_1]] [[SLIPSTREAM_MATH_0]]。', terms: [] }))({
+    image, settingsSnapshot, onTranslation: () => { differenceShown = true; },
+  }), /reading-image-math-mismatch/u);
+  assert.equal(differenceStep, 2); assert.equal(differenceShown, false);
   assert.throws(() => validateReadingImage('data:image/png;base64,aGVsbG8='), /reading-invalid-image/u);
   let calls = 0;
   const read = createImageReader(async (_settings, backend, model, _prompt, content) => {

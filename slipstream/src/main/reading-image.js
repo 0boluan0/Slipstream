@@ -22,7 +22,7 @@ function sameMath(source, translation) {
         previous.tex += ' ' + range.tex; previous.end = range.end;
       } else ranges.push({ ...range });
     }
-    return ranges.flatMap(range => {
+    const values = ranges.flatMap(range => {
     const tex = range.tex.trim();
     if (/^\d+\^\{(?:st|nd|rd|th)\}$/u.test(tex)) return [];
     if (ordinalValues.includes(tex) && /第\s*$/u.test(text.slice(0, range.start))
@@ -35,7 +35,8 @@ function sameMath(source, translation) {
       return prose ? '' : whole;
     }).replace(/\s+/gu, '');
     return mathematical ? [mathematical] : [];
-    }).sort();
+    });
+    return mergeAdjacent ? values.sort() : values;
   };
   // Separate labels may gain prose between them; merge only for split formulas.
   return JSON.stringify(expressions(source)) === JSON.stringify(expressions(translation))
