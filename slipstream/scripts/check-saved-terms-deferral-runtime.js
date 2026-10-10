@@ -1062,7 +1062,7 @@ if (process.type === 'renderer') {
         await window.webContents.executeJavaScript(`
           (() => {
             const sampleButton = [...document.querySelectorAll('button')]
-              .find((button) => button.textContent.includes('载入阅读示例'));
+              .find((button) => button.textContent.includes('载入数学试读'));
             if (!sampleButton) throw new Error('Saved Terms startup sample action is unavailable');
             sampleButton.click();
             return true;
