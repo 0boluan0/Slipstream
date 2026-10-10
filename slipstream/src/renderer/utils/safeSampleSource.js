@@ -1,3 +1,5 @@
+import { READING_SETUP_SOURCE } from '../../shared/reading-setup.mjs';
+
 const SAFE_SAMPLE_SOURCE_TEXT = `Dear Student,
 
 Please submit copies of the following identity documents to verify your record:
@@ -14,8 +16,6 @@ All items must be received within two days of this email.
 Best regards,
 University Services`;
 
-const READING_SAMPLE_SOURCE_TEXT = `Correlation does not imply causation. An observed association between two variables may be explained by a common cause.
-
-A confounder influences both a treatment and an outcome. This can create an association even when the treatment has no causal effect.`;
+const READING_SAMPLE_SOURCE_TEXT = READING_SETUP_SOURCE;
 
 export { SAFE_SAMPLE_SOURCE_TEXT, READING_SAMPLE_SOURCE_TEXT };

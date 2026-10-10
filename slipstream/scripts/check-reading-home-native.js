@@ -65,17 +65,16 @@ app.whenReady().then(async () => {
     providerCalls += 1;
     const input = JSON.parse(args[4]);
     if (input.candidates) return JSON.stringify({ keep: input.candidates.map((_term, index) => index) });
-    if (input.selection === 'confounder') return JSON.stringify({ quote: input.selection,
-      meaning: '混杂变量是同时影响处理与结果的变量。', note: '本段用它说明关联不一定意味着因果效应。' });
     if (input.selection) return JSON.stringify({ quote: input.selection,
-      meaning: '相关关系描述两个变量在统计上一起变化的程度，不能单凭这种共同变化判断因果。',
-      note: '这段指出，共同原因也可能让两个变量一起变化。' });
-    const second = input.excerpt.includes('confounder');
-    return JSON.stringify({ translation: second
-      ? '混杂变量同时影响处理与结果，因此即使处理没有因果效应，也可能观察到关联。'
-      : '相关关系并不意味着因果关系。两个变量之间观察到的关联，可能由一个共同原因来解释。',
-    terms: second ? [{ quote: 'confounder', label: '混杂变量', role: 'core' }, { quote: 'causal effect', label: '因果效应', role: 'core' }]
-      : [{ quote: 'Correlation', label: '相关关系', role: 'core' }, { quote: 'causation', label: '因果关系', role: 'core' }] });
+      meaning: input.selection === 'eigenvalue'
+        ? '矩阵作用于特征向量时对应的标量倍数。'
+        : '特征向量是被矩阵作用后等于自身某个标量倍数的非零向量。',
+      note: '本段用 $Av = 2v$ 说明对应的特征值是 $2$。' });
+    const first = input.excerpt.startsWith('An eigenvector');
+    return JSON.stringify({ translation: first
+      ? String.raw`矩阵 $A$ 的特征向量是满足 $Av = \lambda v$ 的非零向量 $v$，其中 $\lambda$ 是某个标量。`
+      : String.raw`标量 $\lambda$ 称为与 $v$ 对应的特征值。例如，若 $Av = 2v$，则 $v$ 是特征值为 $2$ 的特征向量。`,
+    terms: [{ quote: 'eigenvector', label: '特征向量', role: 'core' }, { quote: 'eigenvalue', label: '特征值', role: 'core' }] });
   });
   pins = createReadingPins({ BrowserWindow, ipcMain, screen, getSettings: () => settings, getMainWindow: () => main,
     referenceStore: createReadingReferenceStore(path.join(work, 'references')),
@@ -106,8 +105,8 @@ app.whenReady().then(async () => {
         assert.match(image, /^data:image\/png;base64,/);
         assert.equal(settingsSnapshot.activeModel, settings.activeModel);
         if (rejectSetupTrial) throw new Error('reading-invalid-output');
-        return { text: `${require('../src/shared/reading-setup.mjs').READING_SETUP_SOURCE} In this sample, n = 12.`,
-          translation: '混杂变量同时影响处理与结果，即使处理没有因果效应也可能观察到关联。样本中 n = 12。',
+        return { text: require('../src/shared/reading-setup.mjs').READING_SETUP_SOURCE,
+          translation: String.raw`矩阵 $A$ 的特征向量是满足 $Av = \lambda v$ 的非零向量 $v$。例如 $Av = 2v$ 对应特征值 $2$。`,
           terms: [], references: [], uncertain: [] };
       },
       processReadingText: rejectSetupTrial
@@ -152,14 +151,14 @@ app.whenReady().then(async () => {
   }
   await shot(main, '02-reading-home.png');
   await js('document.querySelector(".capture-sample > button").click()');
-  assert.match(await js('document.querySelector("textarea").value'), /Correlation/);
+  assert.match(await js('document.querySelector("textarea").value'), /eigenvector/);
   assert.equal(providerCalls, 0, 'loading an example must not request a model');
   assert.equal(pins.openText('').success, false);
   assert.equal(pins.openText('x'.repeat(10001)).success, false);
   rejectTextHandoff = true;
   await js('document.querySelector(".process-button").click()');
   await until(() => js('Boolean(document.querySelector("#processing-error-card"))'), 'handoff failure');
-  assert.match(await js('document.querySelector("textarea").value'), /Correlation/, 'failed handoff retains the source');
+  assert.match(await js('document.querySelector("textarea").value'), /eigenvector/, 'failed handoff retains the source');
   assert.equal(providerCalls, 0);
   rejectTextHandoff = false;
   await js('document.querySelector(".process-button").click()');
@@ -184,7 +183,7 @@ app.whenReady().then(async () => {
   await js(`document.querySelector('[aria-label="打开本地术语卡片盒"]').click()`);
   await until(() => BrowserWindow.getAllWindows().length === 2, 'local card box');
   const box = BrowserWindow.getAllWindows().find(window => window !== main);
-  await until(() => box.webContents.executeJavaScript('document.body.textContent.includes("Correlation")'), 'saved card visible');
+  await until(() => box.webContents.executeJavaScript('document.body.textContent.includes("eigenvector")'), 'saved card visible');
   await shot(box, '04-reading-card-box.png');
   assert.equal((await store.list()).cards.length, 1);
   library.dispose();
@@ -215,7 +214,10 @@ app.whenReady().then(async () => {
   await js('document.querySelector(".provider-connection-test-button").click()');
   await until(() => js('Boolean(document.querySelector(".reading-setup-sample"))'), 'actual reading result through main IPC and renderer');
   assert.equal(settings.setupMode, 'unconfigured', 'a completed trial must wait for explicit activation');
-  assert(await js('document.querySelector(".reading-setup-sample").textContent.includes("混杂变量是同时影响处理与结果的变量")'));
+  assert(await js('document.querySelector(".reading-setup-sample").textContent.includes("特征向量是被矩阵作用后等于自身某个标量倍数的非零向量")'));
+  assert(await js('Boolean(document.querySelector(".reading-setup-sample .katex"))'), 'the actual setup result renders mathematics');
+  assert.equal(await js('Boolean(document.querySelector("#custom-prompt-input, .verification-policy"))'), false, 'reading settings omit unused legacy analysis controls');
+  assert(await js('Boolean(document.querySelector("#clipboard-monitoring-description"))'), 'reading settings retain clipboard privacy controls');
   await shot(main, '07-reading-setup-result.png');
 
   rejectSetupTrial = true;

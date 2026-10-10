@@ -33,6 +33,8 @@ import SettingsTransitionDialog from './SettingsTransitionDialog';
 import constants from '../../shared/constants';
 import * as readingSetup from '../../shared/reading-setup.mjs';
 import readingSetupImage from '../../shared/reading-setup.png';
+import readingMath from '../../shared/reading-math.cjs';
+import katex from 'katex';
 import { useIpc } from '@renderer-ipc';
 import {
   ANALYSIS_LOCATIONS,
@@ -278,6 +280,21 @@ function ShortcutKeycaps({ value }) {
   );
 }
 
+function ReadingSampleText({ value }) {
+  const pieces = [];
+  let cursor = 0;
+  for (const range of readingMath.mathRanges(value)) {
+    pieces.push(value.slice(cursor, range.start));
+    pieces.push(<span key={range.start} dangerouslySetInnerHTML={{ __html: katex.renderToString(range.tex, {
+      displayMode: range.display, throwOnError: false, trust: false,
+      strict: 'ignore', maxExpand: 500, maxSize: 10, output: 'htmlAndMathml',
+    }) }} />);
+    cursor = range.end;
+  }
+  pieces.push(value.slice(cursor));
+  return <p style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{pieces}</p>;
+}
+
 export default function SettingsPanel({
   onClose,
   onSetupComplete,
@@ -298,6 +315,7 @@ export default function SettingsPanel({
   onDismissClipboardNotice,
   onResetAllData,
   settingsController,
+  legacyWorkspace = false,
 }) {
   const { invoke, platform } = useIpc();
   const {
@@ -1529,7 +1547,7 @@ export default function SettingsPanel({
 
   const handleShortcutChange = useCallback(async (key, value, { restoreFocus = false } = {}) => {
     const kind = key === 'clipboardShortcut' ? 'clipboard' : 'screenshot';
-    const label = kind === 'clipboard' ? '剪贴板解释' : '截图 OCR';
+    const label = kind === 'clipboard' ? '复制文字阅读' : '截图阅读';
     const validation = analyzeShortcutAccelerator(value);
     const previousValue = settings[key];
     const previousDisplay = displayShortcutAccelerator(previousValue);
@@ -1570,7 +1588,7 @@ export default function SettingsPanel({
         const previousState = code === 'shortcut-restore-failed' || currentStatus.registered === false
           ? `原来的 ${previousDisplay} 也仍不可用；界面按钮可以继续使用。`
           : `Slipstream 已恢复并继续使用 ${previousDisplay}。`;
-        const otherLabel = kind === 'clipboard' ? '截图 OCR' : '剪贴板解释';
+        const otherLabel = kind === 'clipboard' ? '截图阅读' : '复制文字阅读';
         const message = code === 'shortcut-duplicate'
           ? `${nextDisplay} 已用于${otherLabel}；两个功能需要不同的组合。${previousState}`
           : code === 'shortcut-invalid'
@@ -1643,7 +1661,7 @@ export default function SettingsPanel({
 
     const otherKey = key === 'clipboardShortcut' ? 'screenshotShortcut' : 'clipboardShortcut';
     if (sameShortcutAccelerator(result.accelerator, settings[otherKey])) {
-      const otherLabel = otherKey === 'clipboardShortcut' ? '剪贴板解释' : '截图 OCR';
+      const otherLabel = otherKey === 'clipboardShortcut' ? '复制文字阅读' : '截图阅读';
       setShortcutNotice({
         status: 'error',
         key,
@@ -1954,7 +1972,7 @@ export default function SettingsPanel({
             {settings.activeBackend === LLM_BACKENDS.OLLAMA && (
               <div className="selected-analysis-path" role="status">
                 <HardDrives size={20} />
-                <span><strong>本地路径 · Ollama</strong><small>需要 Ollama 已安装、正在运行，并已下载一个可用模型。官方来源查询仍按下方策略单独处理。</small></span>
+                <span><strong>本地路径 · Ollama</strong><small>需要 Ollama 已安装、正在运行，并已下载支持图片的可用模型。</small></span>
               </div>
             )}
 
@@ -2209,11 +2227,11 @@ export default function SettingsPanel({
                 {isCurrentConnectionReady
                   ? settings.setupMode === SETUP_MODES.FULL
                     ? '重新验证会检查当前连接与模型能力，不会改变已经启用的功能模式。'
-                    : '用当前模型翻译一段自拟教材文字，再解释其中的 confounder（混杂变量）。完成后可以直接查看效果。'
+                    : '用当前模型试读一段含公式的自拟数学文字，再解释其中的 eigenvector（特征向量）。完成后可以直接查看效果。'
                   : '完成上方必需信息后，才能测试当前服务与模型。'}
               </p>
               <small className="provider-connection-privacy">
-                {platform === 'darwin' ? '只发送内置试读图片，再解释其中的 confounder（混杂变量）。' : '只发送内置英文段落，再解释其中的 confounder（混杂变量）。'}
+                {platform === 'darwin' || platform === 'win32' ? '只发送内置试读图片，再解释其中的 eigenvector（特征向量）。' : '只发送内置英文段落，再解释其中的 eigenvector（特征向量）。'}
                 试读使用你选择的服务和 API Key。{providerConnectionTestRiskCopy}
               </small>
               <button
@@ -2294,13 +2312,13 @@ export default function SettingsPanel({
                     <section className="reading-setup-sample" aria-label="当前模型试读结果">
                       <details>
                         <summary>查看试读图片</summary>
-                        <img src={readingSetupImage} alt="内置英文试读图片：混杂变量同时影响处理与结果，样本中 n 等于 12。" style={{ width: '100%', display: 'block', marginTop: 8 }} />
+                        <img src={readingSetupImage} alt="自拟数学试读：非零向量 v 满足 Av = λv；例子 Av = 2v 中的特征值是 2。" style={{ width: '100%', display: 'block', marginTop: 8 }} />
                       </details>
                       <h3>中文译文</h3>
-                      <p>{connectionTest.sample.translation}</p>
+                      <ReadingSampleText value={connectionTest.sample.translation} />
                       <h3>术语解释 · {readingSetup.READING_SETUP_SELECTION}</h3>
-                      <p>{connectionTest.sample.meaning}</p>
-                      {connectionTest.sample.note && <p><strong>在本段中：</strong>{connectionTest.sample.note}</p>}
+                      <ReadingSampleText value={connectionTest.sample.meaning} />
+                      {connectionTest.sample.note && <ReadingSampleText value={`在本段中：${connectionTest.sample.note}`} />}
                       <small>以上是当前模型的实际输出。本次试读确认服务可用，具体内容仍需结合原文判断。</small>
                     </section>
                   )}
@@ -2403,7 +2421,7 @@ export default function SettingsPanel({
             {/* Language hint */}
             <LanguageToggle />
 
-            <details className="secondary-settings__advanced">
+            {legacyWorkspace && <details className="secondary-settings__advanced">
               <summary className="secondary-settings__advanced-summary">
                 高级分析说明（可选）
               </summary>
@@ -2419,7 +2437,7 @@ export default function SettingsPanel({
                   retryReceipt={saveRetryReceipt}
                 />
               </div>
-            </details>
+            </details>}
 
         {/* Behavior toggles */}
         <div style={sectionTitleStyle}>行为</div>
@@ -2528,7 +2546,7 @@ export default function SettingsPanel({
           )}
         </div>
 
-        <div style={sectionTitleStyle}>官方来源核验</div>
+        {legacyWorkspace && <><div style={sectionTitleStyle}>官方来源核验</div>
         <div
           className="verification-policy"
           role="radiogroup"
@@ -2556,7 +2574,7 @@ export default function SettingsPanel({
               </button>
             );
           })}
-        </div>
+        </div></>}
 
             <section ref={shortcutSettingsRef} className="shortcut-settings" aria-labelledby="shortcut-settings-title">
               <div id="shortcut-settings-title" style={sectionTitleStyle}>快捷键</div>
@@ -2565,7 +2583,7 @@ export default function SettingsPanel({
               </p>
 
               <div className="shortcut-setting">
-                <label htmlFor="clipboard-shortcut-control">剪贴板解释</label>
+                <label htmlFor="clipboard-shortcut-control">复制文字阅读</label>
                 <button
                   ref={clipboardShortcutControlRef}
                   id="clipboard-shortcut-control"
@@ -2583,8 +2601,8 @@ export default function SettingsPanel({
                   aria-invalid={clipboardShortcutStatus.registered === false}
                   aria-describedby="shortcut-recorder-instructions clipboard-shortcut-status"
                   aria-label={shortcutRecorder.key === 'clipboardShortcut'
-                    ? '正在更改剪贴板解释快捷键；请按新组合，按 Escape 取消'
-                    : `更改剪贴板解释快捷键，当前 ${clipboardShortcutStatus.displayAccelerator}`}
+                    ? '正在更改复制文字阅读快捷键；请按新组合，按 Escape 取消'
+                    : `更改复制文字阅读快捷键，当前 ${clipboardShortcutStatus.displayAccelerator}`}
                 >
                   {shortcutRecorder.key === 'clipboardShortcut'
                     ? <>
@@ -2650,7 +2668,7 @@ export default function SettingsPanel({
               </div>
 
               <div className="shortcut-setting">
-                <label htmlFor="screenshot-shortcut-control">截图 OCR</label>
+                <label htmlFor="screenshot-shortcut-control">截图阅读</label>
                 <button
                   ref={screenshotShortcutControlRef}
                   id="screenshot-shortcut-control"
@@ -2668,8 +2686,8 @@ export default function SettingsPanel({
                   aria-invalid={screenshotShortcutStatus.registered === false}
                   aria-describedby="shortcut-recorder-instructions screenshot-shortcut-status"
                   aria-label={shortcutRecorder.key === 'screenshotShortcut'
-                    ? '正在更改截图 OCR 快捷键；请按新组合，按 Escape 取消'
-                    : `更改截图 OCR 快捷键，当前 ${screenshotShortcutStatus.displayAccelerator}`}
+                    ? '正在更改截图阅读 快捷键；请按新组合，按 Escape 取消'
+                    : `更改截图阅读 快捷键，当前 ${screenshotShortcutStatus.displayAccelerator}`}
                 >
                   {shortcutRecorder.key === 'screenshotShortcut'
                     ? <>
@@ -2812,7 +2830,7 @@ export default function SettingsPanel({
                 <div data-status={screenRecordingNeedsAction ? 'attention' : 'ok'}>
                   <span>屏幕录制权限</span>
                   <strong>{supportData.screenRecording.label}</strong>
-                  <small>{screenRecordingNeedsAction ? '截图 OCR 需要处理' : '用于本地截图 OCR'}</small>
+                  <small>{screenRecordingNeedsAction ? '截图阅读需要授权' : '用于框选原文；选区图片会发送给当前阅读服务'}</small>
                 </div>
                 <div>
                   <span>本机使用状态</span>
@@ -2836,7 +2854,7 @@ export default function SettingsPanel({
               {screenRecordingNeedsAction && (
                 <div className="support-diagnostics__permission" role="note">
                   <WarningCircle size={17} weight="fill" />
-                  <span><strong>截图 OCR 当前不可用</strong><small>允许屏幕录制后，返回这里刷新状态。</small></span>
+                  <span><strong>截图阅读当前不可用</strong><small>允许屏幕录制后，返回这里刷新状态。</small></span>
                   <button type="button" onClick={handleOpenScreenRecordingSettings}>
                     <ArrowSquareOut size={14} />打开系统设置
                   </button>

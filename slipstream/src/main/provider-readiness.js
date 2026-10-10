@@ -9,6 +9,7 @@ const {
 } = require('./provider-connection');
 const { CUSTOM_ENDPOINT_ERROR_CODES } = require('./custom-endpoint-fetch');
 const { READING_SETUP_SOURCE, READING_SETUP_SELECTION, readingSetupSample } = require('../shared/reading-setup.mjs');
+const { mathRanges } = require('../shared/reading-math.cjs');
 
 const COMPATIBILITY_PROCESS_SENTENCE = 'At the fictional Alderbridge Institute, the invented Northstar Intake is an institutional filing process: applicants must submit the signed Wren-7 Intake Form through the LanternGate portal, and the portal receipt is the process record confirming that the submission entered the intake.';
 const COMPATIBILITY_PROCESS_REASON_SENTENCE = 'The LanternGate portal receipt matters because it is the Northstar Intake process record confirming that the submission entered the intake.';
@@ -461,8 +462,9 @@ async function testProviderReadiness(settings, dependencies = {}) {
       signal,
     });
     if (signal.aborted) return stopped();
-    if (requireImage && (translated?.uncertain?.length || !/confounder/iu.test(translated?.text || '')
-      || !/n\s*=\s*12/u.test(translated?.text || ''))) return failed(CONNECTION_CODES.IMAGE_NOT_SUPPORTED);
+    if (requireImage && (translated?.uncertain?.length || !/eigenvector/iu.test(translated?.text || '')
+      || !mathRanges(translated?.text || '').some(({ tex }) =>
+        tex.replace(/\\(?:qquad|quad|[,;:!])|[{}\s]/gu, '') === 'Av=2v'))) return failed(CONNECTION_CODES.IMAGE_NOT_SUPPORTED);
     const explained = await processReadingText({
       text: requireImage ? translated.text : READING_SETUP_SOURCE,
       kind: 'lookup',

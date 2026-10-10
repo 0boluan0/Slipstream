@@ -2,8 +2,10 @@
 
 // Authored material only. Setup never accepts a clipboard, screenshot or user
 // excerpt, and its result is a session-only preview rather than saved content.
-const READING_SETUP_SOURCE = 'A confounder is a variable that influences both a treatment and an outcome. An association between treatment and outcome may therefore persist even when the treatment has no causal effect.';
-const READING_SETUP_SELECTION = 'confounder';
+const READING_SETUP_SOURCE = String.raw`An eigenvector of a matrix $A$ is a nonzero vector $v$ satisfying $Av = \lambda v$ for some scalar $\lambda$.
+
+The scalar $\lambda$ is called the eigenvalue corresponding to $v$. For example, if $Av = 2v$, then $v$ is an eigenvector with eigenvalue $2$.`;
+const READING_SETUP_SELECTION = 'eigenvector';
 
 function readingSetupSample(value) {
   if (!value || typeof value !== 'object') return null;

@@ -546,8 +546,8 @@ async function main() {
   assert.deepEqual(cancelled, { status: CONNECTION_STATUSES.FAILED, code: CONNECTION_CODES.CANCELLED });
 
   let compatibilityRequest;
-  const readingSample = { translation: '混杂变量同时影响处理与结果，关联并不意味着因果效应。',
-    meaning: '混杂变量会同时影响处理与结果。', note: '本段用它说明关联不足以确立因果效应。' };
+  const readingSample = { translation: '非零向量 $v$ 满足 $Av = 2v$，因此它是对应特征值 $2$ 的特征向量。',
+    meaning: '被矩阵作用后等于自身标量倍数的非零向量。', note: '本段说明 $Av = 2v$ 对应的特征值为 $2$。' };
   const readingResponse = (options) => options.kind === 'lookup'
     ? { lookup: { quote: options.selection, contextual: true, meaning: readingSample.meaning, note: readingSample.note } }
     : { translation: readingSample.translation, terms: [] };
@@ -560,12 +560,12 @@ async function main() {
       imageRequests += 1;
       assert.match(options.image, /^data:image\/png;base64,/u);
       assert.deepEqual(options.settingsSnapshot, { ...imageSettings, setupMode: 'full' });
-      return { text: require('../src/shared/reading-setup.mjs').READING_SETUP_SOURCE + ' In this sample, n = 12.',
+      return { text: require('../src/shared/reading-setup.mjs').READING_SETUP_SOURCE,
         translation: readingSample.translation, uncertain: [], terms: [] };
     },
     processReadingText: async options => {
       textRequests += 1; assert.equal(options.kind, 'lookup');
-      assert.equal(options.settingsSnapshot, imageSettings); assert.match(options.text, /n = 12/u);
+      assert.equal(options.settingsSnapshot, imageSettings); assert.match(options.text, /Av = 2v/u);
       return readingResponse(options);
     },
   });
@@ -593,7 +593,7 @@ async function main() {
   assert.deepEqual(ready, { status: CONNECTION_STATUSES.CONNECTED, code: CONNECTION_CODES.OK, sample: readingSample });
   assert.equal(compatibilityRequest.text, require('../src/shared/reading-setup.mjs').READING_SETUP_SOURCE);
   assert.equal(compatibilityRequest.kind, 'lookup');
-  assert.equal(compatibilityRequest.selection, 'confounder');
+  assert.equal(compatibilityRequest.selection, 'eigenvector');
   assert.equal(FULL_ANALYSIS_COMPATIBILITY_SOURCE.includes('fictional'), true);
   assert.match(FULL_ANALYSIS_COMPATIBILITY_SOURCE, /Every name, organization, form, portal, and event[^.]+fictional/);
   assert.match(FULL_ANALYSIS_COMPATIBILITY_SOURCE,
@@ -1388,7 +1388,7 @@ async function main() {
   assert.match(preloadSource, /'provider:connection-cancel'/);
   assert.match(rendererSource, /只发送内置试读图片/);
   assert.match(rendererSource, /<h3>中文译文<\/h3>/);
-  assert.match(rendererSource, /再解释其中的 confounder（混杂变量）/);
+  assert.match(rendererSource, /再解释其中的 eigenvector（特征向量）/);
   assert.match(rendererSource, /试读使用你选择的服务和 API Key/);
   assert.match(rendererSource, /在线服务可能产生少量调用费用/);
   assert.match(rendererSource, /取消测试/);

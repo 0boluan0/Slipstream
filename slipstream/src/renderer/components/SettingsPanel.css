@@ -1,3 +1,5 @@
+@import 'katex/dist/katex.min.css';
+
 .settings-panel {
   position: relative;
   overflow: hidden;

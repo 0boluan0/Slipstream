@@ -218,10 +218,10 @@ export default function SetupGate({
       <section className="setup-card" aria-labelledby="setup-title">
         <header className="setup-header">
           <span className="setup-eyebrow">首次使用</span>
-          <h1 id="setup-title">从下一段英文开始</h1>
+          <h1 id="setup-title">读懂数学论文中的这一小段</h1>
           <HelpTip label="首次使用说明">{platform === 'win32'
-            ? '配置支持图片的阅读服务后，框选词句、公式或图文，看中文、按需解释。'
-            : '截图读译文，解释概念并保存本地卡片。'}</HelpTip>
+            ? '配置支持图片的服务，框选词句、公式和必要说明，看懂后继续读。'
+            : '框选词句、公式和必要说明，读中文、查概念，再继续读。'}</HelpTip>
         </header>
 
         {recoveryNotice && (
@@ -276,7 +276,7 @@ export default function SetupGate({
             <div className="setup-choice-icon" aria-hidden="true"><Check size={22} weight="bold" /></div>
             <div>
               <h2>专业阅读 <HelpTip label="专业阅读功能说明">
-                阅读教材、论文时随手查概念，支持原文对照、公式排版和本地概念卡片。
+                数学论文随手查：保留公式、对照原文，按需保存解释。
               </HelpTip></h2>
               <p>译文与概念解释</p>
             </div>

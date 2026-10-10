@@ -7,8 +7,8 @@ const { READING_SETUP_SOURCE, readingSetupSample } = require('../src/shared/read
 
 const settings = { activeBackend: 'deepseek', activeModel: 'test-model', customPrompt: 'PRIVATE_USER_INSTRUCTIONS' };
 const connected = async () => ({ status: 'connected', code: 'ok' });
-const translation = { translation: '混杂变量同时影响处理与结果，因此关联并不意味着因果效应。', terms: [] };
-const lookup = { quote: 'confounder', contextual: true, meaning: '同时影响处理与结果的变量。', note: '本段说明仅有统计关联不足以确立因果效应。' };
+const translation = { translation: '非零向量 $v$ 满足 $Av = 2v$，因此它是特征值为 $2$ 的特征向量。', terms: [] };
+const lookup = { quote: 'eigenvector', contextual: true, meaning: '被矩阵作用后等于自身某个标量倍数的非零向量。', note: '本段以 $Av = 2v$ 说明对应特征值是 $2$。' };
 const validReading = async options => options.kind === 'lookup' ? { lookup } : translation;
 const check = dependencies => testProviderReadiness(settings, {
   requireImage: false, testProviderConnection: connected, processReadingText: validReading, ...dependencies,
@@ -22,10 +22,10 @@ async function main() {
     calls.push({ input, prompt: args[3] });
     return JSON.stringify(input.selection ? {
       quote: input.selection,
-      meaning: '混杂变量是同时影响处理与结果的变量，可能使二者看起来有关联。',
-      note: '本段指出，仅观察到关联不足以证明处理对结果具有因果效应。',
+      meaning: '特征向量是被矩阵作用后等于自身某个标量倍数的非零向量。',
+      note: '本段用 $Av = 2v$ 说明对应特征值为 $2$。',
     } : {
-      translation: '在这个自拟示例中，混杂变量同时影响处理与结果。令 $X$ 表示处理，$Y$ 表示结果。仅凭二者之间的关联，不能确立因果效应。',
+      translation: translation.translation,
       terms: [],
     });
   });
@@ -38,11 +38,24 @@ async function main() {
   assert.equal(result.status, 'connected', 'a model that can translate and explain a reading excerpt must pass setup even without email-action analysis');
   assert.equal(legacyCalls, 0, 'reading setup must not request email-action analysis');
   assert.equal(calls.length, 2, 'setup must exercise translation and an on-demand term explanation');
-  assert.equal(calls[1].input.selection, 'confounder');
+  assert.equal(calls[1].input.selection, 'eigenvector');
   assert.equal(calls[0].input.excerpt, calls[1].input.excerpt);
   assert.equal(calls[0].input.excerpt, READING_SETUP_SOURCE);
   assert(!JSON.stringify(calls).includes(settings.customPrompt), 'setup must not send the user\'s custom instructions');
   assert(result.sample.translation && result.sample.meaning, 'return the actual result for the user to inspect');
+
+  for (const [formula, accepted] of [
+    ['$Av = 2v$', true], [String.raw`$A\,v = 2\,v$`, true],
+    ['$Av = 3v$', false], ['$A = 2v$', false],
+  ]) {
+    const imageTrial = await check({ requireImage: true,
+      readScreenshot: async () => ({ ...translation, uncertain: [],
+        text: READING_SETUP_SOURCE.replace('$Av = 2v$', formula) }),
+    });
+    assert.equal(imageTrial.status, accepted ? 'connected' : 'failed',
+      'image trial accepts TeX spacing but checks the visible mathematical example');
+    if (!accepted) assert.equal(imageTrial.code, 'image-not-supported');
+  }
 
   let generationCalls = 0;
   assert.deepEqual(await check({
@@ -63,7 +76,7 @@ async function main() {
     ['broken JSON', async () => 'not JSON'],
     ['wrong selected term', async (...args) => JSON.stringify(JSON.parse(args[4]).selection ? { ...lookup, quote: 'invented' } : translation)],
     ['English-only translation', async (...args) => JSON.stringify(JSON.parse(args[4]).selection ? lookup : { ...translation, translation: READING_SETUP_SOURCE })],
-    ['English-only explanation', async (...args) => JSON.stringify(JSON.parse(args[4]).selection ? { ...lookup, meaning: 'A confounder influences both variables.' } : translation)],
+    ['English-only explanation', async (...args) => JSON.stringify(JSON.parse(args[4]).selection ? { ...lookup, meaning: 'An eigenvector is a nonzero vector.' } : translation)],
     ['oversized setup result', async (...args) => JSON.stringify(JSON.parse(args[4]).selection ? lookup : { ...translation, translation: '译文'.repeat(2100) })],
   ]) {
     assert.deepEqual(await check({ processReadingText: createReadingProcessor(backend) }),
