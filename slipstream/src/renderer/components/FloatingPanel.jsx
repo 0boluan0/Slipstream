@@ -43,6 +43,7 @@ import {
 } from '../hooks/requestCoordinator.mjs';
 import { PREVIEW_ACTION_BRIEF, PREVIEW_CAPTURE, PREVIEW_SOURCE_TEXT } from '@preview-data';
 import { READING_SAMPLE_SOURCE_TEXT } from '../utils/safeSampleSource';
+import { isLegacyWorkspaceDemo } from '../utils/demoMode.mjs';
 import { getReplyProgressConsistencyForBrief } from '../utils/replyProgress.mjs';
 import {
   hasSavedTerm,
@@ -375,7 +376,9 @@ const RESULT_DEMO = import.meta.env.DEV
   && new URLSearchParams(window.location.search).get('demo') === 'result';
 // Existing development scenarios exercise recovery of the earlier text workspace.
 const LEGACY_WORKSPACE_DEMO = import.meta.env.DEV
-  && Boolean(new URLSearchParams(window.location.search).get('demo'));
+  && isLegacyWorkspaceDemo(new URLSearchParams(window.location.search).get('demo'));
+const READING_DEMO = import.meta.env.DEV
+  && new URLSearchParams(window.location.search).get('demo') === 'reading';
 const RESULT_DEMO_APPROVAL_ID = 'a'.repeat(64);
 const PROCESSING_PHASE = Object.freeze({
   CAPTURE: 'capture',
@@ -4585,7 +4588,9 @@ export default function FloatingPanel({
   const readingStart = !LEGACY_WORKSPACE_DEMO && !isEditingSource && !lastGoodRef.current;
   const readingImageEnabled = settings.setupMode === 'full'
     && settings.screenshotReadingMode === 'image' && !isFreeTranslate;
-  const readingPrivacyDisclosure = { ...privacyDisclosure,
+  const readingPrivacyDisclosure = READING_DEMO ? { ...privacyDisclosure,
+    title: '固定回复 · 不发送内容', detail: '只演示内置数学选段，不连接模型、不读取屏幕或剪贴板。',
+  } : { ...privacyDisclosure,
     detail: readingImageEnabled
       ? '框选的图片与文字交给当前服务翻译；点击术语时再请求解释。只发送你框内的内容。'
       : privacyProvider === 'free_translate'
@@ -4596,7 +4601,7 @@ export default function FloatingPanel({
           ? '文字交给本机兼容服务；该服务可能继续联网。截图留在本机。'
           : '原文交给所选服务翻译；点击术语时再请求解释。截图默认留在本机。',
   };
-  const capturePrivacyDisclosure = status === STATUS.PROCESSING
+  const capturePrivacyDisclosure = READING_DEMO ? readingPrivacyDisclosure : status === STATUS.PROCESSING
     && processingPhase === PROCESSING_PHASE.CAPTURE
     ? readingImageEnabled ? { ...privacyDisclosure,
       activeTitle: readingPrivacyDisclosure.title,
@@ -5449,7 +5454,7 @@ export default function FloatingPanel({
                     : <FileText size={24} weight="fill" />}
                 </span>
                 <div>
-                  <p className="eyebrow">{isEditingSource ? '修正原文' : '英文教材 · 论文 · 专业阅读'}</p>
+                  <p className="eyebrow">{isEditingSource ? '修正原文' : readingStart ? '数学论文 · 教材阅读' : '英文教材 · 论文 · 专业阅读'}</p>
                   <h1>{isEditingSource
                     ? '核对并修正识别文本'
                     : readingStart ? '卡住哪一块，就划哪一块'
@@ -5464,6 +5469,8 @@ export default function FloatingPanel({
 
                 </div>
               </div>
+
+              {READING_DEMO && <p role="note">固定回复演示，不连接模型。请载入数学试读；截图按钮也使用内置示例。{!window.slipstreamUiFixture?.enabled && '阅读卡片需在桌面开发预览中打开。'}</p>}
 
               {readingStart && screenshotSupported && !ocrReviewCopy && (
                 <div className="reading-capture-entry">
@@ -5708,12 +5715,12 @@ export default function FloatingPanel({
                 <div className="capture-sample" role="note">
                   <span className="capture-sample__icon"><FileText size={19} /></span>
                   <span>
-                    <strong>{LEGACY_WORKSPACE_DEMO ? '先用安全示例体验' : '试读示例'}</strong>
+                    <strong>{LEGACY_WORKSPACE_DEMO ? '先用安全示例体验' : '数学试读'}</strong>
                     {readingStart ? <HelpTip label="阅读示例说明">
-                      自拟英文：相关与因果。点击“开始阅读”才会发送。
-                    </HelpTip> : <small>{LEGACY_WORKSPACE_DEMO ? '载入一封虚构英文邮件先看看效果；不会读取剪贴板，也不会自动处理。' : '相关关系与因果关系 · 自拟英文，载入后再开始阅读。'}</small>}
+                      特征向量与特征值，带公式的自拟英文。{READING_DEMO ? '点击“开始阅读”查看固定回复。' : '点击“开始阅读”才会发送。'}
+                    </HelpTip> : <small>{LEGACY_WORKSPACE_DEMO ? '载入一封虚构英文邮件先看看效果；不会读取剪贴板，也不会自动处理。' : '特征向量与特征值 · 带公式的自拟英文，载入后再开始阅读。'}</small>}
                   </span>
-                  <button type="button" onClick={handleLoadExample}>{LEGACY_WORKSPACE_DEMO ? '载入安全示例（不会生成）' : '载入阅读示例'}</button>
+                  <button type="button" onClick={handleLoadExample}>{LEGACY_WORKSPACE_DEMO ? '载入安全示例（不会生成）' : '载入数学试读'}</button>
                 </div>
               )}
 
@@ -5722,6 +5729,7 @@ export default function FloatingPanel({
                   <ShieldCheck size={16} weight="fill" />
                   {LEGACY_WORKSPACE_DEMO
                     ? '虚构示例已载入，不包含你的数据。只有点击生成才会开始处理。'
+                    : READING_DEMO ? '数学试读已载入。点击“开始阅读”查看固定回复，不发送内容。'
                     : '自拟阅读示例已载入。可先阅读或修改，点击“开始阅读”后才会交给所选服务。'}
                 </p>
               )}
@@ -5802,7 +5810,7 @@ export default function FloatingPanel({
                     : <CloudArrowUp size={20} weight="fill" />}
                 <span>
                   <strong>{capturePrivacyDisclosure.title}</strong>
-                  {readingStart ? <small>{readingImageEnabled ? '仅发送你框选的图片与文字。' : '仅处理你主动提交的文字。'} <HelpTip label="提交内容与隐私说明">{capturePrivacyDisclosure.detail}</HelpTip></small>
+                  {readingStart ? <small>{READING_DEMO ? '仅演示内置数学选段。' : readingImageEnabled ? '仅发送你框选的图片与文字。' : '仅处理你主动提交的文字。'} <HelpTip label="提交内容与隐私说明">{capturePrivacyDisclosure.detail}</HelpTip></small>
                     : <small>{capturePrivacyDisclosure.detail}</small>}
                 </span>
                 <button type="button" onClick={handleOpenSettingsRequest}>更改处理方式</button>

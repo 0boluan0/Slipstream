@@ -340,7 +340,11 @@ if (isCommandCommaSafeSettingsFixture()) {
 }
 
 contextBridge.exposeInMainWorld('api', Object.freeze({
-  invoke: async (channel) => {
+  invoke: async (channel, ...args) => {
+    if (new URL(globalThis.location.href).searchParams.get('demo') === 'reading'
+      && ['reading:open-text', 'reading:library-open', 'reading:references-open', 'screenshot:capture'].includes(channel)) {
+      return ipcRenderer.invoke(channel, ...args);
+    }
     if (channel === FIXTURE_CLIPBOARD_WRITE_CHANNEL) {
       return writeFixtureClipboard();
     }

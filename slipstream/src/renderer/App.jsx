@@ -12,6 +12,7 @@ import {
 import { useSettings } from './hooks/useSettings';
 import { useIpc } from '@renderer-ipc';
 import { isSetupComplete } from './utils/setupReadiness.mjs';
+import { isLegacyWorkspaceDemo } from './utils/demoMode.mjs';
 import {
   createRetryableLazyImport,
   importRetryableWorkspaceAsset,
@@ -1175,6 +1176,7 @@ export default function App() {
             >
               <React.Suspense fallback={<SettingsWorkspaceFallback />}>
                 <SettingsPanel
+                  legacyWorkspace={import.meta.env.DEV && isLegacyWorkspaceDemo(new URLSearchParams(window.location.search).get('demo'))}
                   onClose={closeSettings}
                   onSetupComplete={() => setView('panel')}
                   onQuitRiskChange={handleSettingsQuitRiskChange}

@@ -11201,6 +11201,11 @@ async function finishUiFixtureRuntimeCheck() {
 
     const fixtureUrl = new URL(uiFixtureMode.rendererUrl);
     const isCommandCommaSafeSettingsCheck = isCommandCommaSafeSettingsCheckFixtureUrl(fixtureUrl);
+    if (fixtureUrl.searchParams.get('demo') === 'reading') {
+      const reading = require('./reading-ui-fixture').attachReadingUiFixture({ ipcMain, fixtureWindow,
+        rendererUrl: uiFixtureMode.rendererUrl, directory: uiFixtureMode.userDataPath });
+      app.once('will-quit', () => reading.dispose());
+    }
     uiFixtureBlockedRendererExternalRequests = 0;
     fixtureWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
       try {

@@ -173,7 +173,7 @@ function validateFixtureRendererUrl(value) {
   }
 
   const demoValues = rendererUrl.searchParams.getAll('demo');
-  if (demoValues.length !== 1 || !['capture', 'result', 'setup'].includes(demoValues[0])) {
+  if (demoValues.length !== 1 || !['reading', 'capture', 'result', 'setup'].includes(demoValues[0])) {
     throw new TypeError('UI fixture renderer URL must select one supported demo');
   }
 

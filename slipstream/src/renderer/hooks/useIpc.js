@@ -12,6 +12,7 @@ import {
   PREVIEW_TRANSLATION_BRIEF,
 } from '../utils/previewData';
 import { savedTermKey } from '../utils/savedTerms.mjs';
+import { READING_SAMPLE_SOURCE_TEXT } from '../utils/safeSampleSource';
 
 const { DEFAULTS, IPC_CHANNELS } = constants;
 const { displayShortcutAccelerator } = shortcutAccelerator;
@@ -108,7 +109,7 @@ const demoShortcutCode = import.meta.env.DEV
 const demoRunCode = import.meta.env.DEV
   ? new URLSearchParams(window.location.search).get('run')
   : null;
-const isDemo = ['capture', 'result', 'setup'].includes(demoMode) || Boolean(demoSettingsLoadCode);
+const isDemo = ['capture', 'result', 'setup'].includes(demoMode) || demoMode === 'reading' || Boolean(demoSettingsLoadCode);
 const isNativeUiFixture = import.meta.env.DEV
   && window.slipstreamUiFixture?.enabled === true
   && window.slipstreamUiFixture?.isolated === true;
@@ -471,6 +472,10 @@ let demoSettings = demoMode === 'setup'
       runtimeStatus: { ...demoRuntimeStatus },
     };
 
+if (demoMode === 'reading') {
+  demoSettings = { ...demoSettings, activeModel: '固定数学示例', resultOrder: 'translation-first' };
+}
+
 if (demoMode !== 'setup' && demoBackend === 'free_translate') {
   demoSettings = {
     ...demoSettings,
@@ -631,7 +636,7 @@ function createDemoDiagnostics() {
     deepseek: '在线 · DeepSeek',
   };
   const modeLabels = {
-    full: '完整分析',
+    full: '专业阅读',
     'translation-only': '基础翻译',
     unconfigured: '尚未完成配置',
   };
@@ -707,6 +712,12 @@ function createDemoDiagnostics() {
 
 function invokeDemo(channel, ...args) {
   switch (channel) {
+    case IPC_CHANNELS.READING_OPEN_TEXT:
+    case IPC_CHANNELS.READING_LIBRARY_OPEN:
+    case IPC_CHANNELS.READING_REFERENCES_OPEN:
+      return demoMode === 'reading' && isNativeUiFixture
+        ? window.api.invoke(channel, ...args)
+        : Promise.reject(new Error('Reading cards require the desktop reading fixture.'));
     case IPC_CHANNELS.SETTINGS_GET:
       demoSettingsLoadRequests += 1;
       if (demoSettingsLoadCode === 'corrupt-json') {
@@ -1250,6 +1261,7 @@ function invokeDemo(channel, ...args) {
       });
     }
     case IPC_CHANNELS.CLIPBOARD_READ:
+      if (demoMode === 'reading') return Promise.resolve(READING_SAMPLE_SOURCE_TEXT);
       if (demoClipboardReadCode === 'long') {
         const originalLength = DEFAULTS.MAX_TEXT_LENGTH + 137;
         return Promise.resolve({
@@ -1290,6 +1302,8 @@ function invokeDemo(channel, ...args) {
           };
         });
     case IPC_CHANNELS.SCREENSHOT_CAPTURE: {
+      if (demoMode === 'reading') return isNativeUiFixture
+        ? window.api.invoke(channel) : Promise.reject(new Error('Reading cards require the desktop reading fixture.'));
       demoScreenshotCaptureRequests += 1;
       exposeDemoRequestCounters();
       if (demoCaptureCode === 'permission-denied') {
@@ -1351,6 +1365,11 @@ function invokeDemo(channel, ...args) {
             : demoConnectionCode;
           resolve({
             ...(DEMO_CONNECTION_RESULTS[resultCode] || DEMO_CONNECTION_RESULTS.ok),
+            ...(demoMode === 'reading' && (!resultCode || resultCode === 'ok') ? { sample: {
+              translation: String.raw`固定回复演示：矩阵 $A$ 的特征向量是满足 $Av = \lambda v$ 的非零向量 $v$。$\lambda$ 是对应的特征值；若 $Av = 2v$，则该特征值为 $2$。`,
+              meaning: '特征向量是经矩阵作用后仍为原向量标量倍数的非零向量。',
+              note: '固定示例中的缩放倍数为 2。不连接模型。', imageChecked: true,
+            } } : {}),
             processingLocation: processingLocationForSettings(demoSettings),
           });
         }, demoConnectionCode === 'slow' ? 30000 : demoConnectionCode === 'race' ? 3000 : 450);

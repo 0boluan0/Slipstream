@@ -351,6 +351,7 @@ function checkOwnedFixtureClipboardContract() {
 
 function checkRendererUrls() {
   const validUrls = [
+    'http://127.0.0.1:49151/?demo=reading',
     'http://127.0.0.1:49152/?demo=capture&backend=openai&connection=slow',
     'http://127.0.0.1:49153/?demo=result&run=fixture',
     'http://127.0.0.1:49154/?demo=setup&credentialDelete=once',
@@ -977,6 +978,7 @@ function checkSettingsStylesheetCollisionContract() {
 }
 
 async function checkLauncherContract() {
+  assert.equal(DEFAULT_FIXTURE_PATH, '/?demo=reading', 'the default preview must use the current reading workflow');
   assert.deepEqual(parseArguments([]), { fixturePath: DEFAULT_FIXTURE_PATH });
   assert.deepEqual(parseArguments(['--path', '?demo=result&run=fixture']), {
     fixturePath: '/?demo=result&run=fixture',
@@ -1397,8 +1399,10 @@ function checkNativeElectronBinding() {
   assert.match(preloadSource, /enabled: true/);
   assert.match(preloadSource, /isolated: true/);
   assert.match(preloadSource, /contextBridge\.exposeInMainWorld\('slipstreamUiFixtureRecovery'/);
-  assert.equal((preloadSource.match(/ipcRenderer\.invoke/g) || []).length, 16,
-    'fixture preload must expose only recovery, fixed trusted input, safe-exit, and Settings bridges');
+  assert.equal((preloadSource.match(/ipcRenderer\.invoke/g) || []).length, 17,
+    'fixture preload must expose only recovery, fixed trusted input, safe-exit, Settings and reading fixture bridges');
+  assert.match(preloadSource, /get\('demo'\) === 'reading'[\s\S]*\['reading:open-text', 'reading:library-open', 'reading:references-open', 'screenshot:capture'\]\.includes\(channel\)/u,
+    'native reading fixture IPC is limited to explicit reading routes and actions');
   assert.match(preloadSource, /slipstream-ui-fixture:renderer-recovery-status-get/);
   assert.match(preloadSource, /slipstream-ui-fixture:clipboard-residue-risk-ack/);
   assert.match(preloadSource, /slipstream-ui-fixture:trusted-input/);

@@ -151,7 +151,7 @@
     "check:reading-math": "node scripts/check-reading-math.js && electron scripts/check-reading-math-native.js && electron scripts/check-formula-prose-order-native.js && electron scripts/check-prose-glyph-native.js",
     "build:reading-preview": "npm run build:renderer && node scripts/build-reading-preview.js",
     "check:reading-preview-config": "node scripts/check-reading-preview-config.js",
-    "check:reading-home": "npm run build:renderer && electron scripts/check-reading-home-native.js",
+    "check:reading-home": "npm run build:renderer && electron scripts/check-reading-home-native.js && electron scripts/check-reading-demo-native.js",
     "check:apple-tool-retry": "node scripts/check-apple-tool-retry.js",
     "build:windows": "npm run build:renderer && node scripts/build-windows.js",
     "check:windows": "node scripts/check-windows.js",

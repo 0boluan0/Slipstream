@@ -17,7 +17,7 @@ const {
 
 const projectRoot = path.join(__dirname, '..');
 const viteEntry = path.join(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js');
-const DEFAULT_FIXTURE_PATH = '/?demo=capture&backend=openai&connection=slow';
+const DEFAULT_FIXTURE_PATH = '/?demo=reading';
 const READY_TIMEOUT_MS = 20_000;
 const CLIPBOARD_TRANSACTION_RUN = 'clipboard-app-transaction-native';
 const CLIPBOARD_TRANSACTION_HARNESS_FLAG = '--ui-fixture-clipboard-transaction-harness';
