@@ -2956,12 +2956,19 @@ export default function SettingsPanel({
           busy={isResetting}
           error={resetError}
           sessionAlreadyCleared={resetSessionAlreadyCleared}
-          description={(
+          description={legacyWorkspace ? (
             <>
               这会停止并清除当前原文、结果、行动进度、撤销副本和同窗口恢复记录，
               再清除全部 API Key、连接凭据、保存的术语及所有设置，将“登录时启动”恢复为开启，
               然后重新显示首次使用选择。此操作无法在应用内撤销。
               文稿文件夹中的术语卡片 Markdown 文件会保留。
+            </>
+          ) : (
+            <>
+              这会停止当前处理并关闭阅读浮窗，清除当前阅读内容和应用内恢复记录。
+              全部 API Key、连接凭据及旧版应用内术语记录也会清除，所有设置恢复默认，
+              “登录时启动”恢复为开启，随后重新显示首次使用选择。此操作无法在应用内撤销。
+              文稿文件夹中的卡片盒 Markdown 文件与本文速查资料会保留。
             </>
           )}
           clipboardDescription={hasClipboardResidueRisk || hasClipboardCopyConsequence
