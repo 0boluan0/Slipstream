@@ -68,6 +68,7 @@ app.whenReady().then(async () => {
   let hold = false;
   let emptyOcr = false;
   let localReviewOcr = false;
+  let processLookup;
   const settings = { setupMode: 'full', activeBackend: 'deepseek', activeModel: 'fixture', deepseekApiKey: 'fixture-key' };
   manager = createReadingPins({ BrowserWindow, ipcMain, screen, getSettings: () => settings, getMainWindow: () => null,
     requestCapturePermission: async () => ({ granted: true }),
@@ -78,8 +79,10 @@ app.whenReady().then(async () => {
           { start: equations[1].start, x: .1, y: .55, w: .75, h: .15 }] }, confidence: .99, blocks: [],
         formulaOcr: { status: 'done', count: 2, uncertain: 1, uncertainStarts: [source.indexOf('$$')] } }
       : { text: emptyOcr ? '' : 'Conditional expectation E[Y | X] = y', confidence: .99, blocks: [] },
-    processReadingText: async ({ kind, selection }) => {
+    processReadingText: async (input) => {
+      const { kind, selection } = input;
       translations += 1;
+      if (kind === 'lookup' && processLookup) return processLookup(input);
       if (kind === 'lookup') return { lookup: { quote: selection, meaning: String.raw`条件期望 $\mathbb{E}[Y\mid X=x]$ 是给定 $X=x$ 时 $Y$ 的平均值。`, note: String.raw`这里用条件密度 $f_{Y\mid X}(y\mid x)$ 对 $y$ 加权积分。`, contextual: true } };
       return { translation, terms: [{ quote: 'Conditional expectation', label: '条件期望', start: 0, end: 23 }] };
     },
@@ -151,6 +154,39 @@ app.whenReady().then(async () => {
     range.selectNodeContents(paragraph.querySelector('.katex-html')); range.collapse(true);
     return window.readingMathSelection(paragraph, range);
   })()`), null, 'a caret inside mathematics is not a selected formula');
+  let lookupAttempts = 0;
+  processLookup = require('../src/main/reading-service').createReadingProcessor(async (_settings, _backend, _model, _prompt, message) => {
+    lookupAttempts += 1;
+    return JSON.stringify({ quote: JSON.parse(message).selection,
+      meaning: lookupAttempts === 1 ? String.raw`这里的 $\bar{x} 表示样本均值。` : String.raw`这里的 $\bar{x}$ 表示样本均值。`,
+      note: '', basis: 'contextual', sourceQuote: selectionSource });
+  });
+  await selectionJs(`(() => {
+    const paragraph = document.querySelector('.source-paragraph'), math = paragraph.querySelector('.katex-html');
+    const range = document.createRange(); range.setStart(paragraph.firstChild, 4); range.setEnd(math.firstChild, 1);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    document.dispatchEvent(new Event('selectionchange')); document.getElementById('lookup-selection').click();
+  })()`);
+  await until(() => selectionJs('window.readingPin.act("ready").then(r=>["done", "error"].includes(r.state.lookupStatus))'), 'formula explanation response');
+  assert.equal(await selectionJs('window.readingPin.act("ready").then(r=>r.state.lookupStatus)'), 'error');
+  assert.match(await selectionJs('document.getElementById("lookup-notice").textContent'), /公式格式不完整/u);
+  assert.equal(await selectionJs('document.getElementById("lookup-meaning").textContent'), '');
+  assert.equal(await selectionJs('document.getElementById("lookup-retry").hidden'), false);
+  assert.equal(await selectionJs('document.getElementById("save-term").disabled'), true);
+  assert.equal(lookupAttempts, 1, 'malformed math does not start an automatic repair request');
+  if (output) fs.writeFileSync(path.join(output, 'reading-math-lookup-error.png'), (await selectionPin.webContents.capturePage()).toPNG());
+  await selectionJs('document.getElementById("lookup-retry").click()');
+  await until(() => selectionJs('window.readingPin.act("ready").then(r=>r.state.lookupStatus === "done")'), 'explicit formula explanation retry');
+  assert.equal(lookupAttempts, 2);
+  assert.equal(await selectionJs('document.querySelectorAll("#lookup-meaning .katex").length'), 1);
+  assert.equal(await selectionJs('document.getElementById("lookup-notice").hidden'), true);
+  assert.equal(await selectionJs('window.readingPin.act("ready").then(r=>r.state.lookup.quote)'), acrossMath.text);
+  assert.equal(await selectionJs('window.readingPin.act("ready").then(r=>r.state.sourceText)'), selectionSource);
+  if (output) fs.writeFileSync(path.join(output, 'reading-math-lookup-retry.png'), (await selectionPin.webContents.capturePage()).toPNG());
+  await selectionJs('document.getElementById("lookup-close").click()');
+  assert.equal(await selectionJs('window.readingPin.act("ready").then(r=>r.state.lookup)'), null);
+  assert.equal(await selectionJs('document.querySelectorAll(".source-paragraph .katex").length'), 2);
+  processLookup = null;
   selectionPin.close();
   assert(await js('document.querySelectorAll("#translation .katex").length >= 2'));
   assert(await js('document.querySelector("#translation math") !== null'), 'math must expose accessible MathML');

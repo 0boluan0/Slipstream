@@ -868,6 +868,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (!active()) return;
       update(pin, { lookupStatus: 'error', lookupNotice: error?.message === 'reading-invalid-output' || error instanceof SyntaxError
         ? '这次解释未能匹配所选原文，请重试。'
+        : error?.message === 'reading-invalid-math'
+          ? '这次解释的公式格式不完整，已停止展示。请重试。'
         : error?.message === 'reading-unsupported-claim'
           ? '这次解释含有原文不能支持的说法，已停止展示。请重试或核对原文。'
           : classifyError(error, configuration.settings.activeBackend) });
