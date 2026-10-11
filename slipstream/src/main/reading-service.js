@@ -1,7 +1,7 @@
 'use strict';
 
 const { DEFAULTS } = require('../shared/constants.cjs');
-const { mathRanges } = require('../shared/reading-math.cjs');
+const { mathRanges, firstInvalidMathDelimiter } = require('../shared/reading-math.cjs');
 const { parseReferenceCandidates, referenceCandidateKey, referenceKey, sourceEvidence,
   explicitEquationDefinitions } = require('./reading-references');
 
@@ -302,6 +302,9 @@ function parseLookup(raw, selection, source) {
     || !value.meaning.trim() || value.meaning.length > 1500
     || typeof value.note !== 'string' || value.note.length > 1500
     || /[\b\f\r\t\v]/u.test(value.meaning + value.note)) throw new Error('reading-invalid-output');
+  if ([value.meaning, value.note].some(field => firstInvalidMathDelimiter(field, { inline: true }))) {
+    throw new Error('reading-invalid-math');
+  }
   const unsupported = unsupportedExplanationClaim(selection, source, value.meaning, value.note);
   if (unsupported) throw Object.assign(new Error('reading-unsupported-claim'), { repairHint: unsupported });
   const exactQuote = typeof value.sourceQuote === 'string' && value.sourceQuote.length <= 600

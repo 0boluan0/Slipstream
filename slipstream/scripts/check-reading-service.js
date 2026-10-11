@@ -175,6 +175,49 @@ async function main() {
   const badLatex = { selection: 'root-N consistent estimation',
     raw: String.raw`{"quote":"root-N consistent estimation","meaning":"以 $\sqrt{N}$ 缩放误差。","note":"比较 $\hat{\theta}$ 与 $\theta$。"}` };
   assert.throws(() => JSON.parse(badLatex.raw), SyntaxError);
+  let unclosedCalls = 0;
+  const unclosedLookup = createReadingProcessor(async () => {
+    unclosedCalls += 1;
+    return JSON.stringify({ quote: badLatex.selection, meaning: '这里的 $x^2 表示平方。', note: '' });
+  });
+  await assert.rejects(unclosedLookup({ text: badLatex.selection, kind: 'lookup',
+    selection: badLatex.selection, settingsSnapshot: settings }), { message: 'reading-invalid-math' });
+  assert.equal(unclosedCalls, 1, 'unclosed explanation math must await a manual retry, not call the provider again');
+  const delimiterSource = String.raw`The squared norm $x^2$ is nonnegative.`;
+  const delimiterInput = { text: delimiterSource, kind: 'lookup', selection: 'squared norm $x^2$', settingsSnapshot: settings };
+  for (const fields of [
+    { meaning: '这里的 $x_i 表示分量。', note: '' },
+    { meaning: '分量。', note: String.raw`这里用 $\frac{1}{n} 计算。` },
+    { meaning: '这里用 $$x=1$。', note: '' },
+    { meaning: '分量。', note: String.raw`这里用 \(x=1。` },
+    { meaning: String.raw`这里用 \[x=1。`, note: '' },
+    { meaning: '$x_i', note: '表示第 i 个分量。$' },
+  ]) {
+    let attempts = 0;
+    const malformed = createReadingProcessor(async () => {
+      attempts += 1;
+      return JSON.stringify({ quote: delimiterInput.selection, ...fields, basis: 'contextual', sourceQuote: delimiterSource });
+    });
+    await assert.rejects(malformed(delimiterInput), { message: 'reading-invalid-math' }, JSON.stringify(fields));
+    assert.equal(attempts, 1, 'format rejection must not add an automatic request');
+  }
+  for (const meaning of [
+    '这里的 $x^2$ 表示平方，系数为 $2x$，常数为 $1$。',
+    '费用为 $5.50，上限为 $10；预算为 US$1,000，范围为 $5–$10。',
+    'A $5 million budget, $5M revenue and $5m cost.',
+    String.raw`字面金额 \$5；代码 ` + '`$x_i` 和 ```$$x=1```。',
+    String.raw`这里用 \(x^2\) 或 \[x^2\]。`,
+    String.raw`保留 $\unknowncommand{x}$ 原格式。`,
+    String.raw`$$f(x)=x^2\eqno(7.3)$$`,
+    '$x$y_i follows a complete formula.',
+  ]) {
+    const accepted = createReadingProcessor(async () => JSON.stringify({ quote: delimiterInput.selection,
+      meaning, note: '', basis: 'contextual', sourceQuote: delimiterSource }));
+    const result = (await accepted(delimiterInput)).lookup;
+    assert.equal(result.meaning, meaning, 'valid math, amounts and literal/code content must stay unchanged');
+    assert.equal(result.quote, delimiterInput.selection);
+    assert.equal(result.sourceQuote, delimiterSource, 'source evidence must not be rewritten by output checks');
+  }
   const mathLookup = createReadingProcessor(async () => badLatex.raw);
   const mathResult = await mathLookup({ text: 'root-N consistent estimation', kind: 'lookup',
     selection: badLatex.selection, settingsSnapshot: settings });

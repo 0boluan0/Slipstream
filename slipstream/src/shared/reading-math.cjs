@@ -37,9 +37,11 @@
     }
     return ranges;
   }
-  function firstInvalidMathDelimiter(text) {
+  function firstInvalidMathDelimiter(text, { inline = false } = {}) {
+    const complete = inline ? new Map(mathRanges(text).map(range => [range.start, range.end])) : null;
     for (let i = 0; i < text.length; i += 1) {
       if (escaped(text, i)) continue;
+      if (complete?.has(i)) { i = complete.get(i) - 1; continue; }
       if (text[i] === '`') {
         const marker = text.startsWith('```', i) ? '```' : '`';
         const end = text.indexOf(marker, i + marker.length);
@@ -48,7 +50,10 @@
       }
       const pair = text.startsWith('$$', i) ? ['$$', '$$']
         : text.startsWith('\\[', i) ? ['\\[', '\\]']
-          : text.startsWith('\\(', i) ? ['\\(', '\\)'] : null;
+          : text.startsWith('\\(', i) ? ['\\(', '\\)']
+            // shortcut: ambiguous bare $x and numeric amounts stay prose; expand only with evidence of missed math.
+            : inline && text[i] === '$' && /^(?:\\[A-Za-z]+|[A-Za-zα-ωΑ-Ω]\s*[_^=])/u.test(text.slice(i + 1))
+              ? ['$', '$'] : null;
       if (!pair) continue;
       let end = text.indexOf(pair[1], i + pair[0].length);
       while (end >= 0 && escaped(text, end)) end = text.indexOf(pair[1], end + pair[1].length);
