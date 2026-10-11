@@ -6,6 +6,7 @@ let current = null;
 let dirty = false;
 let links = [];
 let saving = false;
+let loadSequence = 0;
 
 function message(text = '') {
   byId('message').textContent = text;
@@ -20,6 +21,7 @@ async function act(action, payload) {
   } catch { message('暂时无法读取本地卡片，请重试。'); return null; }
 }
 function markDirty() {
+  loadSequence += 1;
   dirty = true;
   byId('save').disabled = saving;
   byId('edit-status').textContent = '有未保存的修改';
@@ -80,6 +82,7 @@ function renderConnections() {
   byId('add-link').disabled = byId('connect').options.length <= 1;
 }
 function selectCard(id) {
+  loadSequence += 1;
   if (dirty) { message('先保存当前修改，再切换卡片。'); return; }
   current = cards.find((card) => card.id === id) || cards[0] || null;
   byId('empty').hidden = Boolean(current);
@@ -104,8 +107,16 @@ function selectCard(id) {
   }
 }
 async function load(id) {
+  const sequence = ++loadSequence;
   if (dirty) { message('有未保存的修改。先保存，再重新载入卡片。'); return; }
-  const result = await act('list');
+  let result;
+  try { result = await window.termLibrary.act('list'); }
+  catch {
+    if (sequence === loadSequence) message('暂时无法读取本地卡片，请重试。');
+    return;
+  }
+  if (sequence !== loadSequence) return;
+  if (result?.error) { message(result.error); return; }
   if (!result) return;
   cards = result.cards;
   message(result.unreadable ? `${result.unreadable} 个 Markdown 文件无法读取。原文件已保留，可在本地文件夹检查。` : '');
@@ -114,7 +125,7 @@ async function load(id) {
 for (const field of ['label', 'meaning', 'context', 'notes']) byId(field).oninput = markDirty;
 byId('search').oninput = renderList;
 byId('refresh').onclick = () => load();
-byId('discard').onclick = () => { dirty = false; load(); };
+byId('discard').onclick = () => { dirty = false; byId('save').disabled = true; load(); };
 byId('folder').onclick = () => act('open-folder');
 byId('reveal').onclick = () => current && act('reveal-file', { id: current.id });
 byId('edit').onclick = () => {
@@ -129,7 +140,7 @@ byId('add-link').onclick = () => {
   renderConnections();
 };
 byId('save').onclick = async () => {
-  if (!current || saving) return;
+  if (!current || saving || !dirty) return;
   saving = true;
   byId('save').disabled = true;
   byId('discard').disabled = true;

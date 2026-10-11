@@ -171,7 +171,7 @@
     "check:preview-notarization": "node scripts/check-preview-notarization.js",
     "check:reading-presentation": "npm run build:renderer && electron scripts/check-reading-presentation-native.js",
     "check:window-policy": "electron scripts/check-window-policy-native.js && electron scripts/check-reading-window-handoff-native.js",
-    "check:term-library-layout": "electron scripts/check-term-library-layout-native.js"
+    "check:term-library-layout": "electron scripts/check-term-library-loading-native.js && electron scripts/check-term-library-layout-native.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.0",
