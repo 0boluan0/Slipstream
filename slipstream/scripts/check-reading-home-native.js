@@ -205,7 +205,7 @@ app.whenReady().then(async () => {
   await shot(main, '06-reading-setup.png');
   assert(await js('document.body.textContent.includes("专业阅读")'));
   if (windowsUi) {
-    assert(await js('document.body.textContent.includes("支持图片的阅读服务")'));
+    assert(await js('document.body.textContent.includes("支持图片的服务")'));
   }
   await js(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('配置阅读服务')).click()`);
   await until(() => js('Boolean(document.querySelector(".settings-panel"))'), 'reading setup settings');
