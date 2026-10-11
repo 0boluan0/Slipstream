@@ -112,6 +112,35 @@ function assertsUnauthorizedUseWithoutSource(explanation, source) {
   return claim.test(explanation) && !explicitSource.test(source);
 }
 
+function assertsConditionalNonconstancy(explanation) {
+  // This is a narrow assertion check, not a semantic parser. Keep qualifiers
+  // local to their claim; a later mention of a possible constant is no waiver.
+  const claims = /(?:随着|随)[^，,。；;！？\n]{0,20}X[^，,。；;！？\n]{0,14}(?:而变|变化)|不是(?:一个|某个)?固定(?:的)?数值/gu;
+  return explanation.replace(/\n/gu, ' ').split(/[。；;！？]|但是|但|然而|不过/u).some((part) => {
+    for (const claim of part.matchAll(claims)) {
+      const before = part.slice(0, claim.index).trim();
+      const after = part.slice(claim.index + claim[0].length).trim();
+      // A continuation such as "并非必然" or "的说法不成立" is not
+      // a standalone affirmative claim. Leave ambiguous wording alone.
+      if (!/^(?:[，,]|$)/u.test(after)) continue;
+      // Conditional statements do not assert nonconstancy in all cases.
+      if (/(?:如果|只有|仅当|(?:^|[，,])\s*若|当[^。；;]{0,60}时|在[^。；;]{0,60}(?:时|情况下))/u.test(before)) continue;
+      // Match only a complete affirmative clause prefix. Unknown/negated
+      // prefixes are not enough evidence to block an otherwise valid answer.
+      const prefix = before.split(/[，,]/u).at(-1).trim();
+      if (!/^(?:(?:由于|因为|因此|所以|故)\s*)?(?:(?:条件期望|它|其)\s*)?(?:一定|必然|总是|必定|会|也|就|并)*$/u.test(prefix)) continue;
+      return true;
+    }
+    return false;
+  });
+}
+
+function sourceStatesConditionalNonconstancy(source) {
+  // Only a direct affirmative statement about this concept is evidence;
+  // an unrelated or qualified "nonconstant" elsewhere in the excerpt is not.
+  return source.replace(/\n/gu, ' ').split(/[.!?;]/u).some((sentence) => /^\s*(?:(?:here|in this (?:case|example)),?\s+)?(?:the\s+)?conditional expectation(?:\s+\$[^$]+\$|\s+E\[[^\]]+\])?\s+(?:varies? with\s+\$?X\$?|is\s+(?:nonconstant|not constant))\s*$/iu.test(sentence));
+}
+
 function unsupportedExplanationClaim(selection, source, meaning, note) {
   const explanation = `${meaning} ${note}`;
   if (assertsUnauthorizedUseWithoutSource(explanation, source)) {
@@ -128,8 +157,8 @@ function unsupportedExplanationClaim(selection, source, meaning, note) {
     return 'A root-N rate alone does not establish a nondegenerate limiting behavior or distribution.';
   }
   if (/conditional expectation/iu.test(selection)
-    && !/\b(?:varies? with|nonconstant|not constant)\b/iu.test(source)
-    && /(?:随|随着).{0,20}X.{0,14}(?:而变|变化)|不是.{0,5}固定.{0,5}数值/u.test(explanation)) {
+    && !sourceStatesConditionalNonconstancy(source)
+    && [meaning, note].some(assertsConditionalNonconstancy)) {
     return 'Conditional expectation is determined by X, but it can still be constant.';
   }
   if (/sufficient condition/iu.test(selection)

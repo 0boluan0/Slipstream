@@ -343,6 +343,81 @@ async function main() {
   const explicitAuthorization = createReadingProcessor(async () => JSON.stringify({ quote: 'Unauthorized', meaning: '未经授权使用模型输出的行为。', note: '' }));
   assert.equal((await explicitAuthorization({ text: 'Unauthorized use of model output is prohibited.', kind: 'lookup', selection: 'Unauthorized', settingsSnapshot: settings })).lookup.meaning,
     '未经授权使用模型输出的行为。', 'explicit source wording can support an authorization claim');
+  const conditionalSource = 'The conditional expectation is a function of $X$.';
+  const qualifiedMeaning = '条件期望可以随 X 变化，但也可以保持常数。';
+  let qualifiedAttempts = 0;
+  const qualifiedConditional = createReadingProcessor(async () => {
+    qualifiedAttempts += 1;
+    return JSON.stringify({ quote: 'conditional expectation', meaning: qualifiedMeaning, note: '' });
+  });
+  assert.equal((await qualifiedConditional({ text: conditionalSource, kind: 'lookup', selection: 'conditional expectation',
+    settingsSnapshot: settings })).lookup.meaning, qualifiedMeaning);
+  assert.equal(qualifiedAttempts, 1, 'a qualified possibility of nonconstancy must not trigger a repair');
+  const conditionalAccepted = [
+    { meaning: '条件期望不一定随 X 变化。' },
+    { meaning: '条件期望不一定总是随着 X 的变化而变化。' },
+    { meaning: '不能断言条件期望一定随 X 变化。' },
+    { meaning: '不能断言\n条件期望一定随 X 变化。' },
+    { meaning: '条件期望随 X 变化并非必然，它也可以是常数。' },
+    { meaning: '条件期望不是固定数值的说法不成立。' },
+    { meaning: '条件期望由 X 决定。', note: '当条件均值在不同 X 取值下不同时，它随 X 变化。' },
+    { meaning: '只有在条件均值非恒定时，它才随 X 变化。' },
+    { source: 'The conditional expectation E[Y|X] is nonconstant.', meaning: '这里的条件期望随 X 变化，不是固定数值。' },
+    { source: 'The conditional expectation\nis nonconstant.', meaning: '条件期望不是固定数值。' },
+    { source: 'In this example, the conditional expectation is not constant.', meaning: '本例中的条件期望不是一个固定数值。' },
+    { source: 'The conditional expectation varies with $X$.', meaning: '本段的条件期望随 X 变化。' },
+  ];
+  for (const sample of conditionalAccepted) {
+    let attempts = 0;
+    const accepted = createReadingProcessor(async () => {
+      attempts += 1;
+      return JSON.stringify({ quote: 'conditional expectation', meaning: sample.meaning, note: sample.note || '' });
+    });
+    const result = await accepted({ text: sample.source || conditionalSource, kind: 'lookup', selection: 'conditional expectation', settingsSnapshot: settings });
+    assert.equal(result.lookup.meaning, sample.meaning);
+    assert.equal(attempts, 1, `qualified or source-supported claim should pass once: ${sample.meaning} ${sample.note || ''}`);
+  }
+  const conditionalOverclaims = [
+    { meaning: '条件期望一定随 X 变化。' },
+    { meaning: '它一定随着 X 而变化。' },
+    { meaning: '条件期望总是随着 X 的变化而变化。' },
+    { meaning: '条件期望不是一个固定数值。' },
+    { meaning: '条件期望可以保持常数，但它一定随 X 变化。' },
+    { meaning: '条件期望一定随 X 变化，但它也可以保持常数。' },
+    { meaning: '可以计算条件期望，它一定随 X 变化。' },
+    { meaning: '不能断言条件期望一定随 X 变化，但它一定随 X 变化。' },
+    { meaning: '条件期望不一定总是随着 X 的变化而变化，但它不是固定数值。' },
+    { meaning: '条件期望不是固定数值。原文还提到常数。' },
+    { meaning: qualifiedMeaning, note: '它一定随 X 变化。' },
+    { meaning: qualifiedMeaning, note: '它不是固定数值。' },
+    { meaning: '如果 X 与 Y 独立，它为常数，但它一定随 X 变化。' },
+    { source: `${conditionalSource} The random variable Y is nonconstant.`, meaning: '条件期望随 X 变化。' },
+    { source: 'The conditional expectation is not necessarily nonconstant.', meaning: '条件期望不是固定数值。' },
+    { source: 'The conditional expectation is not nonconstant.', meaning: '条件期望不是固定数值。' },
+    { source: 'It is false that the conditional expectation is nonconstant.', meaning: '条件期望随 X 变化。' },
+    { source: 'It is false that\nthe conditional expectation is nonconstant.', meaning: '条件期望随 X 变化。' },
+    { source: 'If the conditional mean depends on X, the conditional expectation is nonconstant.', meaning: '条件期望一定随 X 变化。' },
+  ];
+  for (const sample of conditionalOverclaims) {
+    let attempts = 0;
+    const repair = createReadingProcessor(async (...args) => {
+      attempts += 1;
+      if (attempts === 1) return JSON.stringify({ quote: 'conditional expectation', meaning: sample.meaning, note: sample.note || '' });
+      assert.match(args[3], /can still be constant/);
+      assert.equal(args[9].retries, 1, 'the claim repair retains its bounded retry policy');
+      return JSON.stringify({ quote: 'conditional expectation', meaning: qualifiedMeaning, note: '' });
+    });
+    const input = { text: sample.source || conditionalSource, kind: 'lookup', selection: 'conditional expectation', settingsSnapshot: settings };
+    assert.equal((await repair(input)).lookup.meaning, qualifiedMeaning);
+    assert.equal(attempts, 2, `unsupported assertion should get one repair: ${sample.meaning}`);
+    let failedAttempts = 0;
+    const persistent = createReadingProcessor(async () => {
+      failedAttempts += 1;
+      return JSON.stringify({ quote: 'conditional expectation', meaning: sample.meaning, note: sample.note || '' });
+    });
+    await assert.rejects(persistent(input), /reading-unsupported-claim/);
+    assert.equal(failedAttempts, 2, 'a repeated overclaim stays blocked after one repair');
+  }
   const claimRepairs = [
     { selection: 'data statements', source: 'We present a form that data statements can take.',
       bad: '作者给出一种表格形式。', good: '作者说文中给出数据声明可采取的一种形式。', hint: /not a table/ },
