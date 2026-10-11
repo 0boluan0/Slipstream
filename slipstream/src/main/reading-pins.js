@@ -462,7 +462,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       && pin.view.sourceText.includes(entry.evidence)).map((entry) => ({ ...entry, pending: true }));
     const definitions = [...saved, ...pending];
     const only = definitions.length === 1 && !definitions[0].pending ? definitions[0] : null;
-    return { quote, contextual: true, reference: true, definitions,
+    return { quote, kind: 'concept', contextual: true, reference: true, definitions,
       meaning: only?.meaning || '', note: only?.scope || '', referenceSource: only?.source || '' };
   }
 
@@ -877,7 +877,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         catch { localNotice = '本地卡片未能读取，下面显示模型生成的解释。'; }
         if (!active()) return;
         if (card) {
-          update(pin, { lookup: { quote, meaning: card.meaning, note: card.context, contextual: true, localCard: true },
+          update(pin, { lookup: { quote, meaning: card.meaning, note: card.context, kind: card.kind || 'concept', contextual: true, localCard: true },
             lookupStatus: 'done', saveStatus: 'saved', savedCardId: card.id });
           return;
         }
@@ -886,9 +886,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       const result = await processReadingText({ text: requestSource, kind: 'lookup', selection: quote,
         settingsSnapshot: configuration.settings, signal: controller.signal });
       if (!active()) return;
-      pin.lookupCache.set(key, result.lookup);
+      // Keep the completed result's type tied to this request, including legacy processor replies.
+      const lookup = { ...result.lookup, kind: configuration.settings.activeBackend === 'free_translate' ? 'translation' : 'concept' };
+      pin.lookupCache.set(key, lookup);
       if (pin.lookupCache.size > 30) pin.lookupCache.delete(pin.lookupCache.keys().next().value);
-      update(pin, { lookup: result.lookup, lookupStatus: 'done', lookupNotice: localNotice });
+      update(pin, { lookup, lookupStatus: 'done', lookupNotice: localNotice });
     } catch (error) {
       if (!active()) return;
       update(pin, { lookupStatus: 'error', lookupNotice: error?.message === 'reading-invalid-output' || error instanceof SyntaxError
@@ -1308,7 +1310,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       const source = lookup.reference ? lookup.referenceSource : pin.view.sourceText;
       const hit = lookup.reference ? referenceOccurrences(source, lookup.quote)[0] : null;
       const input = { term: hit ? source.slice(hit.start, hit.end) : lookup.quote, label: term?.label || '', meaning: lookup.meaning,
-        context: lookup.note || '', source, kind: lookup.contextual ? 'concept' : 'translation' };
+        context: lookup.note || '', source, kind: lookup.kind === 'translation' ? 'translation' : 'concept' };
       update(pin, { saveStatus: 'saving' });
       return saveTermCard(input).then((result) => {
         if (alive(pin) && pin.lookupSequence === sequence) update(pin, { saveStatus: 'saved', savedCardId: result.card.id });

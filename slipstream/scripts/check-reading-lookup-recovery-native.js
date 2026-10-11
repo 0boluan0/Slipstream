@@ -40,11 +40,12 @@ app.whenReady().then(async () => {
   }
   let settings = { setupMode: 'full', activeBackend: 'custom', activeModel: 'old', customEndpointUrl: 'http://127.0.0.1:11434/v1' };
   let behavior = 'unauthorized', openedSettings = 0, heldLookup, heldTranslation, lookupSignal, translationSignal, heldLocal, localStarted;
-  const calls = [];
+  const calls = [], savedKinds = [];
   const lookupResult = model => ({ lookup: { quote: term, meaning: `使用${model}配置返回的解释。`, note: '', contextual: true } });
   manager = createReadingPins({ BrowserWindow: OffscreenWindow, ipcMain, screen, getSettings: () => settings,
     getMainWindow: () => null, captureSupported: false,
     onOpenSettings: () => { openedSettings += 1; },
+    saveTermCard: async input => { savedKinds.push(input.kind); return { card: { id: 'fixture-saved-card' } }; },
     findTermCard: async () => { if (heldLocal) { localStarted = true; return heldLocal.promise; } return null; },
     classifyError: () => '请在设置中重新保存并测试凭据。',
     processReadingText: async options => {
@@ -87,9 +88,32 @@ app.whenReady().then(async () => {
   assert.equal((await state(reader)).translation, translation);
   assert.equal(calls.filter(call => call.kind === 'translate').length, 1);
 
+  const payload = current => ({ revision: current.revision, segmentId: 0, start: text.indexOf(term), end: text.indexOf(term) + term.length });
+  assert.equal((await state(reader)).lookup.kind, 'concept', 'legacy processor replies receive the application request type');
+  const beforeModeChange = calls.length;
+  manager.invalidateProcessing(); settings = { ...settings, setupMode: 'translation-only', activeBackend: 'free_translate' };
+  await until(async () => !(await state(reader)).explainSupported, 'basic capability after concept result');
+  assert.equal((await state(reader)).lookup.kind, 'concept');
+  assert.equal(await reader.webContents.executeJavaScript('document.getElementById("lookup-title").textContent'), '术语与词句解释');
+  assert.equal(await reader.webContents.executeJavaScript('document.getElementById("lookup-settings").hidden'), true);
+  assert.equal(calls.length, beforeModeChange, 'settings alone do not request a replacement result');
+  await act(reader, 'save-term');
+  assert.equal(savedKinds.at(-1), 'concept', 'saving an old result uses its type, not the new settings');
+  await act(reader, 'lookup', payload(await state(reader)));
+  assert.equal((await state(reader)).lookup.kind, 'translation');
+  assert.equal(await reader.webContents.executeJavaScript('document.getElementById("lookup-title").textContent'), '词句翻译');
+  assert.equal(await reader.webContents.executeJavaScript('document.getElementById("lookup-basis").hidden'), true);
+  assert.equal(await reader.webContents.executeJavaScript('document.getElementById("meaning-label").hidden'), true);
+  assert.equal(await reader.webContents.executeJavaScript('document.getElementById("lookup-settings").hidden'), false);
+  manager.invalidateProcessing(); settings = { ...settings, setupMode: 'full', activeBackend: 'openai' };
+  await until(async () => (await state(reader)).explainSupported, 'model capability after translation result');
+  assert.equal((await state(reader)).lookup.kind, 'translation');
+  assert.equal(await reader.webContents.executeJavaScript('document.getElementById("lookup-title").textContent'), '词句翻译');
+  await act(reader, 'save-term');
+  assert.equal(savedKinds.at(-1), 'translation');
+
   manager.invalidateProcessing(); settings = { ...settings, activeModel: 'held' };
   heldLookup = deferred();
-  const payload = current => ({ revision: current.revision, segmentId: 0, start: text.indexOf(term), end: text.indexOf(term) + term.length });
   const stalePayload = payload(await state(reader));
   const oldLookup = act(reader, 'lookup', stalePayload);
   await until(() => calls.at(-1)?.model === 'held', 'held lookup');

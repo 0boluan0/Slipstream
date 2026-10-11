@@ -317,9 +317,9 @@ function parseLookup(raw, selection, source) {
   const boundary = incompleteLookupContext(source, selection);
   if (boundary && !boundary.selectionHasContext) return { quote: selection, meaning: value.meaning.trim(),
     note: '这句话还没截完整，暂时无法判断这里的具体关系。把下一行也框进来后再查。',
-    basis: 'general', sourceQuote: '', contextual: false };
+    basis: 'general', sourceQuote: '', contextual: false, kind: 'concept' };
   return { quote: selection, meaning: value.meaning.trim(), note: value.note.trim(),
-    basis, sourceQuote: basis === 'unverified' || basis === 'general' ? '' : sourceQuote, contextual: true };
+    basis, sourceQuote: basis === 'unverified' || basis === 'general' ? '' : sourceQuote, contextual: true, kind: 'concept' };
 }
 
 
@@ -550,7 +550,7 @@ function createReadingProcessor(processBackend) {
       ? (backend === 'free_translate' && raw.endsWith(FREE_TRANSLATION_NOTICE)
         ? raw.slice(0, -FREE_TRANSLATION_NOTICE.length) : raw).trim() : '';
     if (!translation || translation.length > 40000) throw new Error('reading-invalid-output');
-    if (kind === 'lookup') return { lookup: { quote: selection, meaning: translation, note: '', contextual: false } };
+    if (kind === 'lookup') return { lookup: { quote: selection, meaning: translation, note: '', contextual: false, kind: 'translation' } };
     if (kind === 'translate' && reversesExplicitSymbolRoles(text, translation)) {
       if (backend === 'free_translate') throw new Error('reading-symbol-role-mismatch');
       const repaired = await processBackend(settings, backend, settings.activeModel,

@@ -425,11 +425,13 @@ function render(next) {
       byId('lookup-panel').scrollTop = 0;
       byId('lookup-evidence').open = false;
     }
-    const contextual = lookup?.contextual ?? state.explainSupported;
+    const concept = lookup?.kind === 'concept' || (lookup?.kind !== 'translation'
+      && (lookup?.reference || lookup?.localCard || ['defined', 'contextual', 'general', 'unverified'].includes(lookup?.basis)
+        || (lookup?.contextual ?? (!lookup?.meaning && state.explainSupported))));
     byId('lookup-title').textContent = lookup?.reference ? '本文定义 · 本地速查' : lookup?.localCard ? '已存卡片 · 本地解释'
-      : contextual ? '术语与词句解释' : '词句翻译';
+      : concept ? '术语与词句解释' : '词句翻译';
     window.renderReadingMath(byId('lookup-quote'), lookup?.reference ? window.readingReferences.symbolText(lookup.quote) : lookup?.quote || '');
-    const showBasis = Boolean(contextual && !lookup?.reference && !lookup?.localCard && state.lookupStatus === 'done');
+    const showBasis = Boolean(concept && !lookup?.reference && !lookup?.localCard && state.lookupStatus === 'done');
     const basisLabels = {
       defined: '原文给出定义（模型判断）',
       contextual: '根据本段用法解释',
@@ -439,7 +441,7 @@ function render(next) {
     byId('lookup-basis').hidden = !showBasis;
     byId('lookup-basis').textContent = showBasis ? basisLabels[lookup?.basis] || basisLabels.unverified : '';
     window.renderReadingMath(byId('lookup-meaning'), state.lookupStatus === 'loading' ? '正在结合这段原文解释…' : lookup?.meaning || '');
-    byId('meaning-label').hidden = lookup?.reference || !contextual || state.lookupStatus !== 'done';
+    byId('meaning-label').hidden = lookup?.reference || !concept || state.lookupStatus !== 'done';
     byId('lookup-meaning').hidden = Boolean(lookup?.reference);
     byId('lookup-note').hidden = Boolean(lookup?.reference);
     window.renderReadingMath(byId('lookup-note'), lookup?.note || '');
@@ -451,7 +453,7 @@ function render(next) {
     byId('lookup-notice').hidden = !state.lookupNotice;
     byId('lookup-notice').textContent = state.lookupNotice || '';
     byId('lookup-retry').hidden = state.lookupStatus !== 'error' || !selected;
-    byId('lookup-settings').hidden = state.lookupStatus !== 'error' && (contextual || state.lookupStatus !== 'done');
+    byId('lookup-settings').hidden = state.lookupStatus !== 'error' && (concept || state.lookupStatus !== 'done');
     byId('lookup-settings').textContent = state.lookupStatus === 'error' ? '打开设置' : '配置模型，获取概念与上下文解释';
     byId('save-term').disabled = state.lookupStatus !== 'done' || state.saveStatus === 'saving' || !lookup?.meaning;
     byId('save-term').parentElement.hidden = Boolean(lookup?.reference && (!lookup.meaning || !lookup.referenceSource));

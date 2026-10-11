@@ -342,17 +342,18 @@ async function main() {
   const lookup = createReadingProcessor(async (...args) => {
     lookupCalls += 1;
     assert.deepEqual(JSON.parse(args[4]), { excerpt: source, selection: 'Correlation' });
-    return JSON.stringify({ quote: 'Correlation', meaning: '两个变量一起变化的统计关系。', note: '原文强调相关关系不足以推断因果。' });
+    return JSON.stringify({ quote: 'Correlation', meaning: '两个变量一起变化的统计关系。', note: '原文强调相关关系不足以推断因果。', kind: 'translation' });
   });
   const ordinaryLookup = (await lookup({ text: source, kind: 'lookup', selection: 'Correlation', settingsSnapshot: settings })).lookup;
   assert.equal(ordinaryLookup.contextual, true);
+  assert.equal(ordinaryLookup.kind, 'concept', 'application lookup type overrides a model-supplied kind');
   assert.equal(ordinaryLookup.basis, 'unverified', 'legacy or incomplete output must not claim an original definition');
   const explicitSource = 'A collider is defined as a variable influenced by both exposure and outcome.';
   const explicit = createReadingProcessor(async () => JSON.stringify({ quote: 'collider',
     meaning: '同时受两个变量影响的变量。', note: '', basis: 'defined', sourceQuote: 'collider is defined as a variable influenced by both exposure and outcome' }));
   assert.deepEqual((await explicit({ text: explicitSource, kind: 'lookup', selection: 'collider', settingsSnapshot: settings })).lookup,
     { quote: 'collider', meaning: '同时受两个变量影响的变量。', note: '', basis: 'defined',
-      sourceQuote: 'collider is defined as a variable influenced by both exposure and outcome', contextual: true });
+      sourceQuote: 'collider is defined as a variable influenced by both exposure and outcome', contextual: true, kind: 'concept' });
   const copularSource = 'The intrinsic rank is a small number in this setting.';
   const copular = createReadingProcessor(async () => JSON.stringify({ quote: 'intrinsic rank',
     meaning: '更新矩阵所需的低维结构。', note: '', basis: 'defined', sourceQuote: copularSource }));
@@ -501,6 +502,7 @@ async function main() {
   await assert.rejects(wrongQuote({ text: source, kind: 'lookup', selection: 'Correlation', settingsSnapshot: settings }), /reading-invalid-output/);
   const basicLookup = await free({ text: source, kind: 'lookup', selection: 'Correlation', settingsSnapshot: { activeBackend: 'free_translate' } });
   assert.equal(basicLookup.lookup.contextual, false, 'basic translation must not be presented as a concept definition');
+  assert.equal(basicLookup.lookup.kind, 'translation');
   assert.deepEqual(readingSegments('First paragraph.\n\nSecond paragraph.').map((segment) => segment.source), ['First paragraph.', 'Second paragraph.']);
   assert(isIsolatedNumericRow('500 700 700 900 1100 1300 1500 1700'), 'actual chart OCR needs a screenshot check, not a claimed translation');
   assert(!isIsolatedNumericRow('N(μ=0,σ=1) and N(μ=19,σ=4)'));
@@ -565,6 +567,7 @@ async function main() {
     });
     const result = (await incomplete({ text: incompleteSource, kind: 'lookup', selection: 'boundary term', settingsSnapshot: settings })).lookup;
     assert.equal(result.basis, 'general'); assert.equal(result.contextual, false);
+    assert.equal(result.kind, 'concept', 'an incomplete source changes evidence, not the model explanation type');
     assert.equal(result.sourceQuote, ''); assert.match(result.note, /下一行/u);
     assert.doesNotMatch(result.note, /补造/u, 'an unfinished clause cannot support a contextual conclusion');
   }

@@ -8,6 +8,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const { createReadingPins } = require('../src/main/reading-pins');
+const { createReadingProcessor } = require('../src/main/reading-service');
 const { createTermCardStore } = require('../src/main/term-card-store');
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'slipstream-saved-lookup-'));
 app.setPath('userData', path.join(work, 'profile'));
@@ -36,7 +37,7 @@ app.whenReady().then(async () => {
     context: '', source, kind: 'concept' });
   const correction = '这里的 evidence 是观测数据的边缘密度，不是连续观测恰好取该值的概率。';
   let saved = await store.edit(initial.card.id, { ...initial.card, meaning: correction, notes: '已核对原文，保留我的笔记。' }, initial.card.revision);
-  let lookupCalls = 0, opened, failRead = false, holdRead = false, releaseRead;
+  let lookupCalls = 0, opened, failRead = false, holdRead = false, releaseRead, lookupProcessor;
   manager = createReadingPins({ BrowserWindow: OffscreenWindow, ipcMain, screen,
     getMainWindow: () => null, captureSupported: false,
     getSettings: () => ({ setupMode: 'full', activeBackend: 'custom', activeModel: 'fixture', customEndpointUrl: 'http://127.0.0.1:11434/v1' }),
@@ -46,8 +47,13 @@ app.whenReady().then(async () => {
       return store.findMatching(input);
     },
     saveTermCard: (input) => store.save(input), onOpenLibrary: (id) => { opened = id; },
-    processReadingText: async ({ text, kind, selection }) => {
-      if (kind === 'lookup') { lookupCalls++; return { lookup: { quote: selection, meaning: '本次模型生成的解释。', note: '', contextual: true } }; }
+    processReadingText: async options => {
+      const { text, kind, selection } = options;
+      if (kind === 'lookup') {
+        lookupCalls++;
+        return lookupProcessor ? lookupProcessor(options)
+          : { lookup: { quote: selection, meaning: '本次模型生成的解释。', note: '', contextual: true } };
+      }
       const start = text.indexOf('evidence');
       return { translation: '这一段的译文。', terms: [{ quote: 'evidence', label: '证据', start, end: start + 8 }] };
     },
@@ -98,6 +104,39 @@ app.whenReady().then(async () => {
   assert.equal(finalCards.length, 1);
   assert.equal(finalCards[0].notes, '已核对原文，保留我的笔记。');
   assert.equal(finalCards[0].source, source);
+  // A source ending mid-sentence still yields a concept, while old translation cards remain untouched.
+  holdRead = false;
+  const incompleteSource = 'The evidence depends on';
+  const oldTranslation = await store.save({ term: 'evidence', label: '证据', meaning: '旧基础翻译。',
+    context: '', source: incompleteSource, kind: 'translation' });
+  const retained = await store.edit(oldTranslation.card.id,
+    { ...oldTranslation.card, notes: '旧卡笔记保留。', links: [saved.id] }, oldTranslation.card.revision);
+  const oldFile = await store.filePath(retained.id), oldBytes = fs.readFileSync(oldFile);
+  lookupProcessor = createReadingProcessor(async () => JSON.stringify({ quote: 'evidence',
+    meaning: '支持判断的信息。', note: '', basis: 'general', sourceQuote: '', kind: 'translation' }));
+  window = await open(incompleteSource);
+  current = await lookup(window);
+  assert.equal(current.lookup.kind, 'concept');
+  assert.equal(current.lookup.contextual, false, 'the existing incomplete-context warning remains independent of type');
+  assert.match(current.lookup.note, /下一行/u);
+  assert.equal(await js(window, 'document.getElementById("lookup-title").textContent'), '术语与词句解释');
+  assert.equal(await js(window, 'document.getElementById("lookup-basis").hidden'), false);
+  assert.equal(await js(window, 'document.getElementById("meaning-label").hidden'), false);
+  assert.equal(await js(window, 'document.getElementById("lookup-settings").hidden'), true);
+  await js(window, 'document.getElementById("save-term").click()');
+  await until(async () => (await state(window)).saveStatus === 'saved');
+  const concept = await store.findMatching({ term: 'evidence', source: incompleteSource, kind: 'concept' });
+  assert(concept && concept.id !== retained.id, 'a new concept does not overwrite a same-source translation');
+  assert.equal(concept.source, incompleteSource);
+  assert.equal(concept.context, current.lookup.note);
+  const beforeReopen = lookupCalls;
+  window = await open(incompleteSource);
+  current = await lookup(window);
+  assert.equal(current.lookup.kind, 'concept');
+  assert.equal(current.savedCardId, concept.id);
+  assert.equal(lookupCalls, beforeReopen, 'the saved incomplete-context concept is reused without another lookup');
+  assert.equal(await js(window, 'document.getElementById("lookup-title").textContent'), '已存卡片 · 本地解释');
+  assert.deepEqual(fs.readFileSync(oldFile), oldBytes, 'old translation bytes, id, notes and links are never migrated');
   assert(BrowserWindow.getAllWindows().every((item) => !item.isVisible()));
   console.log('Saved-card lookup passed: corrected meaning, no provider request, fresh edit, exact source, read-failure notice, cancellation and preserved notes; no visible windows.');
   manager.dispose(); fs.rmSync(work, { recursive: true, force: true }); app.exit(0);
