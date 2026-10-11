@@ -201,6 +201,62 @@ app.whenReady().then(async () => {
   await check('an explicitly resized card keeps the reader chosen size', () => assert.equal(compact.getBounds().height, 410));
   await js(compact, 'document.getElementById("lookup-close").click()');
   assert.equal(compact.getBounds().height, 410);
+  const previousWindows = new Set(BrowserWindow.getAllWindows());
+  manager.openText('We discuss root-N consistency in this paragraph.\n\nWe then consider another part of the argument.');
+  const shortPin = BrowserWindow.getAllWindows().find(window => !previousWindows.has(window));
+  await until(async () => (await snapshot(shortPin)).phase === 'done', 'short-window translation');
+  await js(shortPin, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  shortPin.emit('will-resize', {}, shortPin.getBounds());
+  shortPin.setSize(460, 220);
+  await until(async () => js(shortPin, 'innerHeight === 220'), 'manually resized short viewport');
+  await js(shortPin, `document.getElementById('tab-parallel').click();
+    for (let i = 0; i < 8; i++) document.getElementById('larger').click();`);
+  const clickVisible = async (id) => {
+    const point = await js(shortPin, `(() => { const button = document.getElementById(${JSON.stringify(id)});
+      const rect = button.getBoundingClientRect(); const x = rect.x + rect.width / 2, y = rect.y + rect.height / 2;
+      return { x, y, visible: rect.top >= 0 && rect.bottom <= innerHeight, hit: button.contains(document.elementFromPoint(x, y)) }; })()`);
+    assert(point.visible && point.hit, `${id} must be visibly clickable: ${JSON.stringify(point)}`);
+    shortPin.focus();
+    shortPin.webContents.sendInputEvent({ type: 'mouseDown', x: Math.round(point.x), y: Math.round(point.y), button: 'left', clickCount: 1 });
+    shortPin.webContents.sendInputEvent({ type: 'mouseUp', x: Math.round(point.x), y: Math.round(point.y), button: 'left', clickCount: 1 });
+  };
+  for (const escape of [false, true]) {
+    await js(shortPin, `(() => { document.getElementById('reading-content').focus({ preventScroll: true });
+      const paragraph = document.querySelector('.source-paragraph');
+      const start = paragraph.firstChild.textContent.indexOf('root-N consistency');
+      const range = document.createRange(); range.setStart(paragraph.firstChild, start); range.setEnd(paragraph.firstChild, start + 18);
+      const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      window.scrollTo(0, window.scrollY + range.getBoundingClientRect().top - 45); })()`);
+    await until(async () => js(shortPin, '!document.getElementById("selection-bar").hidden'), 'visible selection action');
+    const origin = await js(shortPin, `(() => { const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
+      return { page: scrollY, reading: document.getElementById('scroll-area').scrollTop, visible: rect.top >= 0 && rect.bottom <= innerHeight }; })()`);
+    assert(origin.page > 0 && origin.visible, 'query must start with the source phrase visible at a nonzero page position');
+    await clickVisible('lookup-selection');
+    await until(async () => (await snapshot(shortPin)).lookupStatus === 'done', 'visible selection lookup');
+    assert.equal((await snapshot(shortPin)).lookup.quote, 'root-N consistency');
+    await js(shortPin, 'window.scrollTo(0, document.documentElement.scrollHeight)');
+    if (escape) {
+      shortPin.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' });
+      shortPin.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Escape' });
+    } else {
+      await js(shortPin, 'document.getElementById("lookup-close").scrollIntoView({ block: "center" })');
+      await clickVisible('lookup-close');
+    }
+    await until(async () => js(shortPin, 'document.getElementById("lookup-panel").hidden'), 'lookup closed');
+    await js(shortPin, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    await check(`a visible first-paragraph selection returns after ${escape ? 'Escape' : 'clicking close'} in a manually shortened window`, async () => {
+      const restored = await js(shortPin, `(() => { const paragraph = document.querySelector('.source-paragraph');
+        const start = paragraph.firstChild.textContent.indexOf('root-N consistency');
+        const range = document.createRange(); range.setStart(paragraph.firstChild, start); range.setEnd(paragraph.firstChild, start + 18);
+        const rect = range.getBoundingClientRect();
+        return { page: scrollY, reading: document.getElementById('scroll-area').scrollTop,
+          focused: document.activeElement.id === 'reading-content', visible: rect.top >= 0 && rect.bottom <= innerHeight }; })()`);
+      assert(restored.visible && restored.focused, `original=${JSON.stringify(origin)} restored=${JSON.stringify(restored)}`);
+      assert(Math.abs(restored.page - origin.page) <= 2, 'return to the same source position at unchanged geometry');
+      assert.equal(restored.reading, origin.reading);
+    });
+  }
+  shortPin.close();
   manager.dispose();
   fs.rmSync(work, { recursive: true, force: true });
   if (failures.length) throw new Error(`${failures.length} usability regressions: ${failures.join('; ')}`);

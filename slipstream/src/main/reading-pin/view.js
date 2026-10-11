@@ -7,6 +7,8 @@ let mode = 'translation';
 let fontSize = 16;
 let selected = null;
 let lookupOrigin = null;
+let lookupScrollOrigin = null;
+let lookupRequest = 0;
 let fitRequested = false;
 let copyTimer;
 const scrollPositions = { translation: 0, parallel: 0, image: 0 };
@@ -211,7 +213,12 @@ function createSegment(segment) {
 }
 
 function requestLookup(selection) {
-  if (!byId('lookup-panel').contains(document.activeElement)) lookupOrigin = document.activeElement;
+  lookupRequest += 1;
+  if (!byId('lookup-panel').contains(document.activeElement)) {
+    lookupOrigin = document.activeElement;
+    lookupScrollOrigin = { x: window.scrollX, y: window.scrollY,
+      left: byId('scroll-area').scrollLeft, top: byId('scroll-area').scrollTop };
+  }
   byId('lookup-panel').scrollTop = 0;
   selected = selection;
   byId('selection-bar').hidden = true;
@@ -219,8 +226,17 @@ function requestLookup(selection) {
 }
 
 async function dismissLookup() {
-  await act('dismiss-lookup');
-  if (lookupOrigin?.isConnected && lookupOrigin.getClientRects().length) lookupOrigin.focus({ preventScroll: true });
+  const request = lookupRequest, origin = lookupOrigin, position = lookupScrollOrigin;
+  if (!await act('dismiss-lookup')) return;
+  // Hiding the explanation can shrink either scroll container. Restore after
+  // layout, but never let this dismissal move a newer lookup back to its origin.
+  await new Promise(requestAnimationFrame);
+  if (request !== lookupRequest || !byId('lookup-panel').hidden) return;
+  if (position) {
+    byId('scroll-area').scrollTo(position.left, position.top);
+    window.scrollTo(position.x, position.y);
+  }
+  if (origin?.isConnected && origin.getClientRects().length) origin.focus({ preventScroll: true });
 }
 
 function renderSegments(segments) {
