@@ -354,6 +354,32 @@ async function main() {
   assert.deepEqual((await explicit({ text: explicitSource, kind: 'lookup', selection: 'collider', settingsSnapshot: settings })).lookup,
     { quote: 'collider', meaning: '同时受两个变量影响的变量。', note: '', basis: 'defined',
       sourceQuote: 'collider is defined as a variable influenced by both exposure and outcome', contextual: true, kind: 'concept' });
+  const numberedDefinition = 'Definition 3.2 A balanced token is an ordered pair of symbols.\n\nA balanced token is a useful input in this example.';
+  const definingSentence = 'A balanced token is an ordered pair of symbols.';
+  for (const [text, evidence] of [[numberedDefinition, definingSentence],
+    [numberedDefinition, 'Definition 3.2 ' + definingSentence],
+    [numberedDefinition.replace('3.2 A', '3.2\nA'), definingSentence]]) {
+    const numbered = createReadingProcessor(async () => JSON.stringify({ quote: 'balanced token',
+      meaning: '由两个符号组成的有序对。', note: '', basis: 'defined', sourceQuote: evidence }));
+    const selected = text.lastIndexOf('balanced token');
+    const result = (await numbered({ text, kind: 'lookup', selection: 'balanced token',
+      selectionRange: { start: selected, end: selected + 'balanced token'.length }, settingsSnapshot: settings })).lookup;
+    assert.equal(result.basis, 'defined', 'a directly introduced numbered definition remains evidence when its heading is omitted from the quote');
+    assert.equal(result.sourceQuote, evidence, 'definition recognition must not rewrite the source quote');
+  }
+  for (const [text, evidence] of [
+    [numberedDefinition, 'A balanced token is a useful input in this example.'],
+    ['Definition 3.2 A plain token is an ordered pair.\nA balanced token is a useful input.', 'A balanced token is a useful input.'],
+    ['See Definition 3.2 A balanced token is an ordered pair of symbols.', definingSentence],
+    ['Theorem 3.2 ' + definingSentence, definingSentence],
+    ['Example 3.2 ' + definingSentence, definingSentence],
+    ['Definition 3.2 Assume a balanced token is an ordered pair of symbols.', 'a balanced token is an ordered pair of symbols.'],
+  ]) {
+    const notDefinition = createReadingProcessor(async () => JSON.stringify({ quote: 'balanced token',
+      meaning: '本处出现的符号对。', note: '', basis: 'defined', sourceQuote: evidence }));
+    assert.equal((await notDefinition({ text, kind: 'lookup', selection: 'balanced token', settingsSnapshot: settings })).lookup.basis,
+      'contextual', 'only the defining subject directly introduced by the heading receives its provenance label');
+  }
   const copularSource = 'The intrinsic rank is a small number in this setting.';
   const copular = createReadingProcessor(async () => JSON.stringify({ quote: 'intrinsic rank',
     meaning: '更新矩阵所需的低维结构。', note: '', basis: 'defined', sourceQuote: copularSource }));

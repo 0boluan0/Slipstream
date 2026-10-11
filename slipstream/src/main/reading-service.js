@@ -97,15 +97,26 @@ function isCoordinateSpaceLabel(quote) {
   return /^(?:[A-Za-z](?:\s*,\s*[A-Za-z]){1,3}|[A-Za-z]\s*[-–]\s*[A-Za-z])\s+space$/iu.test(quote.trim());
 }
 
-function explicitlyDefinesSelection(quote, selection) {
+function explicitlyDefinesSelection(quote, selection, source) {
   const start = termStart(quote, selection);
   if (start < 0) return false;
   const before = quote.slice(0, start);
   const after = quote.slice(start + selection.length).replace(/^[\s$`]+/u, '');
   // A bare copula is not enough: "rank is a small number" describes an
   // assumption just as readily as "X is a variable" states a definition.
-  return /^(?::=|≔|(?:is|are)\s+(?:defined\s+as|called)|means\b|denotes\b|refers\s+to\b)/iu.test(after)
-    || /\b(?:define|call|called|known\s+as|referred\s+to\s+as)\s+(?:(?:a|an|the)\s+)?$/iu.test(before);
+  if (/^(?::=|≔|(?:is|are)\s+(?:defined\s+as|called)|means\b|denotes\b|refers\s+to\b)/iu.test(after)
+    || /\b(?:define|call|called|known\s+as|referred\s+to\s+as)\s+(?:(?:a|an|the)\s+)?$/iu.test(before)) return true;
+  // A quote may omit the heading; bind it to the immediately introduced subject in the original source.
+  const headings = /(?:^|\n)[ \t]*Definition[ \t]+\d+(?:\.\d+)*[.:]?(?:[ \t]+|[ \t]*\r?\n[ \t]*)(?:a|an|the)[ \t]+/giu;
+  for (const heading of source.matchAll(headings)) {
+    const subject = heading.index + heading[0].length;
+    if (source.slice(subject, subject + selection.length) !== selection) continue;
+    const copula = /^[ \t]+is[ \t]+(?:a|an)[ \t]+[\p{L}\p{M}-]+\b/iu.exec(source.slice(subject + selection.length));
+    if (!copula) continue;
+    const evidence = source.lastIndexOf(quote, subject);
+    if (evidence >= 0 && evidence + quote.length >= subject + selection.length + copula[0].length) return true;
+  }
+  return false;
 }
 
 function assertsUnauthorizedUseWithoutSource(explanation, source) {
@@ -321,7 +332,7 @@ function parseLookup(raw, selection, source, selectionRange) {
     ? sourceEvidence(source, value.sourceQuote) : '';
   const sourceQuote = exactQuote && termStart(exactQuote, selection) !== -1 ? exactQuote : '';
   const basis = sourceQuote && value.basis === 'defined'
-    ? (explicitlyDefinesSelection(sourceQuote, selection) ? 'defined' : 'contextual')
+    ? (explicitlyDefinesSelection(sourceQuote, selection, source) ? 'defined' : 'contextual')
     : sourceQuote && value.basis === 'contextual' ? 'contextual'
       : value.basis === 'general' ? 'general' : 'unverified';
   const boundary = incompleteLookupContext(source, selection, selectionRange);
