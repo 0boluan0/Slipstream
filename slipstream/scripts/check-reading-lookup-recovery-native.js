@@ -135,6 +135,26 @@ app.whenReady().then(async () => {
   const beforeStaleSelection = calls.length;
   await act(reader, 'lookup', stalePayload);
   assert.equal(calls.length, beforeStaleSelection, 'selection from an earlier revision remains rejected');
+  const beforeTextReview = new Set(BrowserWindow.getAllWindows());
+  assert(manager.openText(text).success);
+  const textReviewCard = BrowserWindow.getAllWindows().find(window => !beforeTextReview.has(window));
+  await until(async () => (await state(textReviewCard)).phase === 'done', 'fresh text correction card');
+  await act(textReviewCard, 'review');
+  await act(textReviewCard, 'translate', { revision: (await state(textReviewCard)).revision, text: 'Invalid \\(x^2' });
+  await until(async () => (await state(textReviewCard)).notice.includes('未正确闭合'), 'text correction validation');
+  assert.equal((await state(textReviewCard)).sourceText, text, 'invalid draft does not replace accepted text');
+  await textReviewCard.webContents.executeJavaScript('document.getElementById("review-cancel").click()');
+  await until(async () => (await state(textReviewCard)).phase === 'done', 'discard text correction');
+  await act(textReviewCard, 'review');
+  const changedText = text + ' The variance exists.';
+  await act(textReviewCard, 'translate', { revision: (await state(textReviewCard)).revision, text: changedText });
+  await until(async () => (await state(textReviewCard)).phase === 'done', 'confirm text correction');
+  assert.equal((await state(textReviewCard)).sourceText, changedText);
+  assert.equal((await state(textReviewCard)).correctionText, null);
+  manager.invalidateProcessing(); settings = { ...settings, activeModel: 'after-text-correction' }; await pause(30);
+  await act(textReviewCard, 'review');
+  assert.equal(await textReviewCard.webContents.executeJavaScript('document.getElementById("source-editor").value'), changedText,
+    'later configuration and correction do not restore the old accepted draft');
   manager.dispose();
   settings = { setupMode: 'full', activeBackend: 'custom', activeModel: 'image-old',
     customEndpointUrl: 'http://127.0.0.1:11434/v1', screenshotReadingMode: 'image' };
@@ -174,12 +194,15 @@ app.whenReady().then(async () => {
   assert.equal((await state(imageCard)).lookupDestination, '', 'new translation clears an obsolete future-query label');
   manager.dispose();
   const imageStages = [];
-  let failImageText = true, holdImageText = false, pendingImageText, pendingImageSignal, edgeImage = false, imageUncertain = [];
+  let failImageText = true, failImageRead = false, holdImageText = false, pendingImageText, pendingImageSignal, edgeImage = false, imageUncertain = [];
   const imageSource = 'The squared norm $x^2$ is nonnegative.';
-  const imageTranslation = '平方范数 $x^2$ 非负。';
+  let imageTranslation = '平方范数 $x^2$ 非负。';
   const fixedImageReader = createImageReader(async (_s, _b, model, _prompt, content, _l, _selection, signal) => {
     imageStages.push({ stage: Array.isArray(content) ? 'image' : 'text', model });
-    if (Array.isArray(content)) return JSON.stringify({ source: imageSource, uncertain: imageUncertain });
+    if (Array.isArray(content)) {
+      if (failImageRead) throw new Error('fixed-image-read-timeout');
+      return JSON.stringify({ source: imageSource, uncertain: imageUncertain });
+    }
     if (failImageText) throw new Error('fixed-image-text-timeout');
     if (holdImageText) { pendingImageSignal = signal; pendingImageText = deferred(); return pendingImageText.promise; }
     return JSON.stringify({ translation: imageTranslation, terms: [], references: [] });
@@ -226,6 +249,76 @@ app.whenReady().then(async () => {
   assert.equal((await state(retryImage)).sourceText, imageSource);
   assert.equal((await state(retryImage)).translation, imageTranslation);
   retryImage.close();
+  failImageText = true;
+  await manager.capture();
+  const correctedImage = BrowserWindow.getAllWindows()[0];
+  await until(async () => (await state(correctedImage)).phase === 'error', 'correctable text failure');
+  const correctionStart = imageStages.length;
+  const click = (window, id) => window.webContents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).click()`);
+  const edit = (window, value) => window.webContents.executeJavaScript(`document.getElementById("source-editor").value=${JSON.stringify(value)}; document.getElementById("source-editor").dispatchEvent(new Event("input"))`);
+  const draft = window => window.webContents.executeJavaScript('document.getElementById("source-editor").value');
+  await click(correctedImage, 'tab-image'); await click(correctedImage, 'edit-source');
+  await until(async () => (await state(correctedImage)).phase === 'review', 'explicit correction');
+  assert.equal(await draft(correctedImage), imageSource);
+  assert.equal((await state(correctedImage)).sourceText, '', 'opening correction does not accept the draft');
+  const correctedSource = imageSource.replace('x^2', 'y^2');
+  await edit(correctedImage, correctedSource);
+  await click(correctedImage, 'review-image'); await click(correctedImage, 'tab-translation');
+  assert.equal(await draft(correctedImage), correctedSource);
+  await click(correctedImage, 'review-cancel');
+  await until(async () => (await state(correctedImage)).phase === 'error', 'discard correction');
+  assert.equal((await state(correctedImage)).sourceText, '');
+  assert.equal(imageStages.length, correctionStart, 'opening, tab changes and discard send no requests');
+  await click(correctedImage, 'tab-image'); await click(correctedImage, 'edit-source');
+  await until(async () => (await state(correctedImage)).phase === 'review', 'reopen correction');
+  assert.equal(await draft(correctedImage), imageSource, 'explicit discard drops the unsubmitted draft');
+  await edit(correctedImage, 'The value \\(y^2'); await click(correctedImage, 'confirm');
+  await until(async () => (await state(correctedImage)).notice.includes('未正确闭合'), 'invalid corrected formula');
+  assert.equal((await state(correctedImage)).sourceText, ''); assert.equal(imageStages.length, correctionStart);
+  await edit(correctedImage, correctedSource);
+  for (const replacement of [{ setupMode: 'translation-only', activeBackend: 'free_translate' }, { setupMode: 'pending' }]) {
+    manager.invalidateProcessing(); settings = { ...settings, ...replacement };
+    await pause(30);
+    assert.equal((await state(correctedImage)).phase, 'review');
+    assert.equal(await draft(correctedImage), correctedSource, 'saving settings retains the unsubmitted draft');
+    await click(correctedImage, 'confirm'); await pause(20);
+    assert.equal(imageStages.length, correctionStart, 'unsupported configuration does not send correction');
+    assert.equal((await state(correctedImage)).phase, 'review');
+    assert.match((await state(correctedImage)).notice, /配置|专业阅读/u);
+  }
+  manager.invalidateProcessing(); settings = { ...settings, setupMode: 'full', activeBackend: 'custom', activeModel: 'correction-new' };
+  await pause(30); failImageText = false;
+  await click(correctedImage, 'confirm');
+  await until(async () => (await state(correctedImage)).phase === 'error', 'changed formula output rejected');
+  assert.equal((await state(correctedImage)).sourceText, correctedSource);
+  assert.equal((await state(correctedImage)).translation, '');
+  assert.match((await state(correctedImage)).notice, /公式/u);
+  assert(imageStages.slice(correctionStart).every(call => call.stage === 'text' && call.model === 'correction-new'));
+  imageTranslation = '平方范数 $y^2$ 非负。';
+  const beforeCorrectedRetry = imageStages.length;
+  await click(correctedImage, 'retry');
+  await until(async () => (await state(correctedImage)).phase === 'done', 'retry confirmed correction');
+  assert.equal((await state(correctedImage)).sourceText, correctedSource);
+  assert.equal((await state(correctedImage)).translation, imageTranslation);
+  assert.deepEqual(imageStages.slice(beforeCorrectedRetry).map(call => call.stage), ['text']);
+  const originalCorrectionDestination = (await state(correctedImage)).destination;
+  await click(correctedImage, 'tab-image'); await click(correctedImage, 'edit-source');
+  await until(async () => (await state(correctedImage)).phase === 'review', 'done correction');
+  manager.invalidateProcessing(); settings = { ...settings, activeBackend: 'openai' }; await pause(30);
+  await click(correctedImage, 'review-cancel');
+  await until(async () => (await state(correctedImage)).phase === 'done', 'discard to completed result');
+  assert.equal((await state(correctedImage)).destination, originalCorrectionDestination);
+  assert.match((await state(correctedImage)).lookupDestination, /OpenAI/u);
+  correctedImage.close();
+  failImageRead = true;
+  await manager.capture(); const emptyImage = BrowserWindow.getAllWindows()[0];
+  await until(async () => (await state(emptyImage)).phase === 'error', 'no transcription');
+  const beforeEmptyEdit = imageStages.length;
+  await click(emptyImage, 'tab-image'); await click(emptyImage, 'edit-source');
+  assert.equal((await state(emptyImage)).phase, 'error');
+  assert.equal(await emptyImage.webContents.executeJavaScript('document.getElementById("recovery").hidden'), false);
+  assert.equal(imageStages.length, beforeEmptyEdit); emptyImage.close();
+  failImageRead = false; imageTranslation = '平方范数 $x^2$ 非负。';
   for (const uncertain of [[], ['右侧文字截断']]) {
     edgeImage = !uncertain.length; imageUncertain = uncertain; failImageText = true;
     const before = imageStages.length;
@@ -240,8 +333,46 @@ app.whenReady().then(async () => {
     assert.equal((await state(guardedImage)).imageTextReady, false);
     assert.match((await state(guardedImage)).notice, edgeImage ? /选区右边可能截断/u : /右侧文字截断/u,
       'same-image retry retains the original edge or transcription warning');
+    const warning = (await state(guardedImage)).notice;
+    await click(guardedImage, 'tab-image'); await click(guardedImage, 'edit-source');
+    await until(async () => (await state(guardedImage)).phase === 'review', 'correct uncertain source');
+    await click(guardedImage, 'confirm');
+    await until(async () => (await state(guardedImage)).phase === 'done', 'confirmed uncertain source');
+    assert.equal((await state(guardedImage)).notice, warning, 'manual confirmation retains original image uncertainty');
+    assert.equal((await state(guardedImage)).formulaStatus, 'uncertain');
+    assert.equal(imageStages.at(-1).stage, 'text');
     guardedImage.close();
   }
+  manager.dispose();
+  const lateFinal = deferred(); let finalSignal;
+  manager = createReadingPins({ BrowserWindow: OffscreenWindow, ipcMain, screen, getSettings: () => settings,
+    getMainWindow: () => null, requestCapturePermission: async () => ({ granted: true }),
+    captureRegion: async () => {
+      const file = path.join(work, 'early-image.png');
+      fs.writeFileSync(file, nativeImage.createFromBitmap(Buffer.alloc(120 * 80 * 4, 255), { width: 120, height: 80 }).toPNG());
+      return file;
+    }, readScreenshot: async ({ signal, onTranslation }) => {
+      finalSignal = signal;
+      onTranslation({ text: imageSource, translation: imageTranslation, terms: [], termsStatus: 'reviewing', uncertain: [] });
+      return lateFinal.promise;
+    }, processReadingText: async () => { throw new Error('unexpected-text-path'); },
+  });
+  const earlyCapture = manager.capture();
+  await until(() => Boolean(finalSignal), 'early image translation');
+  const earlyImage = BrowserWindow.getAllWindows()[0];
+  await until(async () => (await state(earlyImage)).phase === 'done', 'early translation published');
+  await click(earlyImage, 'tab-image'); await click(earlyImage, 'edit-source');
+  await until(async () => (await state(earlyImage)).phase === 'review', 'edit before final term response');
+  assert(finalSignal.aborted, 'editing revokes the previous main request');
+  await edit(earlyImage, correctedSource);
+  lateFinal.resolve({ text: imageSource, translation: 'old final', terms: [], uncertain: [] }); await earlyCapture;
+  assert.equal((await state(earlyImage)).phase, 'review');
+  assert.equal(await draft(earlyImage), correctedSource, 'late term final cannot replace a draft');
+  await click(earlyImage, 'review-cancel');
+  await until(async () => (await state(earlyImage)).phase === 'done', 'discard after late final');
+  assert.equal((await state(earlyImage)).translation, imageTranslation);
+  assert.equal((await state(earlyImage)).segments[0].termsStatus, 'unavailable');
+  assert.match(await earlyImage.webContents.executeJavaScript('document.getElementById("translation").textContent'), /展开原文选词查询/u);
   assert(BrowserWindow.getAllWindows().every(window => !window.isVisible()));
   console.log('Lookup settings recovery passed: real card buttons, destination before retry, preserved text, cache invalidation, invalid setup, stale selection and late lookup/translation suppression. Providers were fixed local fixtures; no API calls or visible windows.');
   cleanup(); app.exit(0);

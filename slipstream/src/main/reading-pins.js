@@ -378,6 +378,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
   }
   function close(pin) {
     pin.imageTranscription = null;
+    pin.imageCorrection = null; pin.reviewReturn = null;
     pin.controller?.abort();
     pin.lookupController?.abort();
     pin.referenceController?.abort();
@@ -415,10 +416,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const pin = { id: window.webContents.id, window, ready: false, revision: 0, generation, controller: null,
       captureSource: source, referenceNotice: source && !paperId ? '检测到新文档。这张截图先作为临时阅读；选中或新建阅读后，下次截图会自动找回。' : '',
       lookupController: null, lookupCache: new Map(), lookupSequence: 0, manuallyResized: false, fitted: false,
-      imageTranscription: null, imageEdgeNotice: '',
+      imageTranscription: null, imageCorrection: null, imageUncertain: [], imageEdgeNotice: '', reviewReturn: null,
       view: { phase: referenceOnly ? 'references' : 'ocr', referenceOnly, paperId, image, sourceText: '', translation: '', explanations: null,
         segments: [], lookup: null, lookupStatus: '', lookupNotice: '', saveStatus: '', savedCardId: null, collapsed: false,
-        notice: '', destination: '', topmost: !referenceOnly, explainSupported: false,
+        notice: '', destination: '', correctionText: null, topmost: !referenceOnly, explainSupported: false,
         formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
         formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], formulaRegions: [], imageSent: false, imageReading: false, imageTextReady: false } };
     pins.set(pin.id, pin);
@@ -639,6 +640,38 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     return `后续词句查询：${readingDestination({ ...settings, screenshotReadingMode: undefined }).replace('截图留在本机。', '')}`;
   }
 
+  function sourceMathNotice(source) {
+    const bare = firstBareFontCommand(source);
+    if (bare) return `公式中的“${bare}”缺少 LaTeX 反斜杠，排版会把它当成字母。请对照截图校正后再翻译。`;
+    const delimiter = firstInvalidMathDelimiter(source);
+    if (delimiter) return `公式标记“${delimiter}”未正确闭合或内容为空。请对照截图补全后再翻译。`;
+    if (mathRanges(source).some(range => !canRenderMath(range.tex, range.display))) {
+      return '公式仍无法排版。请对照截图校正 LaTeX 后再翻译；原文已保留。';
+    }
+    return '';
+  }
+
+  function confirmImageCorrection(pin, payload) {
+    if (pin.view.phase !== 'review' || payload.revision !== pin.revision) return false;
+    const source = payload.text.trim();
+    const notice = !source || source.length > DEFAULTS.MAX_TEXT_LENGTH
+      ? `请保留 1–${DEFAULTS.MAX_TEXT_LENGTH} 个字符后继续。`
+      : /[\b\f\r\t\v]/u.test(source) ? '文字中含有无法显示的控制字符，请校正后继续。' : sourceMathNotice(source);
+    if (notice) { update(pin, { notice }); return false; }
+    let configuration;
+    try { configuration = settingsForReading(); } catch {
+      update(pin, { notice: '校正内容已保留，请在设置中完成专业阅读配置后继续。' }); return false;
+    }
+    if (!imageReadingAvailable(configuration.settings)) {
+      update(pin, { notice: '校正内容已保留；请在设置中启用专业阅读，再翻译这段含原图信息的文字。' }); return false;
+    }
+    pin.imageCorrection = source;
+    pin.reviewReturn = null;
+    update(pin, { sourceText: source, correctionText: null });
+    void readImage(pin, { configuration });
+    return true;
+  }
+
   async function process(pin, kind, payload = {}, automatic = false) {
     if (!alive(pin) || disposed || ['translating', 'explaining', 'ocr', 'recognizing'].includes(pin.view.phase)) return;
     if (!automatic && payload.revision !== pin.revision) return;
@@ -666,24 +699,9 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       update(pin, { notice: `请保留 1–${DEFAULTS.MAX_TEXT_LENGTH} 个字符后继续。` });
       return;
     }
-    const bareFontCommand = kind === 'translate' ? firstBareFontCommand(source) : '';
-    if (bareFontCommand) {
-      update(pin, { sourceText: source, phase: 'review',
-        notice: `公式中的“${bareFontCommand}”缺少 LaTeX 反斜杠，排版会把它当成字母。请对照截图校正后再翻译。` });
-      return;
-    }
-    const invalidDelimiter = kind === 'translate' ? firstInvalidMathDelimiter(source) : '';
-    if (invalidDelimiter) {
-      update(pin, { sourceText: source, phase: 'review',
-        notice: `公式标记“${invalidDelimiter}”未正确闭合或内容为空。请对照截图补全后再翻译。` });
-      return;
-    }
-    const unrenderableFormula = kind === 'translate'
-      ? mathRanges(source).find((range) => !canRenderMath(range.tex, range.display)) : null;
-    if (unrenderableFormula) {
-      update(pin, { sourceText: source, phase: 'review',
-        notice: '公式仍无法排版。请对照截图校正 LaTeX 后再翻译；原文已保留。' });
-      return;
+    const sourceIssue = kind === 'translate' ? sourceMathNotice(source) : '';
+    if (sourceIssue) {
+      update(pin, { ...(pin.reviewReturn ? {} : { sourceText: source }), phase: 'review', notice: sourceIssue }); return;
     }
     const controller = new AbortController();
     pin.lookupController?.abort();
@@ -691,12 +709,13 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     pin.referenceCandidates = [];
     pin.referenceStatus = '';
     pin.lookupCache.clear();
+    pin.reviewReturn = null;
     pin.controller = controller;
     const revision = ++pin.revision;
     const requestGeneration = generation;
     const requestPaperId = pin.view.paperId;
     update(pin, { phase: kind === 'translate' ? 'translating' : 'explaining',
-      sourceText: source, destination: configuration.destination, lookupDestination: '', notice: '',
+      sourceText: source, correctionText: null, destination: configuration.destination, lookupDestination: '', notice: '',
       explainSupported: configuration.settings.activeBackend !== 'free_translate',
       ...(kind === 'translate' ? { translation: '', explanations: null, lookup: null, lookupStatus: '', lookupNotice: '' } : {}) });
     try {
@@ -1186,30 +1205,38 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     try { configuration ||= settingsForReading(); } catch {
       update(pin, { phase: 'error', notice: '请先在设置中完成图片试读，再重新框选。' }); return false;
     }
+    if (!imageReadingAvailable(configuration.settings)) {
+      update(pin, { phase: 'error', notice: '原图与文字已保留，请在设置中启用专业阅读后重试。' }); return false;
+    }
     pin.lookupController?.abort(); pin.referenceController?.abort(); pin.lookupSequence += 1;
     pin.lookupCache.clear(); pin.referenceCandidates = []; pin.referenceStatus = '';
     pin.controller = controller; pin.generation = generation;
     pin.imageEdgeNotice = edgeNotice;
     const retained = pin.imageTranscription;
-    const transcribedText = retained && !edgeNotice && retained.generation === generation && retained.image === pin.view.image
-      ? retained.text : undefined;
+    const transcribedText = pin.imageCorrection ?? (retained && !edgeNotice && retained.generation === generation && retained.image === pin.view.image
+      ? retained.text : undefined);
+    const transcribedUncertain = pin.imageCorrection === null ? [] : pin.imageUncertain;
     if (transcribedText === undefined) pin.imageTranscription = null;
     const revision = ++pin.revision, requestGeneration = generation, paperId = pin.view.paperId;
     const active = () => alive(pin) && !controller.signal.aborted && pin.revision === revision && generation === requestGeneration;
     update(pin, { phase: transcribedText === undefined ? 'recognizing' : 'translating', imageReading: true, imageSent: true,
       imageTextReady: transcribedText !== undefined,
-      destination: transcribedText === undefined ? configuration.destination : `此前：${configuration.destination}本次只发送已识别文字。`,
-      lookupDestination: '', notice: transcribedText === undefined ? '' : '已保留识别文字，本次只重试翻译。', lookup: null, lookupStatus: '', lookupNotice: '',
+      destination: transcribedText === undefined ? configuration.destination : pin.imageCorrection === null
+        ? `此前：${configuration.destination}本次只发送已识别文字。`
+        : `本次只发送校正文字。${readingDestination({ ...configuration.settings, screenshotReadingMode: undefined })}`,
+      lookupDestination: '', correctionText: null,
+      notice: transcribedText === undefined ? '' : pin.imageCorrection === null ? '已保留识别文字，本次只重试翻译。' : '本次只翻译已确认的校正文字。', lookup: null, lookupStatus: '', lookupNotice: '',
       translation: '', segments: [], formulaNotice: '', formulaStatus: '', explainSupported: true });
     const publishResult = result => {
       if (!active()) return;
+      pin.imageUncertain = [...(result.uncertain || [])];
       const segment = { id: 0, start: 0, end: result.text.length, source: result.text,
         translation: result.translation, status: 'done', error: '', terms: result.terms || [],
         termsStatus: result.termsStatus || 'ready', referenceCandidates: pin.view.paperId === paperId ? result.references || [] : [] };
       update(pin, { sourceText: result.text, translation: result.translation, segments: [segment], phase: 'done', notice: '' });
     };
     try {
-      const result = await readScreenshot({ image: pin.view.image, settingsSnapshot: configuration.settings, transcribedText,
+      const result = await readScreenshot({ image: pin.view.image, settingsSnapshot: configuration.settings, transcribedText, transcribedUncertain,
         signal: controller.signal, onTranscription: text => {
           if (!active() || edgeNotice || looksLikeOwnReadingUi(text)) return;
           pin.imageTranscription = { text, image: pin.view.image, generation: requestGeneration };
@@ -1322,11 +1349,49 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
     if (action === 'review') {
       if (!['done', 'partial', 'error'].includes(pin.view.phase)) return false;
+      const retained = pin.imageTranscription;
+      const source = pin.view.sourceText || (retained && retained.generation === generation
+        && retained.image === pin.view.image && !pin.imageEdgeNotice ? retained.text : '');
+      if (!source) {
+        update(pin, { notice: '尚无可校正的文字，请重新读这张图或重新框选。' }); return false;
+      }
+      pin.reviewReturn = { phase: pin.view.phase, notice: pin.view.notice, generation,
+        destination: pin.view.destination, lookupDestination: pin.view.lookupDestination };
+      pin.controller?.abort(); pin.controller = null;
       pin.lookupController?.abort();
       pin.referenceController?.abort();
+      pin.lookupSequence += 1; pin.revision += 1;
       pin.referenceStatus = '';
-      update(pin, { phase: 'review', lookup: null, lookupStatus: '', lookupNotice: '', notice: '' });
-      return true;
+      update(pin, { phase: 'review', correctionText: source, lookup: null, lookupStatus: '', lookupNotice: '', notice: '',
+        segments: pin.view.segments.map(segment => segment.termsStatus === 'reviewing' ? { ...segment, termsStatus: 'unavailable' } : segment) });
+      return { state: state(pin) };
+    }
+    if (action === 'cancel-review') {
+      if (pin.view.phase !== 'review' || !pin.reviewReturn) return false;
+      const previous = pin.reviewReturn; pin.reviewReturn = null;
+      const changed = previous.generation !== generation;
+      let destination = previous.destination, lookupDestination = previous.lookupDestination;
+      let explainSupported = pin.view.explainSupported;
+      if (changed) {
+        const hasResult = ['done', 'partial'].includes(previous.phase);
+        try {
+          const configuration = settingsForReading();
+          explainSupported = configuration.settings.activeBackend !== 'free_translate';
+          if (hasResult) lookupDestination = lookupDestinationFor(configuration.settings);
+          else {
+            destination = pin.imageCorrection === null ? configuration.destination
+              : `重试只发送校正文字。${readingDestination({ ...configuration.settings, screenshotReadingMode: undefined })}`;
+            lookupDestination = '';
+          }
+        } catch {
+          explainSupported = false;
+          if (hasResult) lookupDestination = '后续词句查询：请先在设置中完成处理方式配置。';
+          else destination = '请先在设置中完成处理方式配置。';
+        }
+      }
+      update(pin, { phase: previous.phase, correctionText: null, destination, lookupDestination, explainSupported,
+        notice: changed ? (pin.view.sourceText ? '处理服务已改变；后续操作使用当前设置。' : '处理服务已改变，请重新读这张图。') : previous.notice });
+      return { state: state(pin) };
     }
     if (action === 'dismiss-lookup') {
       pin.lookupController?.abort();
@@ -1349,7 +1414,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         || (payload.text !== undefined && (typeof payload.text !== 'string' || payload.text.length > DEFAULTS.MAX_TEXT_LENGTH))) {
         throw new Error('Invalid reading request');
       }
-      if (action === 'translate' && payload.retryFailed && pin.view.imageReading && !pin.view.sourceText
+      if (action === 'translate' && pin.view.imageReading && payload.text !== undefined) return confirmImageCorrection(pin, payload);
+      if (action === 'translate' && payload.retryFailed && pin.view.imageReading
         && payload.revision === pin.revision) void readImage(pin);
       else void process(pin, action, payload);
       return true;
@@ -1389,14 +1455,21 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       pin.controller?.abort();
       pin.controller = null;
       pin.revision += 1;
-      const needsImageRetry = pin.view.imageReading && !pin.view.sourceText;
+      const needsImageRetry = pin.view.imageReading && !pin.view.sourceText && !pin.reviewReturn;
       const phase = needsImageRetry ? 'error' : 'review';
       update(pin, { phase, notice: needsImageRetry
         ? '处理服务已改变，请重新读这张图。' : '处理服务已经改变；继续前请重新核对处理位置。' });
       setImmediate(() => {
         if (!alive(pin) || pin.view.phase !== phase) return;
         let destination = '';
-        try { destination = settingsForReading().destination; } catch { /* settings can be repaired */ }
+        try {
+          const configuration = settingsForReading();
+          destination = pin.reviewReturn && pin.view.imageReading
+            ? imageReadingAvailable(configuration.settings)
+              ? `确认后只发送校正文字。${readingDestination({ ...configuration.settings, screenshotReadingMode: undefined })}`
+              : '当前尚未启用专业阅读；校正文字已保留，暂不发送。'
+            : configuration.destination;
+        } catch { destination = '请先在设置中完成处理方式配置；校正文字已保留，暂不发送。'; }
         pin.generation = generation;
         update(pin, { destination });
       });

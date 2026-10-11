@@ -67,7 +67,7 @@ function prepareReadingImage(image, nativeImage) {
 }
 
 function createImageReader(processBackend, { nativeImage = require('electron').nativeImage } = {}) {
-  return async ({ image, settingsSnapshot, signal, onUsage, onTranslation, onResponse, transcribedText, onTranscription }) => {
+  return async ({ image, settingsSnapshot, signal, onUsage, onTranslation, onResponse, transcribedText, transcribedUncertain = [], onTranscription }) => {
     if (!imageReadingAvailable(settingsSnapshot)) throw new Error('reading-image-provider-unavailable');
     validateReadingImage(image);
     if (signal?.aborted) throw new Error('reading-cancelled');
@@ -83,7 +83,7 @@ function createImageReader(processBackend, { nativeImage = require('electron').n
       return raw;
     };
     let value;
-    if (transcribedText !== undefined) value = { source: transcribedText, uncertain: [] };
+    if (transcribedText !== undefined) value = { source: transcribedText, uncertain: transcribedUncertain };
     else {
       const submittedImage = prepareReadingImage(image, nativeImage);
       const data = validateReadingImage(submittedImage);

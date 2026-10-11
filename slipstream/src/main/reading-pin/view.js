@@ -356,12 +356,13 @@ function render(next) {
   byId('review').hidden = state.phase !== 'review' || mode === 'image';
   byId('review-retake').hidden = !state.imageReading;
   byId('confirm').classList.toggle('primary', !state.imageReading);
-  byId('review-title').textContent = state.imageReading ? '这一处没看清' : '核对识别文字';
+  byId('review-title').textContent = state.correctionText !== null && state.correctionText !== undefined ? '校正识别文字' : state.imageReading ? '这一处没看清' : '核对识别文字';
+  byId('review-cancel').hidden = state.correctionText === null || state.correctionText === undefined;
   byId('tab-translation').textContent = state.phase === 'review' ? '核对' : '译文';
   byId('tab-image').hidden = !state.image;
   if (state.phase === 'review' && previousPhase !== 'review') {
     focusSourceRegion(null);
-    byId('source-editor').value = state.sourceText || '';
+    byId('source-editor').value = state.correctionText ?? state.sourceText ?? '';
     renderSourcePreview();
     byId('formula-preview').open = window.readingMath.mathRanges(state.sourceText || '').length > 0
       || Boolean(window.readingMath.firstInvalidMathDelimiter(state.sourceText || ''));
@@ -492,7 +493,7 @@ byId('notice-retake').onclick = () => act('retake');
 byId('retake').onclick = () => act('retake');
 for (const id of ['settings', 'footer-settings', 'lookup-settings']) byId(id).onclick = () => act('settings');
 byId('edit-source').onclick = async () => {
-  if (state?.phase !== 'review') await act('review');
+  if (state?.phase !== 'review' && !await act('review')) return;
   setMode('translation');
   byId('source-correction').open = true;
   byId('formula-preview').open = false;
@@ -500,6 +501,7 @@ byId('edit-source').onclick = async () => {
   byId('source-correction').scrollIntoView({ block: 'start' });
 };
 byId('review-image').onclick = () => setMode('image');
+byId('review-cancel').onclick = async () => { if (await act('cancel-review')) setMode('translation'); };
 byId('lookup-close').onclick = dismissLookup;
 byId('save-term').onclick = () => act(state?.saveStatus === 'saved' ? 'library' : 'save-term');
 byId('library').onclick = () => act('library');
