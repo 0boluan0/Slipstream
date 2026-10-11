@@ -498,7 +498,7 @@ byId('edit-source').onclick = async () => {
   byId('source-correction').open = true;
   byId('formula-preview').open = false;
   byId('source-editor').focus({ preventScroll: true });
-  byId('source-correction').scrollIntoView({ block: 'start' });
+  byId(state?.notice ? 'notice' : 'source-correction').scrollIntoView({ block: 'start' });
 };
 byId('review-image').onclick = () => setMode('image');
 byId('review-cancel').onclick = async () => { if (await act('cancel-review')) setMode('translation'); };

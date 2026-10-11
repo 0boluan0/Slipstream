@@ -319,6 +319,65 @@ app.whenReady().then(async () => {
   assert.equal(await emptyImage.webContents.executeJavaScript('document.getElementById("recovery").hidden'), false);
   assert.equal(imageStages.length, beforeEmptyEdit); emptyImage.close();
   failImageRead = false; imageTranslation = '平方范数 $x^2$ 非负。';
+  edgeImage = true; imageUncertain = []; failImageText = true;
+  const beforeEdgeReview = imageStages.length;
+  await manager.capture();
+  const edgeReviewImage = BrowserWindow.getAllWindows()[0];
+  await until(async () => (await state(edgeReviewImage)).phase === 'error', 'edge image text failure before correction');
+  const edgeFailure = await state(edgeReviewImage);
+  assert.equal(edgeFailure.sourceText, '');
+  assert.equal(edgeFailure.imageTextReady, false, 'an edge warning still prevents automatic transcription reuse');
+  assert.deepEqual(imageStages.slice(beforeEdgeReview).map(call => call.stage), ['image', 'text']);
+  await click(edgeReviewImage, 'tab-image'); await click(edgeReviewImage, 'edit-source');
+  assert.equal((await state(edgeReviewImage)).phase, 'review', 'explicit correction can inspect validated edge transcription');
+  assert.equal(await draft(edgeReviewImage), imageSource);
+  assert.equal((await state(edgeReviewImage)).sourceText, '', 'inspection does not accept the draft');
+  assert.equal((await state(edgeReviewImage)).imageTextReady, false);
+  assert.match((await state(edgeReviewImage)).notice, /选区右边可能截断/u);
+  assert.equal(await edgeReviewImage.webContents.executeJavaScript('document.getElementById("notice").hidden'), false);
+  assert.match(await edgeReviewImage.webContents.executeJavaScript('document.getElementById("notice").textContent'), /选区右边可能截断/u);
+  const edgeReviewViewport = await edgeReviewImage.webContents.executeJavaScript(`(() => {
+    const notice = document.getElementById('notice').getBoundingClientRect();
+    const scroll = document.getElementById('scroll-area').getBoundingClientRect();
+    return { noticeTop: notice.top, noticeBottom: notice.bottom, scrollTop: scroll.top, scrollBottom: scroll.bottom,
+      intersects: notice.height > 0 && notice.width > 0
+        && notice.bottom > Math.max(scroll.top, 0) && notice.top < Math.min(scroll.bottom, window.innerHeight)
+        && notice.right > Math.max(scroll.left, 0) && notice.left < Math.min(scroll.right, window.innerWidth),
+      editorFocused: document.activeElement === document.getElementById('source-editor') };
+  })()`);
+  assert(edgeReviewViewport.intersects, `edge warning stays in the correction viewport: ${JSON.stringify(edgeReviewViewport)}`);
+  assert(edgeReviewViewport.editorFocused, 'the source editor receives focus without scrolling the warning away');
+  await edit(edgeReviewImage, ''); await click(edgeReviewImage, 'confirm');
+  assert.equal((await state(edgeReviewImage)).phase, 'review');
+  assert.equal(await draft(edgeReviewImage), '');
+  assert.match((await state(edgeReviewImage)).notice, /请保留 1–/u);
+  assert.match((await state(edgeReviewImage)).notice, /选区右边可能截断/u,
+    'invalid correction preserves the edge warning');
+  assert.equal(imageStages.length, beforeEdgeReview + 2, 'empty correction sends no requests');
+  await click(edgeReviewImage, 'review-cancel');
+  await until(async () => (await state(edgeReviewImage)).phase === 'error', 'discard edge correction');
+  assert.equal((await state(edgeReviewImage)).notice, edgeFailure.notice, 'discard returns the original failure');
+  assert.equal((await state(edgeReviewImage)).sourceText, '');
+  assert.equal((await state(edgeReviewImage)).imageTextReady, false);
+  assert.equal(imageStages.length, beforeEdgeReview + 2, 'inspecting and discarding edge text sends no requests');
+  await click(edgeReviewImage, 'tab-image'); await click(edgeReviewImage, 'edit-source');
+  assert.equal((await state(edgeReviewImage)).phase, 'review');
+  assert.equal(await draft(edgeReviewImage), imageSource);
+  failImageText = false;
+  await click(edgeReviewImage, 'confirm');
+  await until(async () => (await state(edgeReviewImage)).phase === 'done', 'explicitly confirmed edge text');
+  assert.deepEqual(imageStages.slice(beforeEdgeReview).map(call => call.stage), ['image', 'text', 'text'],
+    'only confirmation sends one guarded text request without reading the image again');
+  assert.equal((await state(edgeReviewImage)).sourceText, imageSource);
+  assert.equal((await state(edgeReviewImage)).translation, imageTranslation);
+  assert.equal((await state(edgeReviewImage)).correctionText, null);
+  assert.equal((await state(edgeReviewImage)).imageTextReady, true, 'explicit confirmation enables retry of the accepted correction');
+  assert.equal((await state(edgeReviewImage)).formulaStatus, 'uncertain');
+  assert.match((await state(edgeReviewImage)).notice, /选区右边可能截断/u);
+  assert.equal((await state(edgeReviewImage)).image, edgeFailure.image, 'original image remains available');
+  await click(edgeReviewImage, 'tab-image');
+  assert.equal(await edgeReviewImage.webContents.executeJavaScript('document.getElementById("tab-image").getAttribute("aria-selected")'), 'true');
+  edgeReviewImage.close();
   for (const uncertain of [[], ['右侧文字截断']]) {
     edgeImage = !uncertain.length; imageUncertain = uncertain; failImageText = true;
     const before = imageStages.length;
@@ -374,7 +433,7 @@ app.whenReady().then(async () => {
   assert.equal((await state(earlyImage)).segments[0].termsStatus, 'unavailable');
   assert.match(await earlyImage.webContents.executeJavaScript('document.getElementById("translation").textContent'), /展开原文选词查询/u);
   assert(BrowserWindow.getAllWindows().every(window => !window.isVisible()));
-  console.log('Lookup settings recovery passed: real card buttons, destination before retry, preserved text, cache invalidation, invalid setup, stale selection and late lookup/translation suppression. Providers were fixed local fixtures; no API calls or visible windows.');
+  console.log('Lookup settings recovery passed: real card buttons, destination before retry, preserved text, cache invalidation, invalid setup, stale selection, late lookup/translation suppression, and explicit edge-source review with guarded text confirmation. Providers were fixed local fixtures; no API calls or visible windows.');
   cleanup(); app.exit(0);
 }).catch(error => { console.error(error); cleanup(); app.exit(1); });
 setTimeout(() => { console.error('Lookup recovery check exceeded 45 seconds.'); cleanup(); app.exit(1); }, 45000).unref();

@@ -651,19 +651,23 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     return '';
   }
 
+  function imageCorrectionNotice(pin, notice) {
+    return [pin.imageEdgeNotice, notice].filter(Boolean).join(' ');
+  }
+
   function confirmImageCorrection(pin, payload) {
     if (pin.view.phase !== 'review' || payload.revision !== pin.revision) return false;
     const source = payload.text.trim();
     const notice = !source || source.length > DEFAULTS.MAX_TEXT_LENGTH
       ? `请保留 1–${DEFAULTS.MAX_TEXT_LENGTH} 个字符后继续。`
       : /[\b\f\r\t\v]/u.test(source) ? '文字中含有无法显示的控制字符，请校正后继续。' : sourceMathNotice(source);
-    if (notice) { update(pin, { notice }); return false; }
+    if (notice) { update(pin, { notice: imageCorrectionNotice(pin, notice) }); return false; }
     let configuration;
     try { configuration = settingsForReading(); } catch {
-      update(pin, { notice: '校正内容已保留，请在设置中完成专业阅读配置后继续。' }); return false;
+      update(pin, { notice: imageCorrectionNotice(pin, '校正内容已保留，请在设置中完成专业阅读配置后继续。') }); return false;
     }
     if (!imageReadingAvailable(configuration.settings)) {
-      update(pin, { notice: '校正内容已保留；请在设置中启用专业阅读，再翻译这段含原图信息的文字。' }); return false;
+      update(pin, { notice: imageCorrectionNotice(pin, '校正内容已保留；请在设置中启用专业阅读，再翻译这段含原图信息的文字。') }); return false;
     }
     pin.imageCorrection = source;
     pin.reviewReturn = null;
@@ -1238,9 +1242,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     try {
       const result = await readScreenshot({ image: pin.view.image, settingsSnapshot: configuration.settings, transcribedText, transcribedUncertain,
         signal: controller.signal, onTranscription: text => {
-          if (!active() || edgeNotice || looksLikeOwnReadingUi(text)) return;
+          if (!active() || looksLikeOwnReadingUi(text)) return;
+          // Edge warnings prevent automatic reuse, but readers may inspect and correct this draft.
           pin.imageTranscription = { text, image: pin.view.image, generation: requestGeneration };
-          update(pin, { imageTextReady: true, phase: 'translating' });
+          update(pin, { imageTextReady: pin.imageCorrection !== null || !edgeNotice, phase: 'translating' });
         }, onTranslation: result => {
           if (!edgeNotice && !result.uncertain?.length && !looksLikeOwnReadingUi(result.text)) publishResult(result);
         } });
@@ -1260,7 +1265,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     } catch (error) {
       if (!active()) return false;
       update(pin, { phase: 'error', notice: error?.message === 'reading-image-math-mismatch'
-        ? '返回的译文改动了公式，已停止显示。原图保留在“截图”中；请重试，或缩小到这一段重新框选。'
+        ? '这次译文的公式未通过核对，已停止显示。原图保留在“截图”中；请重试，或重新框选这一小段。'
         : /^reading-(?:symbol-role-mismatch|terminology-mismatch)$/u.test(error?.message || '')
           ? '这次结果中的数学含义未通过核对，已停止显示。原图保留在“截图”中，请重试。'
           : error?.message === 'reading-image-invalid-output' || error instanceof SyntaxError
@@ -1351,7 +1356,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (!['done', 'partial', 'error'].includes(pin.view.phase)) return false;
       const retained = pin.imageTranscription;
       const source = pin.view.sourceText || (retained && retained.generation === generation
-        && retained.image === pin.view.image && !pin.imageEdgeNotice ? retained.text : '');
+        && retained.image === pin.view.image ? retained.text : '');
       if (!source) {
         update(pin, { notice: '尚无可校正的文字，请重新读这张图或重新框选。' }); return false;
       }
@@ -1362,7 +1367,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       pin.referenceController?.abort();
       pin.lookupSequence += 1; pin.revision += 1;
       pin.referenceStatus = '';
-      update(pin, { phase: 'review', correctionText: source, lookup: null, lookupStatus: '', lookupNotice: '', notice: '',
+      update(pin, { phase: 'review', correctionText: source, lookup: null, lookupStatus: '', lookupNotice: '', notice: pin.imageEdgeNotice,
         segments: pin.view.segments.map(segment => segment.termsStatus === 'reviewing' ? { ...segment, termsStatus: 'unavailable' } : segment) });
       return { state: state(pin) };
     }
@@ -1458,7 +1463,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       const needsImageRetry = pin.view.imageReading && !pin.view.sourceText && !pin.reviewReturn;
       const phase = needsImageRetry ? 'error' : 'review';
       update(pin, { phase, notice: needsImageRetry
-        ? '处理服务已改变，请重新读这张图。' : '处理服务已经改变；继续前请重新核对处理位置。' });
+        ? '处理服务已改变，请重新读这张图。'
+        : imageCorrectionNotice(pin, '处理服务已经改变；继续前请重新核对处理位置。') });
       setImmediate(() => {
         if (!alive(pin) || pin.view.phase !== phase) return;
         let destination = '';
