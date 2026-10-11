@@ -237,7 +237,10 @@ function renderSegments(segments) {
     node.section.dataset.code = segment.code ? 'true' : 'false';
     node.source.hidden = mode !== 'parallel' && !sourceOpen.has(segment.id);
     node.toggle.hidden = mode === 'parallel';
-    node.toggle.textContent = node.source.hidden ? '原文' : '收起原文';
+    const noRecommendedTerms = segment.status === 'done' && segment.termsStatus === 'ready' && !segment.terms?.length;
+    node.toggle.textContent = node.source.hidden ? (noRecommendedTerms ? '展开原文选词查询' : '原文') : '收起原文';
+    node.toggle.setAttribute('aria-label', node.source.hidden && !noRecommendedTerms
+      ? `查看第 ${segment.id + 1} 段英文原文` : `${node.toggle.textContent}，第 ${segment.id + 1} 段`);
     node.toggle.setAttribute('aria-expanded', String(!node.source.hidden));
     const value = segment.status === 'done' ? segment.translation
       : segment.status === 'error' ? segment.error
@@ -342,9 +345,11 @@ function render(next) {
   byId('notice').textContent = state.notice || '';
   byId('notice-retake').hidden = !state.imageReading || state.formulaStatus !== 'uncertain';
   byId('notice-retake').disabled = working;
-  byId('destination').textContent = state.imageSent && !state.imageReading
+  const originalDestination = state.imageSent && !state.imageReading
     ? `${(state.destination || '').replace('截图留在本机。', '')}本次已请求将截图发送到 DeepSeek 识别公式。`
     : state.destination || '截图文字识别在本机完成';
+  byId('destination').textContent = state.lookupDestination
+    ? `本卡原处理位置：${originalDestination}\n${state.lookupDestination}` : originalDestination;
   byId('pin').setAttribute('aria-pressed', String(state.topmost));
   byId('pin').title = state.topmost ? '取消置顶' : '置顶';
   byId('loading').hidden = !working || segments.length > 0;
@@ -365,8 +370,9 @@ function render(next) {
   }
   byId('reading-content').hidden = state.phase === 'review' || mode === 'image';
   byId('reading-content').setAttribute('aria-labelledby', mode === 'parallel' ? 'tab-parallel' : 'tab-translation');
-  byId('reading-hint').hidden = mode !== 'parallel' || !segments.length;
-  byId('reading-hint').textContent = state.explainSupported ? '选中英文词句，查看概念与上下文解释。' : '选中英文词句可单独翻译；术语解释需配置模型。';
+  byId('reading-hint').hidden = (mode !== 'parallel' && !segments.some((segment) => sourceOpen.has(segment.id))) || !segments.length;
+  byId('reading-hint').textContent = mode !== 'parallel' ? '选中英文词句，查看这一处的意思。'
+    : state.explainSupported ? '选中英文词句，查看概念与上下文解释。' : '选中英文词句可单独翻译；术语解释需配置模型。';
   byId('recovery').hidden = !['error', 'partial'].includes(state.phase);
   byId('retry').hidden = !state.sourceText && !state.imageReading;
   byId('retry').lastChild.textContent = state.imageReading ? '重新读这张图' : '重试未完成段落';
@@ -423,7 +429,8 @@ function render(next) {
     byId('lookup-notice').hidden = !state.lookupNotice;
     byId('lookup-notice').textContent = state.lookupNotice || '';
     byId('lookup-retry').hidden = state.lookupStatus !== 'error' || !selected;
-    byId('lookup-settings').hidden = contextual || state.lookupStatus !== 'done';
+    byId('lookup-settings').hidden = state.lookupStatus !== 'error' && (contextual || state.lookupStatus !== 'done');
+    byId('lookup-settings').textContent = state.lookupStatus === 'error' ? '打开设置' : '配置模型，获取概念与上下文解释';
     byId('save-term').disabled = state.lookupStatus !== 'done' || state.saveStatus === 'saving' || !lookup?.meaning;
     byId('save-term').parentElement.hidden = Boolean(lookup?.reference && (!lookup.meaning || !lookup.referenceSource));
     byId('save-term').textContent = state.saveStatus === 'saving' ? '正在保存…' : state.saveStatus === 'saved' ? '打开卡片' : lookup?.reference ? '存为知识卡片' : '存为卡片';

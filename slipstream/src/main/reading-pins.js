@@ -633,6 +633,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     return { settings, destination: readingDestination(settings) };
   }
 
+  function lookupDestinationFor(settings) {
+    return `后续词句查询：${readingDestination({ ...settings, screenshotReadingMode: undefined }).replace('截图留在本机。', '')}`;
+  }
+
   async function process(pin, kind, payload = {}, automatic = false) {
     if (!alive(pin) || disposed || ['translating', 'explaining', 'ocr', 'recognizing'].includes(pin.view.phase)) return;
     if (!automatic && payload.revision !== pin.revision) return;
@@ -690,7 +694,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const requestGeneration = generation;
     const requestPaperId = pin.view.paperId;
     update(pin, { phase: kind === 'translate' ? 'translating' : 'explaining',
-      sourceText: source, destination: configuration.destination, notice: '',
+      sourceText: source, destination: configuration.destination, lookupDestination: '', notice: '',
       explainSupported: configuration.settings.activeBackend !== 'free_translate',
       ...(kind === 'translate' ? { translation: '', explanations: null, lookup: null, lookupStatus: '', lookupNotice: '' } : {}) });
     try {
@@ -813,25 +817,38 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       update(pin, { lookup: local, lookupStatus: 'done', lookupNotice: '', saveStatus: '', savedCardId: null });
       return;
     }
-    if (pin.generation !== generation) {
-      update(pin, { lookupStatus: 'error', lookupNotice: '处理服务已改变。重新翻译后可查询词句。' });
+    let configuration;
+    try { configuration = settingsForReading(); } catch {
+      update(pin, { lookupStatus: 'error', lookupNotice: '请先在设置中完成处理方式配置，再重试这一处。' });
       return;
     }
-    const configuration = settingsForReading();
+    const configurationChanged = pin.generation !== generation;
+    if (configurationChanged) {
+      pin.controller?.abort(); pin.controller = null;
+      pin.lookupController?.abort(); pin.referenceController?.abort();
+      pin.referenceStatus = '';
+      pin.lookupCache.clear();
+      pin.generation = generation;
+      pin.revision += 1;
+    }
     pin.lookupController?.abort();
     const sequence = ++pin.lookupSequence;
+    const revision = pin.revision, requestGeneration = generation, requestSource = pin.view.sourceText;
     const key = `${payload.segmentId}:${payload.start}:${payload.end}`;
     const cached = pin.lookupCache.get(key);
-    update(pin, { lookup: { quote }, lookupStatus: 'loading', lookupNotice: '', saveStatus: '', savedCardId: null });
+    update(pin, { ...(configurationChanged || pin.view.lookupDestination ? { lookupDestination: lookupDestinationFor(configuration.settings) } : {}),
+      explainSupported: configuration.settings.activeBackend !== 'free_translate',
+      lookup: { quote }, lookupStatus: 'loading', lookupNotice: '', saveStatus: '', savedCardId: null });
     const controller = new AbortController();
     pin.lookupController = controller;
     const active = () => alive(pin) && !controller.signal.aborted
-      && sequence === pin.lookupSequence && pin.generation === generation;
+      && sequence === pin.lookupSequence && pin.revision === revision
+      && generation === requestGeneration && pin.generation === requestGeneration;
     try {
       let localNotice = '';
       if (findTermCard) {
         let card;
-        try { card = await findTermCard({ term: quote, source: pin.view.sourceText, kind: 'concept' }); }
+        try { card = await findTermCard({ term: quote, source: requestSource, kind: 'concept' }); }
         catch { localNotice = '本地卡片未能读取，下面显示模型生成的解释。'; }
         if (!active()) return;
         if (card) {
@@ -841,14 +858,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         }
       }
       if (cached) { update(pin, { lookup: cached, lookupStatus: 'done', lookupNotice: localNotice }); return; }
-      const result = await processReadingText({ text: pin.view.sourceText, kind: 'lookup', selection: quote,
+      const result = await processReadingText({ text: requestSource, kind: 'lookup', selection: quote,
         settingsSnapshot: configuration.settings, signal: controller.signal });
       if (!active()) return;
       pin.lookupCache.set(key, result.lookup);
       if (pin.lookupCache.size > 30) pin.lookupCache.delete(pin.lookupCache.keys().next().value);
       update(pin, { lookup: result.lookup, lookupStatus: 'done', lookupNotice: localNotice });
     } catch (error) {
-      if (!alive(pin) || controller.signal.aborted || sequence !== pin.lookupSequence) return;
+      if (!active()) return;
       update(pin, { lookupStatus: 'error', lookupNotice: error?.message === 'reading-invalid-output' || error instanceof SyntaxError
         ? '这次解释未能匹配所选原文，请重试。'
         : error?.message === 'reading-unsupported-claim'
@@ -1171,7 +1188,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const revision = ++pin.revision, requestGeneration = generation, paperId = pin.view.paperId;
     const active = () => alive(pin) && !controller.signal.aborted && pin.revision === revision && generation === requestGeneration;
     update(pin, { phase: 'recognizing', imageReading: true, imageSent: true,
-      destination: configuration.destination, notice: '', lookup: null, lookupStatus: '', lookupNotice: '',
+      destination: configuration.destination, lookupDestination: '', notice: '', lookup: null, lookupStatus: '', lookupNotice: '',
       translation: '', segments: [], formulaNotice: '', formulaStatus: '', explainSupported: true });
     const publishResult = result => {
       if (!active()) return;
@@ -1202,9 +1219,11 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (!active()) return false;
       update(pin, { phase: 'error', notice: error?.message === 'reading-image-math-mismatch'
         ? '返回的译文改动了公式，已停止显示。原图保留在“截图”中；请重试，或缩小到这一段重新框选。'
-        : /^reading-(?:image-invalid-output|symbol-role-mismatch|terminology-mismatch)$/u.test(error?.message || '') || error instanceof SyntaxError
-          ? '这张图没有读完整，原图已保留。请重试，或重新框选清晰的一段英文。'
-          : classifyError(error, configuration.settings.activeBackend) });
+        : /^reading-(?:symbol-role-mismatch|terminology-mismatch)$/u.test(error?.message || '')
+          ? '这次结果中的数学含义未通过核对，已停止显示。原图保留在“截图”中，请重试。'
+          : error?.message === 'reading-image-invalid-output' || error instanceof SyntaxError
+            ? '这张图没有读完整，原图已保留。请重试，或重新框选清晰的一段英文。'
+            : classifyError(error, configuration.settings.activeBackend) });
       return false;
     } finally { if (pin.controller === controller) pin.controller = null; }
   }
@@ -1336,7 +1355,20 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       pin.lookupSequence += 1;
       pin.lookupCache.clear();
       if (pin.view.imageReading) { pin.controller?.abort(); pin.controller = null; }
-      if (pin.view.lookupStatus === 'loading') update(pin, { lookupStatus: 'error', lookupNotice: '处理服务已改变，请重新翻译后查询。' });
+      if (pin.view.lookupStatus === 'loading') update(pin, { lookupStatus: 'error', lookupNotice: '处理服务已改变，请重试这一处。' });
+      if (pin.view.phase === 'done' || pin.view.phase === 'partial') {
+        // Settings are persisted synchronously after invalidation. Refresh the
+        // visible destination then, but only an explicit lookup sends content.
+        const sourceRevision = pin.revision;
+        setImmediate(() => {
+          if (!alive(pin) || (pin.revision !== sourceRevision && !pin.view.lookupDestination)) return;
+          try {
+            const configuration = settingsForReading();
+            update(pin, { lookupDestination: lookupDestinationFor(configuration.settings),
+              explainSupported: configuration.settings.activeBackend !== 'free_translate' });
+          } catch { update(pin, { lookupDestination: '后续词句查询：请先在设置中完成处理方式配置。', explainSupported: false }); }
+        });
+      }
       if (pin.view.phase === 'ocr' || pin.view.phase === 'done' || pin.view.phase === 'partial') continue;
       pin.controller?.abort();
       pin.controller = null;

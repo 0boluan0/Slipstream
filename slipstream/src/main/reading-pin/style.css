@@ -99,7 +99,7 @@ footer { min-height: 43px; flex-shrink: 0; display: flex; align-items: center; j
 summary { cursor: pointer; padding: 7px 4px; list-style: none; }
 summary::-webkit-details-marker { display: none; }
 .info-popover { position: absolute; z-index: 5; right: 10px; bottom: 44px; max-width: calc(100vw - 20px); width: 290px; padding: 13px; border: 1px solid var(--line); background: var(--paper); box-shadow: 0 5px 24px #10221a30; border-radius: 9px; }
-.info-popover p { font-size: 12px; line-height: 1.7; margin-bottom: 9px; overflow-wrap: anywhere; }
+.info-popover p { font-size: 12px; line-height: 1.7; margin-bottom: 9px; overflow-wrap: anywhere; white-space: pre-line; }
 .skeleton { height: 9px; background: var(--line); border-radius: 3px; margin: 12px 0 23px; animation: breathe 1.8s ease-in-out infinite alternate; }
 .skeleton.short { width: 65%; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
