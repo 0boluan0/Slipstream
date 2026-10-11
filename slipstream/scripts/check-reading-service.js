@@ -210,6 +210,7 @@ async function main() {
     String.raw`保留 $\unknowncommand{x}$ 原格式。`,
     String.raw`$$f(x)=x^2\eqno(7.3)$$`,
     '$x$y_i follows a complete formula.',
+    '双反引号代码：``$x^2``。',
   ]) {
     const accepted = createReadingProcessor(async () => JSON.stringify({ quote: delimiterInput.selection,
       meaning, note: '', basis: 'contextual', sourceQuote: delimiterSource }));

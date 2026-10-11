@@ -43,7 +43,7 @@
       if (escaped(text, i)) continue;
       if (complete?.has(i)) { i = complete.get(i) - 1; continue; }
       if (text[i] === '`') {
-        const marker = text.startsWith('```', i) ? '```' : '`';
+        const marker = inline ? /^`+/u.exec(text.slice(i))[0] : text.startsWith('```', i) ? '```' : '`';
         const end = text.indexOf(marker, i + marker.length);
         i = end < 0 ? text.length : end + marker.length - 1;
         continue;
