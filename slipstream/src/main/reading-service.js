@@ -138,7 +138,7 @@ function assertsConditionalNonconstancy(explanation) {
 function sourceStatesConditionalNonconstancy(source) {
   // Only a direct affirmative statement about this concept is evidence;
   // an unrelated or qualified "nonconstant" elsewhere in the excerpt is not.
-  return source.replace(/\n/gu, ' ').split(/[.!?;]/u).some((sentence) => /^\s*(?:(?:here|in this (?:case|example)),?\s+)?(?:the\s+)?conditional expectation(?:\s+\$[^$]+\$|\s+E\[[^\]]+\])?\s+(?:varies? with\s+\$?X\$?|is\s+(?:nonconstant|not constant))\s*$/iu.test(sentence));
+  return source.replace(/\n/gu, ' ').split(/[.!?;]/u).some((sentence) => /^\s*(?:(?:here|in this (?:case|example)),?\s+)?(?:the\s+)?conditional expectation(?:\s+\$[^$]+\$|\s+E\[[^\]]+\])?\s+(?:varies? with\s+\$?X\$?|is\s+(?:nonconstant(?:\s+and\s+depends\s+on\s+\$?X\$?)?|not constant|a\s+nonconstant\s+function\s+of\s+\$?X\$?))\s*$/iu.test(sentence));
 }
 
 function unsupportedExplanationClaim(selection, source, meaning, note) {
