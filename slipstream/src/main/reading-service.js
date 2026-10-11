@@ -91,6 +91,12 @@ function termStart(source, quote) {
   return -1;
 }
 
+function quoteCoversSelection(source, quote, selectionRange) {
+  if (!selectionRange) return false;
+  const start = source.lastIndexOf(quote, selectionRange.start);
+  return start >= 0 && start + quote.length >= selectionRange.end;
+}
+
 function isCoordinateSpaceLabel(quote) {
   // `X,Y space` merely restates which variables a probability ranges over;
   // it is not the named concept `sample space`.
@@ -330,7 +336,9 @@ function parseLookup(raw, selection, source, selectionRange) {
   if (unsupported) throw Object.assign(new Error('reading-unsupported-claim'), { repairHint: unsupported });
   const exactQuote = typeof value.sourceQuote === 'string' && value.sourceQuote.length <= 600
     ? sourceEvidence(source, value.sourceQuote) : '';
-  const sourceQuote = exactQuote && termStart(exactQuote, selection) !== -1 ? exactQuote : '';
+  // Manual selections may be part of a compound word; the validated source range still anchors their evidence.
+  const sourceQuote = exactQuote && (termStart(exactQuote, selection) !== -1
+    || quoteCoversSelection(source, exactQuote, selectionRange)) ? exactQuote : '';
   const basis = sourceQuote && value.basis === 'defined'
     ? (explicitlyDefinesSelection(sourceQuote, selection, source) ? 'defined' : 'contextual')
     : sourceQuote && value.basis === 'contextual' ? 'contextual'

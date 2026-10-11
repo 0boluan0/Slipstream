@@ -614,6 +614,26 @@ async function main() {
   for (const selectionRange of [null, { start: -1, end: 4 }, { start: 2, end: 6 }, { start: 2.5, end: 7 }, { start: 999, end: 1004 }]) {
     await assert.rejects(occurrence({ text: occurrenceSource, selection: 'field', selectionRange, kind: 'lookup', settingsSnapshot: settings }), /reading-invalid-input/);
   }
+  const compoundSource = 'A shape-preserving map is used. A shape-preserving map is used.';
+  const compoundSelection = 'shape';
+  const compoundRange = { start: compoundSource.lastIndexOf(compoundSelection), end: compoundSource.lastIndexOf(compoundSelection) + compoundSelection.length };
+  const compoundQuote = 'A shape-preserving map is used.';
+  for (const [range, evidence, modelBasis, expectedBasis] of [
+    [compoundRange, compoundQuote, 'contextual', 'contextual'],
+    [compoundRange, compoundQuote, 'defined', 'contextual'],
+    [compoundRange, compoundQuote, 'general', 'general'],
+    [undefined, compoundQuote, 'contextual', 'unverified'],
+    [compoundRange, 'A shape-preserving map is used. A', 'contextual', 'unverified'],
+    [compoundRange, 'A shape-preserving map is defined here.', 'contextual', 'unverified'],
+  ]) {
+    const compound = createReadingProcessor(async () => JSON.stringify({ quote: compoundSelection,
+      meaning: '这里指映射保留的形状。', note: '该词是复合表达的一部分。', basis: modelBasis, sourceQuote: evidence }));
+    const result = (await compound({ text: compoundSource, selection: compoundSelection,
+      ...(range ? { selectionRange: range } : {}), kind: 'lookup', settingsSnapshot: settings })).lookup;
+    assert.equal(result.basis, expectedBasis, 'manual evidence must cover the selected occurrence without granting definition status');
+    assert.equal(result.sourceQuote, expectedBasis === 'contextual' ? evidence : '');
+    assert.equal(result.meaning, '这里指映射保留的形状。');
+  }
   const repeatedTail = 'A field is an algebraic structure. This field depends on';
   const tailRange = { start: repeatedTail.lastIndexOf('field'), end: repeatedTail.lastIndexOf('field') + 5 };
   const tailProcessor = createReadingProcessor(async (...args) => {
