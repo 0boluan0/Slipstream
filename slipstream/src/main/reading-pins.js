@@ -16,6 +16,7 @@ const { readingTextFromOcr, readingSegments, isIsolatedNumericRow, isCodeOnly, d
 const { referenceKey, referenceCandidateKey, referenceCandidateCovered, preferExplicitReferenceCandidates, referenceOccurrences, isNotation } = require('./reading-references');
 const { captureSource, paperForCapture, titleForCapture } = require('./reading-capture-source');
 const { createTaskSettlement } = require('./task-cancellation');
+const { selectionRangeForSegments } = require('./reading-selection');
 
 const ENTRY = path.join(__dirname, 'reading-pin', 'index.html');
 const ENTRY_URL = pathToFileURL(ENTRY).href;
@@ -826,6 +827,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       || payload.end - payload.start > 1500) throw new Error('Invalid reading selection');
     const quote = segment.source.slice(payload.start, payload.end);
     if (!quote.trim()) return;
+    const selectionRange = selectionRangeForSegments(pin.view.sourceText, pin.view.segments, payload);
+    if (!selectionRange) throw new Error('Invalid reading selection');
     let symbol = quote;
     if (payload.referenceSymbol !== undefined) {
       const entry = (paperFor(pin)?.entries || []).find((item) => item.symbol === payload.referenceSymbol);
@@ -873,21 +876,21 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       let localNotice = '';
       if (findTermCard) {
         let card;
-        try { card = await findTermCard({ term: quote, source: requestSource, kind: 'concept' }); }
+        try { card = await findTermCard({ term: quote, source: requestSource, kind: 'concept', selectionRange }); }
         catch { localNotice = '本地卡片未能读取，下面显示模型生成的解释。'; }
         if (!active()) return;
         if (card) {
-          update(pin, { lookup: { quote, meaning: card.meaning, note: card.context, kind: card.kind || 'concept', contextual: true, localCard: true },
+          update(pin, { lookup: { quote, meaning: card.meaning, note: card.context, kind: card.kind || 'concept', selectionRange, contextual: true, localCard: true },
             lookupStatus: 'done', saveStatus: 'saved', savedCardId: card.id });
           return;
         }
       }
       if (cached) { update(pin, { lookup: cached, lookupStatus: 'done', lookupNotice: localNotice }); return; }
-      const result = await processReadingText({ text: requestSource, kind: 'lookup', selection: quote,
+      const result = await processReadingText({ text: requestSource, kind: 'lookup', selection: quote, selectionRange,
         settingsSnapshot: configuration.settings, signal: controller.signal });
       if (!active()) return;
       // Keep the completed result's type tied to this request, including legacy processor replies.
-      const lookup = { ...result.lookup, kind: configuration.settings.activeBackend === 'free_translate' ? 'translation' : 'concept' };
+      const lookup = { ...result.lookup, selectionRange, kind: configuration.settings.activeBackend === 'free_translate' ? 'translation' : 'concept' };
       pin.lookupCache.set(key, lookup);
       if (pin.lookupCache.size > 30) pin.lookupCache.delete(pin.lookupCache.keys().next().value);
       update(pin, { lookup, lookupStatus: 'done', lookupNotice: localNotice });
@@ -1310,7 +1313,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       const source = lookup.reference ? lookup.referenceSource : pin.view.sourceText;
       const hit = lookup.reference ? referenceOccurrences(source, lookup.quote)[0] : null;
       const input = { term: hit ? source.slice(hit.start, hit.end) : lookup.quote, label: term?.label || '', meaning: lookup.meaning,
-        context: lookup.note || '', source, kind: lookup.kind === 'translation' ? 'translation' : 'concept' };
+        context: lookup.note || '', source, kind: lookup.kind === 'translation' ? 'translation' : 'concept',
+        ...(!lookup.reference && lookup.selectionRange ? { selectionRange: lookup.selectionRange } : {}) };
       update(pin, { saveStatus: 'saving' });
       return saveTermCard(input).then((result) => {
         if (alive(pin) && pin.lookupSequence === sequence) update(pin, { saveStatus: 'saved', savedCardId: result.card.id });

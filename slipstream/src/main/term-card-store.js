@@ -3,17 +3,16 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { normalizeSelection: normalize, validatedSelectionRange, repeatedSelection } = require('./reading-selection');
 
 const ID = /^[a-f0-9-]{36}$/u;
-const FIELDS = ['id', 'term', 'label', 'created', 'updated', 'kind', 'links'];
+const FIELDS = ['id', 'term', 'label', 'created', 'updated', 'kind', 'links', 'selectionRange'];
 const SECTIONS = ['概念解释', '在原文中的用法', '原文', '我的理解'];
-// Case and mathematical Unicode variants can name distinct objects.
-const normalize = (text) => text.normalize('NFC').trim().replace(/\s+/gu, ' ');
 const revision = (text) => crypto.createHash('sha256').update(text).digest('hex');
 const bounded = (value, limit) => typeof value === 'string' && value.length <= limit;
 
 function encodeCard(card) {
-  const metadata = FIELDS.map((key) => `${key}: ${JSON.stringify(card[key])}`).join('\n');
+  const metadata = FIELDS.filter(key => key !== 'selectionRange' || card[key] !== undefined).map((key) => `${key}: ${JSON.stringify(card[key])}`).join('\n');
   const bodies = [card.meaning, card.context, card.source, card.notes];
   const references = (card.references || []).map((reference) => `- [${reference.term.replace(/[[\]\\\n]/gu, ' ')}](${encodeURI(reference.fileName)})`).join('\n');
   return `---\n${metadata}\n---\n\n# ${card.term.replace(/\s+/gu, ' ')}${card.label ? ` · ${card.label.replace(/\s+/gu, ' ')}` : ''}\n\n`
@@ -41,8 +40,16 @@ function decodeCard(text) {
     const referencesAt = body.indexOf('\n## 关联卡片\n');
     card[key] = body.slice(positions[i] + SECTIONS[i].length + 5, positions[i + 1] ?? (referencesAt >= 0 ? referencesAt : body.length)).trim().replace(/^\\(\\*)## /gmu, '$1## ');
   });
+  if (card.selectionRange !== undefined && !validatedSelectionRange(card.source, card.term, card.selectionRange)) throw new Error('card-invalid-file');
   card.revision = revision(text);
   return card;
+}
+
+function matchingCard(card, input) {
+  if (normalize(card.term) !== normalize(input.term) || card.source !== input.source || card.kind !== input.kind) return false;
+  if (!repeatedSelection(input.source, input.term)) return true;
+  return card.selectionRange?.start === input.selectionRange?.start
+    && card.selectionRange?.end === input.selectionRange?.end;
 }
 
 function createTermCardStore(directory) {
@@ -100,22 +107,28 @@ function createTermCardStore(directory) {
   async function findMatching(input) {
     if (!bounded(input?.term, 1500) || !input.term.trim() || !bounded(input.source, 10000)
       || !['concept', 'translation'].includes(input.kind)) throw new Error('card-invalid-input');
-    return (await list()).cards.find((card) => normalize(card.term) === normalize(input.term)
-      && card.source === input.source && card.kind === input.kind);
+    if (input.selectionRange !== undefined && !validatedSelectionRange(input.source, input.term, input.selectionRange)) throw new Error('card-invalid-input');
+    if (!input.selectionRange && repeatedSelection(input.source, input.term)) return undefined;
+    return (await list()).cards.find((card) => matchingCard(card, input));
   }
   function save(input) {
     return serialized(async () => {
       if (!bounded(input?.term, 1500) || !input.term.trim() || !bounded(input.label, 180)
         || !bounded(input.meaning, 40000) || !input.meaning.trim() || !bounded(input.context, 4000)
         || !bounded(input.source, 10000) || !input.source.includes(input.term)) throw new Error('card-invalid-input');
+      const range = input.selectionRange === undefined ? undefined : validatedSelectionRange(input.source, input.term, input.selectionRange);
+      if (input.selectionRange !== undefined && !range) throw new Error('card-invalid-input');
+      const selectionRange = range && repeatedSelection(input.source, input.term) ? range : undefined;
+      // Markdown source sections trim outer whitespace; never persist offsets that would shift on reload.
+      if (selectionRange && input.source !== input.source.trim()) throw new Error('card-invalid-input');
       const { cards } = await list();
-      const existing = cards.find((card) => normalize(card.term) === normalize(input.term)
-        && card.source === input.source && card.kind === input.kind);
+      const existing = cards.find((card) => matchingCard(card, { ...input, selectionRange }));
       if (existing) return { card: existing, existing: true };
       const now = new Date().toISOString();
       const card = { id: crypto.randomUUID(), term: input.term, label: input.label,
         meaning: input.meaning, context: input.context, source: input.source, notes: '',
-        created: now, updated: now, kind: input.kind === 'concept' ? 'concept' : 'translation', links: [] };
+        created: now, updated: now, kind: input.kind === 'concept' ? 'concept' : 'translation', links: [],
+        ...(selectionRange ? { selectionRange } : {}) };
       const slug = input.term.replace(/[^\p{L}\p{N} -]/gu, '').trim().slice(0, 70) || 'term';
       return { card: await write(card, `${slug}--${card.id}.md`), existing: false };
     });

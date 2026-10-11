@@ -571,6 +571,37 @@ async function main() {
     assert.equal(result.sourceQuote, ''); assert.match(result.note, /下一行/u);
     assert.doesNotMatch(result.note, /补造/u, 'an unfinished clause cannot support a contextual conclusion');
   }
+  const occurrenceSource = 'A field is an algebraic structure.\n\nThis field is used here.';
+  const selectedRange = { start: occurrenceSource.lastIndexOf('field'), end: occurrenceSource.lastIndexOf('field') + 5 };
+  const occurrence = createReadingProcessor(async (...args) => {
+    const message = JSON.parse(args[4]);
+    assert.equal(message.excerpt, occurrenceSource);
+    assert.deepEqual(message.selectedOccurrence, { ...selectedRange, offsetUnit: 'UTF-16',
+      before: occurrenceSource.slice(0, selectedRange.start), after: occurrenceSource.slice(selectedRange.end) });
+    return JSON.stringify({ quote: 'field', meaning: '具有规定运算的代数结构。', note: '',
+      basis: 'defined', sourceQuote: 'A field is an algebraic structure.', selectionRange: { start: 2, end: 7 } });
+  });
+  const occurrenceResult = await occurrence({ text: occurrenceSource, selection: 'field', selectionRange: selectedRange,
+    kind: 'lookup', settingsSnapshot: settings });
+  assert.deepEqual(occurrenceResult.lookup.selectionRange, selectedRange, 'only the application may assign the selected occurrence');
+  assert.equal(occurrenceResult.lookup.sourceQuote, 'A field is an algebraic structure.', 'a definition in an earlier paragraph remains valid evidence');
+  for (const selectionRange of [null, { start: -1, end: 4 }, { start: 2, end: 6 }, { start: 2.5, end: 7 }, { start: 999, end: 1004 }]) {
+    await assert.rejects(occurrence({ text: occurrenceSource, selection: 'field', selectionRange, kind: 'lookup', settingsSnapshot: settings }), /reading-invalid-input/);
+  }
+  const repeatedTail = 'A field is an algebraic structure. This field depends on';
+  const tailRange = { start: repeatedTail.lastIndexOf('field'), end: repeatedTail.lastIndexOf('field') + 5 };
+  const tailProcessor = createReadingProcessor(async (...args) => {
+    const message = JSON.parse(args[4]);
+    assert.equal(message.excerpt, 'A field is an algebraic structure.');
+    assert.equal(message.selectedOccurrence, undefined, 'excluded text must not leak through occurrence context');
+    assert.match(message.selectionBoundary, /selection is in an unfinished sentence/);
+    return JSON.stringify({ quote: 'field', meaning: '一种代数结构。', note: '不得保留的局部推断。',
+      basis: 'defined', sourceQuote: 'A field is an algebraic structure.' });
+  });
+  const tailResult = (await tailProcessor({ text: repeatedTail, selection: 'field', selectionRange: tailRange,
+    kind: 'lookup', settingsSnapshot: settings })).lookup;
+  assert.equal(tailResult.basis, 'general'); assert.equal(tailResult.contextual, false);
+  assert.match(tailResult.note, /下一行/u); assert.deepEqual(tailResult.selectionRange, tailRange);
   console.log('Reading service checks passed: isolated translation, anchored explanations, limits, cancellation, truncation, destination and display bounds.');
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

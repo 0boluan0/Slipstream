@@ -137,6 +137,47 @@ app.whenReady().then(async () => {
   assert.equal(lookupCalls, beforeReopen, 'the saved incomplete-context concept is reused without another lookup');
   assert.equal(await js(window, 'document.getElementById("lookup-title").textContent'), '已存卡片 · 本地解释');
   assert.deepEqual(fs.readFileSync(oldFile), oldBytes, 'old translation bytes, id, notes and links are never migrated');
+  const repeatedSource = 'The evidence supports a legal claim.\n\nIn this model the evidence is a marginal density.';
+  const oldUnscoped = (await store.save({ term: 'evidence', label: '', meaning: '旧卡没有记录具体位置。',
+    context: '', source: repeatedSource, kind: 'concept' })).card;
+  const unscopedFile = await store.filePath(oldUnscoped.id), unscopedBytes = fs.readFileSync(unscopedFile);
+  const occurrenceRequests = [];
+  lookupProcessor = createReadingProcessor(async (...args) => {
+    const message = JSON.parse(args[4]); occurrenceRequests.push(message.selectedOccurrence);
+    return JSON.stringify({ quote: 'evidence', meaning: message.selectedOccurrence.start === repeatedSource.indexOf('evidence')
+      ? '支持法律主张的信息。' : '此模型中观测数据的边缘密度。', note: '', basis: 'general', sourceQuote: '',
+    selectionRange: { start: 0, end: 1 } });
+  });
+  async function occurrenceLookup(reader, segmentId) {
+    const currentState = await state(reader), segment = currentState.segments[segmentId];
+    await js(reader, `window.readingPin.act('lookup', ${JSON.stringify({ revision: currentState.revision,
+      segmentId, start: segment.source.indexOf('evidence'), end: segment.source.indexOf('evidence') + 8 })})`);
+    return state(reader);
+  }
+  window = await open(repeatedSource);
+  current = await occurrenceLookup(window, 0);
+  assert.equal(current.lookup.meaning, '支持法律主张的信息。', 'an old unscoped repeated term is not silently reused');
+  await js(window, 'window.readingPin.act("save-term")');
+  const firstOccurrenceId = (await state(window)).savedCardId;
+  current = await occurrenceLookup(window, 1);
+  assert.equal(current.lookup.meaning, '此模型中观测数据的边缘密度。');
+  assert(!current.lookup.localCard, 'another occurrence must not inherit the first saved explanation');
+  assert.equal(occurrenceRequests.length, 2);
+  assert.deepEqual(occurrenceRequests.map(({ start, end }) => ({ start, end })),
+    [repeatedSource.indexOf('evidence'), repeatedSource.lastIndexOf('evidence')].map(start => ({ start, end: start + 8 })));
+  await js(window, 'window.readingPin.act("save-term")');
+  const secondOccurrenceId = (await state(window)).savedCardId;
+  assert.notEqual(secondOccurrenceId, firstOccurrenceId);
+  window = await open(repeatedSource);
+  assert.equal((await occurrenceLookup(window, 0)).savedCardId, firstOccurrenceId);
+  assert.equal((await occurrenceLookup(window, 1)).savedCardId, secondOccurrenceId);
+  assert.equal(occurrenceRequests.length, 2, 'reopening either exact occurrence reuses its own card');
+  assert.deepEqual(fs.readFileSync(unscopedFile), unscopedBytes);
+  const identicalSource = 'The evidence is uncertain.\n\nThe evidence is uncertain.';
+  window = await open(identicalSource);
+  current = await occurrenceLookup(window, 1);
+  assert.equal(current.lookup.selectionRange.start, identicalSource.lastIndexOf('evidence'),
+    'two identical source segments must still resolve to different global positions');
   assert(BrowserWindow.getAllWindows().every((item) => !item.isVisible()));
   console.log('Saved-card lookup passed: corrected meaning, no provider request, fresh edit, exact source, read-failure notice, cancellation and preserved notes; no visible windows.');
   manager.dispose(); fs.rmSync(work, { recursive: true, force: true }); app.exit(0);

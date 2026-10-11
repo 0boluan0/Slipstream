@@ -33,6 +33,37 @@ async function main() {
     assert.equal((await store.findMatching({ term: 'x', source: notationSource, kind: 'concept' })).id, lower.card.id);
     assert.equal(await store.findMatching({ term: input.term, source: 'Unrelated source.', kind: 'concept' }), undefined);
     assert.equal(await store.findMatching({ term: input.term, source: input.source, kind: 'translation' }), undefined);
+    const repeatedSource = 'An axis describes geometry. The axis also labels a chart.';
+    const repeatInput = { ...input, term: 'axis', source: repeatedSource };
+    const legacyRepeat = (await store.save(repeatInput)).card;
+    const legacyFile = await store.filePath(legacyRepeat.id), legacyBytes = await fs.readFile(legacyFile);
+    const range1 = { start: repeatedSource.indexOf('axis'), end: repeatedSource.indexOf('axis') + 4 };
+    const range2 = { start: repeatedSource.lastIndexOf('axis'), end: repeatedSource.lastIndexOf('axis') + 4 };
+    assert.equal(await store.findMatching({ ...repeatInput, selectionRange: range2 }), undefined,
+      'an unscoped old card cannot claim another occurrence');
+    const scoped1 = (await store.save({ ...repeatInput, selectionRange: range1 })).card;
+    const scoped2 = (await store.save({ ...repeatInput, selectionRange: range2 })).card;
+    assert.equal(new Set([legacyRepeat.id, scoped1.id, scoped2.id]).size, 3);
+    assert.equal((await store.save({ ...repeatInput, selectionRange: range2 })).card.id, scoped2.id);
+    assert.equal((await store.findMatching({ ...repeatInput, selectionRange: range1 })).id, scoped1.id);
+    assert.equal((await store.findMatching({ ...repeatInput, selectionRange: range2 })).id, scoped2.id);
+    assert.deepEqual(await fs.readFile(legacyFile), legacyBytes, 'legacy bytes are never migrated');
+    assert.deepEqual(scoped2.selectionRange, range2);
+    await assert.rejects(store.save({ ...repeatInput, selectionRange: { start: 0, end: 4 } }), /card-invalid-input/);
+    await assert.rejects(store.findMatching({ ...repeatInput, selectionRange: null }), /card-invalid-input/);
+    const whitespaceSource = 'Use a sample mean here and a sample\nmean there.';
+    const whitespaceInput = { ...input, term: 'sample mean', source: whitespaceSource };
+    await store.save(whitespaceInput);
+    const spacedStart = whitespaceSource.indexOf('sample\nmean');
+    assert.equal(await store.findMatching({ ...whitespaceInput, term: 'sample\nmean',
+      selectionRange: { start: spacedStart, end: spacedStart + 11 } }), undefined,
+    'normalized duplicate terms also need occurrence scope');
+    const scopedFile = await store.filePath(scoped1.id);
+    await fs.writeFile(scopedFile, (await fs.readFile(scopedFile, 'utf8')).replace(
+      /selectionRange: .*/u, 'selectionRange: {"start":0,"end":4}'));
+    assert.equal((await store.list()).unreadable, 1, 'a hand-edited invalid scope stays unreadable rather than becoming legacy');
+    assert.equal(await store.findMatching({ ...repeatInput, selectionRange: range1 }), undefined);
+    await fs.unlink(scopedFile); // private malformed fixture only; restore the existing unreadable-count control
     await assert.rejects(store.edit(first.card.id, { ...edited, notes: 'stale' }, first.card.revision), /card-conflict/);
     await assert.rejects(store.filePath('../../outside'), /card-invalid-id/);
     await fs.writeFile(path.join(directory, 'unrelated.md'), 'This file belongs to the reader.');
