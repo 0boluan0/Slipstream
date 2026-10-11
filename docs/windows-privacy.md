@@ -1,6 +1,6 @@
 # Windows preview privacy notice
 
-This notice covers the Windows `1.3.0-preview.1` reading preview. Slipstream is an MIT-licensed desktop reading application. It has no Slipstream user account, advertising or product-analytics telemetry. The [full data-flow documentation](./PRIVACY.md) also describes macOS and older compatibility features.
+This notice covers the Windows `1.4.0` reading preview. Slipstream is an MIT-licensed desktop reading application. It has no Slipstream user account, advertising or product-analytics telemetry. The [full data-flow documentation](./PRIVACY.md) also describes macOS and older compatibility features.
 
 ## Reading requests and recipients
 
