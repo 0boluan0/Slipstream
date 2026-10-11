@@ -78,7 +78,7 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 #selection-preview { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--english); font-family: Georgia, serif; }
 #selection-bar button { font-size: 12px; }
 #lookup-panel { border-top: 1px solid var(--line); background: var(--soft); padding: 10px 22px 17px; max-height: 48vh; overflow: auto; flex-shrink: 0; }
-.lookup-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
+.lookup-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; position: sticky; top: -10px; z-index: 1; background: var(--soft); }
 #lookup-title { color: var(--muted); font-size: 11px; }
 #lookup-quote { margin: 0 0 8px; color: var(--accent); font: var(--reading-size)/1.6 Georgia, serif; overflow-wrap: anywhere; white-space: pre-wrap; }
 #lookup-basis { margin: 4px 0 6px; font-size: 11px; }
@@ -87,7 +87,7 @@ textarea { width: 100%; min-height: 180px; resize: vertical; border: 1px solid v
 #lookup-note { font-size: calc(var(--reading-size) - 1px); overflow-wrap: anywhere; }
 #lookup-evidence { margin-top: 8px; color: var(--muted); font-size: 11px; }
 #lookup-evidence summary { padding: 3px 0; color: var(--accent); }
-#lookup-evidence-quote { margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.5; }
+#lookup-evidence-quote { font-size: calc(var(--reading-size) - 1px); margin: 4px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.5; }
 #lookup-notice { color: var(--muted); font-size: 12px; line-height: 1.7; }
 #lookup-retry { margin-top: 8px; }
 .text-button { padding: 5px 0; border: none; color: var(--accent); font-size: 11px; }
