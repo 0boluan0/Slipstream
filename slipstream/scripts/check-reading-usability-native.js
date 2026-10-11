@@ -34,11 +34,17 @@ setTimeout(() => { console.error('Usability check timed out.'); app.exit(1); }, 
 app.whenReady().then(async () => {
   const store = createReadingReferenceStore(path.join(work, 'references'));
   const paper = await store.create('Adam · regression');
+  let lookupGate;
+  let lookupCalls = 0;
   const provider = createReadingProcessor(async (...args) => {
     const input = JSON.parse(args[4]);
     if (input.excerpt.includes('interviews with 53')) return JSON.stringify({ translation: '我们访谈了 53 位从业者。数据级联普遍存在（92% 的流行率）。', terms: [], references: [] });
     if (input.excerpt === 'A field in algebra.' || input.excerpt === 'A field in physics.') return JSON.stringify({ translation: '当前段落的概念。', terms: [{ quote: 'field', label: input.excerpt.includes('algebra') ? '域' : '场', role: 'core' }], references: [] });
-    if (input.selection) return JSON.stringify({ quote: input.selection, meaning: input.selection === 'nuisance parameter' ? '相对于目标参数，需要估计的其他参数。' : '这是与原文相关的概念解释，用于检验长解释的滚动与空间。'.repeat(14), note: input.selection === 'nuisance parameter' ? '' : '这里说明这个概念如何出现在当前段落。' });
+    if (input.selection) {
+      lookupCalls += 1;
+      if (lookupGate) await lookupGate();
+      return JSON.stringify({ quote: input.selection, meaning: input.selection === 'nuisance parameter' ? '相对于目标参数，需要估计的其他参数。' : '这是与原文相关的概念解释，用于检验长解释的滚动与空间。'.repeat(14), note: input.selection === 'nuisance parameter' ? '' : '这里说明这个概念如何出现在当前段落。' });
+    }
     return JSON.stringify({ translation: input.excerpt.startsWith('A collider') ? '碰撞变量同时受到两个变量的影响。对它进行条件化可能引入选择偏倚。' : '样本量为 $N$，误差量级为 $1/\\sqrt{N}$。'.repeat(20),
       terms: input.excerpt.includes('root-N consistency') ? [{quote:'root-N consistency', label:'$\\sqrt{N}$ 一致性', role: 'core'}] : [],
       references: input.excerpt.includes('epsilon') ? [{ symbol: 'epsilon', meaning: '稳定常数。', evidence: 'Let epsilon denote a stability constant.' }] : [] });
@@ -231,8 +237,32 @@ app.whenReady().then(async () => {
     const origin = await js(shortPin, `(() => { const rect = window.getSelection().getRangeAt(0).getBoundingClientRect();
       return { page: scrollY, reading: document.getElementById('scroll-area').scrollTop, visible: rect.top >= 0 && rect.bottom <= innerHeight }; })()`);
     assert(origin.page > 0 && origin.visible, 'query must start with the source phrase visible at a nonzero page position');
+    const callsBefore = lookupCalls;
+    let releaseLookup;
+    if (!escape) lookupGate = () => new Promise(resolve => { releaseLookup = resolve; });
     await clickVisible('lookup-selection');
+    if (!escape) {
+      await until(async () => releaseLookup && (await snapshot(shortPin)).lookupStatus === 'loading', 'pending selection lookup');
+      await js(shortPin, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+      await check('a new offscreen lookup reveals its waiting state in a manually shortened window', async () => {
+        const visible = await js(shortPin, `(() => { const meaning = document.getElementById('lookup-meaning');
+          const rect = meaning.getBoundingClientRect();
+          return { text: meaning.textContent, top: rect.top, bottom: rect.bottom, height: innerHeight }; })()`);
+        assert(visible.text.includes('正在') && visible.top >= 0 && visible.bottom <= visible.height, JSON.stringify(visible));
+      });
+      await js(shortPin, `window.scrollTo(0, ${origin.page})`);
+      lookupGate = null;
+      releaseLookup();
+    }
     await until(async () => (await snapshot(shortPin)).lookupStatus === 'done', 'visible selection lookup');
+    await js(shortPin, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+    await check(escape ? 'a cached lookup reveals once without another provider request' : 'completion preserves the reader scroll after the initial reveal', async () => {
+      assert.equal(lookupCalls - callsBefore, escape ? 0 : 1);
+      if (escape) {
+        const rect = await js(shortPin, `(() => { const r = document.getElementById('lookup-title').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: innerHeight }; })()`);
+        assert(rect.top >= 0 && rect.bottom <= rect.height, JSON.stringify(rect));
+      } else assert(Math.abs(await js(shortPin, 'scrollY') - origin.page) <= 2);
+    });
     assert.equal((await snapshot(shortPin)).lookup.quote, 'root-N consistency');
     await js(shortPin, 'window.scrollTo(0, document.documentElement.scrollHeight)');
     if (escape) {

@@ -9,6 +9,7 @@ let selected = null;
 let lookupOrigin = null;
 let lookupScrollOrigin = null;
 let lookupRequest = 0;
+let lookupReveal = null;
 let fitRequested = false;
 let copyTimer;
 const scrollPositions = { translation: 0, parallel: 0, image: 0 };
@@ -219,6 +220,8 @@ function requestLookup(selection) {
     lookupScrollOrigin = { x: window.scrollX, y: window.scrollY,
       left: byId('scroll-area').scrollLeft, top: byId('scroll-area').scrollTop };
   }
+  const source = state?.segments?.find(segment => segment.id === selection.segmentId)?.source || '';
+  lookupReveal = { request: lookupRequest, quote: selection.referenceSymbol ?? source.slice(selection.start, selection.end), scheduled: false };
   byId('lookup-panel').scrollTop = 0;
   selected = selection;
   byId('selection-bar').hidden = true;
@@ -226,6 +229,7 @@ function requestLookup(selection) {
 }
 
 async function dismissLookup() {
+  lookupReveal = null;
   const request = lookupRequest, origin = lookupOrigin, position = lookupScrollOrigin;
   if (!await act('dismiss-lookup')) return;
   // Hiding the explanation can shrink either scroll container. Restore after
@@ -460,6 +464,19 @@ function render(next) {
   }
   previousPhase = state.phase;
   window.readingReferences.render(state);
+  const reveal = lookupReveal, panel = byId('lookup-panel');
+  if (reveal && !reveal.scheduled && !panel.hidden
+    && (lookup?.quote === reveal.quote || state.lookupStatus === 'error')) {
+    reveal.scheduled = true;
+    requestAnimationFrame(() => {
+      if (lookupReveal !== reveal || reveal.request !== lookupRequest) return;
+      lookupReveal = null;
+      if (panel.hidden || state.collapsed) return;
+      const rect = panel.getBoundingClientRect();
+      // Only the user's new lookup may move the page, never its later results.
+      if (rect.bottom <= 0 || rect.top >= window.innerHeight) panel.scrollIntoView({ block: 'start' });
+    });
+  }
 }
 
 function captureSelection() {
