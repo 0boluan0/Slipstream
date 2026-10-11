@@ -377,6 +377,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
   }
   function close(pin) {
+    pin.imageTranscription = null;
     pin.controller?.abort();
     pin.lookupController?.abort();
     pin.referenceController?.abort();
@@ -414,11 +415,12 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     const pin = { id: window.webContents.id, window, ready: false, revision: 0, generation, controller: null,
       captureSource: source, referenceNotice: source && !paperId ? '检测到新文档。这张截图先作为临时阅读；选中或新建阅读后，下次截图会自动找回。' : '',
       lookupController: null, lookupCache: new Map(), lookupSequence: 0, manuallyResized: false, fitted: false,
+      imageTranscription: null, imageEdgeNotice: '',
       view: { phase: referenceOnly ? 'references' : 'ocr', referenceOnly, paperId, image, sourceText: '', translation: '', explanations: null,
         segments: [], lookup: null, lookupStatus: '', lookupNotice: '', saveStatus: '', savedCardId: null, collapsed: false,
         notice: '', destination: '', topmost: !referenceOnly, explainSupported: false,
         formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())),
-        formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], formulaRegions: [], imageSent: false, imageReading: false } };
+        formulaStatus: '', formulaNotice: '', formulaUncertainStarts: [], formulaRegions: [], imageSent: false, imageReading: false, imageTextReady: false } };
     pins.set(pin.id, pin);
     window.setAlwaysOnTop(pin.view.topmost, 'floating');
     window.setVisibleOnAllWorkspaces(pin.view.topmost, { visibleOnFullScreen: true });
@@ -1179,7 +1181,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     }
   }
 
-  async function readImage(pin, { configuration, controller = new AbortController(), edgeNotice = '' } = {}) {
+  async function readImage(pin, { configuration, controller = new AbortController(), edgeNotice = pin.imageEdgeNotice } = {}) {
     if (!alive(pin) || disposed || !readScreenshot) return false;
     try { configuration ||= settingsForReading(); } catch {
       update(pin, { phase: 'error', notice: '请先在设置中完成图片试读，再重新框选。' }); return false;
@@ -1187,10 +1189,17 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     pin.lookupController?.abort(); pin.referenceController?.abort(); pin.lookupSequence += 1;
     pin.lookupCache.clear(); pin.referenceCandidates = []; pin.referenceStatus = '';
     pin.controller = controller; pin.generation = generation;
+    pin.imageEdgeNotice = edgeNotice;
+    const retained = pin.imageTranscription;
+    const transcribedText = retained && !edgeNotice && retained.generation === generation && retained.image === pin.view.image
+      ? retained.text : undefined;
+    if (transcribedText === undefined) pin.imageTranscription = null;
     const revision = ++pin.revision, requestGeneration = generation, paperId = pin.view.paperId;
     const active = () => alive(pin) && !controller.signal.aborted && pin.revision === revision && generation === requestGeneration;
-    update(pin, { phase: 'recognizing', imageReading: true, imageSent: true,
-      destination: configuration.destination, lookupDestination: '', notice: '', lookup: null, lookupStatus: '', lookupNotice: '',
+    update(pin, { phase: transcribedText === undefined ? 'recognizing' : 'translating', imageReading: true, imageSent: true,
+      imageTextReady: transcribedText !== undefined,
+      destination: transcribedText === undefined ? configuration.destination : `此前：${configuration.destination}本次只发送已识别文字。`,
+      lookupDestination: '', notice: transcribedText === undefined ? '' : '已保留识别文字，本次只重试翻译。', lookup: null, lookupStatus: '', lookupNotice: '',
       translation: '', segments: [], formulaNotice: '', formulaStatus: '', explainSupported: true });
     const publishResult = result => {
       if (!active()) return;
@@ -1200,8 +1209,12 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       update(pin, { sourceText: result.text, translation: result.translation, segments: [segment], phase: 'done', notice: '' });
     };
     try {
-      const result = await readScreenshot({ image: pin.view.image, settingsSnapshot: configuration.settings,
-        signal: controller.signal, onTranslation: result => {
+      const result = await readScreenshot({ image: pin.view.image, settingsSnapshot: configuration.settings, transcribedText,
+        signal: controller.signal, onTranscription: text => {
+          if (!active() || edgeNotice || looksLikeOwnReadingUi(text)) return;
+          pin.imageTranscription = { text, image: pin.view.image, generation: requestGeneration };
+          update(pin, { imageTextReady: true, phase: 'translating' });
+        }, onTranslation: result => {
           if (!edgeNotice && !result.uncertain?.length && !looksLikeOwnReadingUi(result.text)) publishResult(result);
         } });
       if (!active()) return false;
@@ -1350,7 +1363,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     generation += 1;
     for (const pin of pins.values()) {
       if (pin.view.referenceOnly) continue;
-      update(pin, { formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())) });
+      pin.imageTranscription = null;
+      update(pin, { imageTextReady: false, formulaSupported: Boolean(recognizeReadingFormulas && formulaRecognitionAvailable(getSettings())) });
       pin.lookupController?.abort();
       pin.referenceController?.abort();
       pin.referenceStatus = '';
@@ -1375,9 +1389,12 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       pin.controller?.abort();
       pin.controller = null;
       pin.revision += 1;
-      update(pin, { phase: 'review', notice: '处理服务已经改变；继续前请重新核对处理位置。' });
+      const needsImageRetry = pin.view.imageReading && !pin.view.sourceText;
+      const phase = needsImageRetry ? 'error' : 'review';
+      update(pin, { phase, notice: needsImageRetry
+        ? '处理服务已改变，请重新读这张图。' : '处理服务已经改变；继续前请重新核对处理位置。' });
       setImmediate(() => {
-        if (!alive(pin) || pin.view.phase !== 'review') return;
+        if (!alive(pin) || pin.view.phase !== phase) return;
         let destination = '';
         try { destination = settingsForReading().destination; } catch { /* settings can be repaired */ }
         pin.generation = generation;

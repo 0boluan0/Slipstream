@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, nativeImage, screen } = require('electron');
 const { createReadingPins } = require('../src/main/reading-pins');
+const { createImageReader } = require('../src/main/reading-image');
 
 const work = fs.mkdtempSync(path.join(os.tmpdir(), 'slipstream-lookup-recovery-'));
 app.setPath('userData', path.join(work, 'profile'));
@@ -171,6 +172,76 @@ app.whenReady().then(async () => {
   await act(imageCard, 'translate', { revision: (await state(imageCard)).revision });
   await until(async () => (await state(imageCard)).phase === 'done', 'explicit new translation');
   assert.equal((await state(imageCard)).lookupDestination, '', 'new translation clears an obsolete future-query label');
+  manager.dispose();
+  const imageStages = [];
+  let failImageText = true, holdImageText = false, pendingImageText, pendingImageSignal, edgeImage = false, imageUncertain = [];
+  const imageSource = 'The squared norm $x^2$ is nonnegative.';
+  const imageTranslation = '平方范数 $x^2$ 非负。';
+  const fixedImageReader = createImageReader(async (_s, _b, model, _prompt, content, _l, _selection, signal) => {
+    imageStages.push({ stage: Array.isArray(content) ? 'image' : 'text', model });
+    if (Array.isArray(content)) return JSON.stringify({ source: imageSource, uncertain: imageUncertain });
+    if (failImageText) throw new Error('fixed-image-text-timeout');
+    if (holdImageText) { pendingImageSignal = signal; pendingImageText = deferred(); return pendingImageText.promise; }
+    return JSON.stringify({ translation: imageTranslation, terms: [], references: [] });
+  });
+  manager = createReadingPins({ BrowserWindow: OffscreenWindow, ipcMain, screen, getSettings: () => settings,
+    getMainWindow: () => null, requestCapturePermission: async () => ({ granted: true }),
+    captureRegion: async () => {
+      const file = path.join(work, 'retry-image.png');
+      const pixels = Buffer.alloc(120 * 80 * 4, 255);
+      if (edgeImage) for (let y = 30; y < 40; y += 1) for (let x = 117; x < 120; x += 1) pixels.fill(0, (y * 120 + x) * 4, (y * 120 + x) * 4 + 3);
+      fs.writeFileSync(file, nativeImage.createFromBitmap(pixels, { width: 120, height: 80 }).toPNG());
+      return file;
+    }, readScreenshot: fixedImageReader, processReadingText: async () => { throw new Error('unexpected-unprotected-text-path'); },
+  });
+  await manager.capture();
+  const retryImage = BrowserWindow.getAllWindows()[0];
+  await until(async () => (await state(retryImage)).phase === 'error', 'image text failure');
+  const retainedImage = (await state(retryImage)).image;
+  assert.equal((await state(retryImage)).sourceText, '', 'transcription is not published as finished reading');
+  assert.equal((await state(retryImage)).imageTextReady, true);
+  assert.equal(await retryImage.webContents.executeJavaScript('document.getElementById("retry").textContent'), '重试这段文字');
+  failImageText = false; holdImageText = true;
+  await retryImage.webContents.executeJavaScript('document.getElementById("retry").click()');
+  await until(() => Boolean(pendingImageText), 'text-only retry waiting');
+  assert.deepEqual(imageStages.map(call => call.stage), ['image', 'text', 'text']);
+  assert.equal((await state(retryImage)).phase, 'translating');
+  assert.match(await retryImage.webContents.executeJavaScript('document.getElementById("status").textContent'), /翻译/u);
+  assert.match((await state(retryImage)).notice, /只重试翻译/u);
+  const oldText = pendingImageText; pendingImageText = null;
+  manager.invalidateProcessing(); settings = { ...settings, activeModel: 'image-changed' };
+  await until(async () => (await state(retryImage)).phase === 'error', 'new settings keep visible image retry');
+  assert(pendingImageSignal.aborted);
+  assert.equal((await state(retryImage)).imageTextReady, false);
+  assert.equal(await retryImage.webContents.executeJavaScript('document.getElementById("retry").textContent'), '重新读这张图');
+  assert.equal(await retryImage.webContents.executeJavaScript('document.getElementById("recovery").hidden'), false);
+  oldText.resolve(JSON.stringify({ translation: '不得覆盖的新旧回复', terms: [] })); await pause(30);
+  assert.equal((await state(retryImage)).sourceText, '');
+  holdImageText = false;
+  await retryImage.webContents.executeJavaScript('document.getElementById("retry").click()');
+  await until(async () => (await state(retryImage)).phase === 'done', 'new settings re-read image');
+  assert.deepEqual(imageStages.map(call => call.stage), ['image', 'text', 'text', 'image', 'text']);
+  assert(imageStages.slice(-2).every(call => call.model === 'image-changed'));
+  assert.equal((await state(retryImage)).image, retainedImage);
+  assert.equal((await state(retryImage)).sourceText, imageSource);
+  assert.equal((await state(retryImage)).translation, imageTranslation);
+  retryImage.close();
+  for (const uncertain of [[], ['右侧文字截断']]) {
+    edgeImage = !uncertain.length; imageUncertain = uncertain; failImageText = true;
+    const before = imageStages.length;
+    await manager.capture();
+    const guardedImage = BrowserWindow.getAllWindows()[0];
+    await until(async () => (await state(guardedImage)).phase === 'error', 'guarded image text failure');
+    assert.equal((await state(guardedImage)).imageTextReady, false, 'uncertain or edge-cut transcription cannot be reused');
+    failImageText = false;
+    await guardedImage.webContents.executeJavaScript('document.getElementById("retry").click()');
+    await until(async () => (await state(guardedImage)).phase === 'done', 'guarded image retry');
+    assert.deepEqual(imageStages.slice(before).map(call => call.stage), ['image', 'text', 'image', 'text']);
+    assert.equal((await state(guardedImage)).imageTextReady, false);
+    assert.match((await state(guardedImage)).notice, edgeImage ? /选区右边可能截断/u : /右侧文字截断/u,
+      'same-image retry retains the original edge or transcription warning');
+    guardedImage.close();
+  }
   assert(BrowserWindow.getAllWindows().every(window => !window.isVisible()));
   console.log('Lookup settings recovery passed: real card buttons, destination before retry, preserved text, cache invalidation, invalid setup, stale selection and late lookup/translation suppression. Providers were fixed local fixtures; no API calls or visible windows.');
   cleanup(); app.exit(0);

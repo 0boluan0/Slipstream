@@ -332,7 +332,7 @@ function render(next) {
   const segments = state.segments || [];
   const completed = segments.filter((segment) => segment.status === 'done').length;
   const working = ['ocr', 'waiting', 'translating', 'explaining', 'recognizing'].includes(state.phase);
-  const labels = { ocr: '正在本机识别…', waiting: '准备翻译…', translating: `已完成 ${completed} / ${segments.length} 段`, explaining: '正在解释…', review: '等待核对', done: `${segments.length} 段 · 已完成`, partial: '部分段落待重试', error: '需要处理' };
+  const labels = { ocr: '正在本机识别…', waiting: '准备翻译…', translating: state.imageReading && !segments.length ? '正在翻译已识别文字…' : `已完成 ${completed} / ${segments.length} 段`, explaining: '正在解释…', review: '等待核对', done: `${segments.length} 段 · 已完成`, partial: '部分段落待重试', error: '需要处理' };
   if (!copyTimer) byId('status').textContent = state.phase === 'recognizing'
     ? state.imageReading ? '正在读这张截图…' : '正在转写公式…' : labels[state.phase] || '';
   byId('card-label').textContent = state.collapsed ? '双击展开' : '阅读';
@@ -375,7 +375,8 @@ function render(next) {
     : state.explainSupported ? '选中英文词句，查看概念与上下文解释。' : '选中英文词句可单独翻译；术语解释需配置模型。';
   byId('recovery').hidden = !['error', 'partial'].includes(state.phase);
   byId('retry').hidden = !state.sourceText && !state.imageReading;
-  byId('retry').lastChild.textContent = state.imageReading ? '重新读这张图' : '重试未完成段落';
+  byId('retry').lastChild.textContent = state.imageReading
+    ? state.imageTextReady ? '重试这段文字' : '重新读这张图' : '重试未完成段落';
   byId('original').hidden = mode !== 'image' || !state.image;
   for (const id of ['source-image', 'correction-image']) {
     if (byId(id).getAttribute('src') === state.image) continue;

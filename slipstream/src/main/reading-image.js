@@ -67,11 +67,9 @@ function prepareReadingImage(image, nativeImage) {
 }
 
 function createImageReader(processBackend, { nativeImage = require('electron').nativeImage } = {}) {
-  return async ({ image, settingsSnapshot, signal, onUsage, onTranslation, onResponse }) => {
+  return async ({ image, settingsSnapshot, signal, onUsage, onTranslation, onResponse, transcribedText, onTranscription }) => {
     if (!imageReadingAvailable(settingsSnapshot)) throw new Error('reading-image-provider-unavailable');
     validateReadingImage(image);
-    const submittedImage = prepareReadingImage(image, nativeImage);
-    const data = validateReadingImage(submittedImage);
     if (signal?.aborted) throw new Error('reading-cancelled');
     const settings = { ...settingsSnapshot };
     const backend = settings.activeBackend;
@@ -81,18 +79,24 @@ function createImageReader(processBackend, { nativeImage = require('electron').n
       args[9] = { ...args[9], onUsage };
       const raw = await processBackend(...args);
       if (signal?.aborted) throw new Error('reading-cancelled');
-      onResponse?.(raw, { stage: index === 0 ? 'transcription' : 'text', index });
+      onResponse?.(raw, { stage: transcribedText === undefined && index === 0 ? 'transcription' : 'text', index });
       return raw;
     };
-    const content = [{ type: 'text', text: 'Transcribe the selected image exactly.' },
-      backend === 'anthropic'
-        ? { type: 'image', source: { type: 'base64', media_type: 'image/png', data } }
-        : { type: 'image_url', image_url: { url: submittedImage, detail: 'original' } }];
-    const raw = await request(settings, backend, settings.activeModel,
-      IMAGE_READING_PROMPT, content, 'en', undefined, signal, true,
-      { maxTokens: 8192, retries: 1, timeoutMs: 90000, onUsage });
-    if (typeof raw !== 'string' || raw.length > 45000) throw new Error('reading-image-invalid-output');
-    const value = parseReadingJson(raw);
+    let value;
+    if (transcribedText !== undefined) value = { source: transcribedText, uncertain: [] };
+    else {
+      const submittedImage = prepareReadingImage(image, nativeImage);
+      const data = validateReadingImage(submittedImage);
+      const content = [{ type: 'text', text: 'Transcribe the selected image exactly.' },
+        backend === 'anthropic'
+          ? { type: 'image', source: { type: 'base64', media_type: 'image/png', data } }
+          : { type: 'image_url', image_url: { url: submittedImage, detail: 'original' } }];
+      const raw = await request(settings, backend, settings.activeModel,
+        IMAGE_READING_PROMPT, content, 'en', undefined, signal, true,
+        { maxTokens: 8192, retries: 1, timeoutMs: 90000, onUsage });
+      if (typeof raw !== 'string' || raw.length > 45000) throw new Error('reading-image-invalid-output');
+      value = parseReadingJson(raw);
+    }
     if (!value || typeof value.source !== 'string' || !value.source.trim()
       || value.source.length > DEFAULTS.MAX_TEXT_LENGTH
       || /[\b\f\r\t\v]/u.test(value.source)
@@ -100,6 +104,7 @@ function createImageReader(processBackend, { nativeImage = require('electron').n
       || value.uncertain.some(item => typeof item !== 'string' || item.length > 300)) throw new Error('reading-image-invalid-output');
     const text = value.source.trim();
     if (firstInvalidMathDelimiter(text) || firstBareFontCommand(text)) throw new Error('reading-image-math-mismatch');
+    if (!value.uncertain.length) onTranscription?.(text);
     if (isMathOnly(text)) return { text, translation: text, uncertain: value.uncertain, terms: [], references: [] };
     const intact = result => !firstInvalidMathDelimiter(result.translation)
       && !firstBareFontCommand(result.translation) && sameMath(text, result.translation);

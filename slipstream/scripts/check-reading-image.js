@@ -67,6 +67,23 @@ async function run() {
   assert.equal(calls, 0);
   assert.equal((await read({ image, settingsSnapshot })).translation, valid.translation);
   assert.equal(calls, 2, 'one image transcription then one text translation');
+  let retainedText, failText = true;
+  const retryStages = [];
+  const retryReader = createImageReader(async (_s, _b, _m, _p, content) => {
+    retryStages.push(Array.isArray(content) ? 'image' : 'text');
+    if (Array.isArray(content)) return JSON.stringify({ source: valid.source, uncertain: [] });
+    if (failText) throw new Error('fixed-text-timeout');
+    return JSON.stringify(valid);
+  });
+  await assert.rejects(retryReader({ image, settingsSnapshot, onTranscription: text => { retainedText = text; } }), /fixed-text-timeout/u);
+  assert.equal(retainedText, valid.source, 'validated clear transcription survives a later text-stage failure');
+  failText = false;
+  const retryResponseStages = [];
+  const textRetried = await retryReader({ image, settingsSnapshot, transcribedText: retainedText,
+    onResponse: (_raw, info) => retryResponseStages.push(info.stage) });
+  assert.equal(textRetried.translation, valid.translation);
+  assert.deepEqual(retryStages, ['image', 'text', 'text'], 'manual retry reuses only the retained transcription');
+  assert.deepEqual(retryResponseStages, ['text'], 'cached retries must not mislabel their text usage as image transcription');
   const equationOnly = { source: '$$Y = D\\theta_0 + U$$', translation: '$$Y = D\\theta_0 + U$$',
     uncertain: [], terms: [{ quote: 'D\\theta_0', label: '处理效应', role: 'core' }],
     references: [{ symbol: 'U', meaning: '结构误差项', evidence: 'Y = D\\theta_0 + U' }] };
