@@ -156,7 +156,7 @@ const settingsSource = readSource('src/renderer/hooks/useSettings.js');
 const floatingPanelSource = readSource('src/renderer/components/FloatingPanel.jsx');
 const demoSource = readSource('src/renderer/hooks/useIpc.js');
 const projectReadme = readSource('../README.md');
-const developmentReadme = readSource('../docs/action-workspace-development.md');
+const developmentReadme = readSource('../docs/legacy/action-workspace-development.md');
 const privacyDoc = readSource('../docs/PRIVACY.md');
 const releaseDoc = readSource('../docs/RELEASE.md');
 

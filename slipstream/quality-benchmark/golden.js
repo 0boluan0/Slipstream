@@ -1,7 +1,7 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const { createEmptyActionBrief } = require('../src/shared/action-brief.cjs');
+const { createEmptyActionBrief } = require('../src/shared/legacy/action-brief.cjs');
 
 const GOLDEN_GENERATED_AT = '2099-01-01T00:00:00.000Z';
 

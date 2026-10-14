@@ -12,7 +12,7 @@ const {
   normalizeVerificationPolicy,
   parseSafeHttpsUrl,
   resolvePublicAddresses,
-} = require('../src/main/verification');
+} = require('../src/main/legacy/verification');
 
 const PUBLIC_LOOKUP = async () => [{ address: '93.184.216.34', family: 4 }];
 

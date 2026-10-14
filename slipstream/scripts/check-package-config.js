@@ -133,6 +133,11 @@ if (!pkg.scripts['check:release'].includes('npm run check:release-artifacts')) {
   process.exit(1);
 }
 
+if (!pkg.scripts['check:release'].includes('npm test && npm run test:legacy')) {
+  console.error('release checks must also run the frozen action-workspace compatibility suite');
+  process.exit(1);
+}
+
 if (pkg.scripts['check:release-manifest'] !== 'node scripts/check-release-artifacts.js --manifest-only') {
   console.error('release manifest gate must reuse the artifact checksum and conflict-copy inspection');
   process.exit(1);

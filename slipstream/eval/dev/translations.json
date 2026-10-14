@@ -1,0 +1,46 @@
+{
+  "format": "slipstream-eval/1",
+  "suite": "translation",
+  "visibility": "dev",
+  "description": "Translation fidelity. mustMatch/mustNotMatch are automatic hints; criteria still need a reader or grader.",
+  "cases": [
+    {
+      "id": "orthonormal-basis",
+      "source": "Linear combinations of orthonormal vectors use an orthonormal basis.",
+      "criteria": "orthonormal means mutually orthogonal AND unit norm: 标准正交 or 正交归一, never just 正交.",
+      "mustMatch": [
+        "标准正交|正交归一"
+      ],
+      "origin": "moved from scripts/check-reading-service.js fixture",
+      "removedRule": "reading-service ORTHONORMAL_* guard and its repair request"
+    },
+    {
+      "id": "study-percentage-scope",
+      "source": "We report on data practices from interviews with 53 AI practitioners. Data cascades are pervasive (92% prevalence).",
+      "criteria": "The 92% describes the interviewed practitioners in this study, not a population-wide rate; the Chinese must keep that scope.",
+      "origin": "moved from scripts/check-reading-service.js fixture",
+      "removedRule": "reading-service studyPercentageScopeNotice; TRANSLATION_QUALIFICATION_RULES study-percentage sentence"
+    },
+    {
+      "id": "same-as-during-training",
+      "source": "At test time the units are always present, and their outgoing weights are scaled so that the expected output is the same as during training.",
+      "criteria": "The expected output at test time equals the expected output during training; do not translate it as something that happens only during training.",
+      "origin": "authored sentence for a failure pattern recorded on 2026-09-26",
+      "removedRule": "TRANSLATION_QUALIFICATION_RULES \"as during training\" sentence"
+    },
+    {
+      "id": "dataset-curator-role",
+      "source": "Speaker We use the term speaker to refer to the individual who produced linguistic behavior. Annotator The term annotator refers to people who assign annotations to raw data. Curator A third role in dataset creation, less commonly discussed, is the curator. Stakeholders Stakeholders are people impacted directly or indirectly by a system.",
+      "criteria": "Keep the four role paragraphs. In dataset creation, curator is the person who selects and organizes data (数据整理者／数据筛选者), not the exhibition sense 策展人.",
+      "mustNotMatch": [
+        "策展"
+      ],
+      "origin": "moved from scripts/check-reading-references.js fixture (Data Statements for NLP)",
+      "attribution": {
+        "title": "Data Statements for Natural Language Processing",
+        "url": "https://aclanthology.org/Q18-1041/"
+      },
+      "removedRule": "TRANSLATION_QUALIFICATION_RULES curator sentence"
+    }
+  ]
+}

@@ -786,10 +786,8 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             } catch (error) {
               if (!active()) return;
               segment.status = 'error';
-              segment.error = error?.message === 'reading-terminology-mismatch'
-                ? '这段把“标准正交”与“正交”混淆了。请对照原文后重试。'
-                : error?.message === 'reading-symbol-role-mismatch'
-                  ? '这段译文把输入、输出与公式符号的对应关系弄反了。请对照原文后重试。'
+              segment.error = error?.message === 'reading-symbol-role-mismatch'
+                ? '这段译文把输入、输出与公式符号的对应关系弄反了。请对照原文后重试。'
                 : error?.message === 'reading-invalid-output'
                   ? '这一段的译文不完整，请重试。' : classifyError(error, configuration.settings.activeBackend);
             }
@@ -900,8 +898,6 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
         ? '这次解释未能匹配所选原文，请重试。'
         : error?.message === 'reading-invalid-math'
           ? '这次解释的公式格式不完整，已停止展示。请重试。'
-        : error?.message === 'reading-unsupported-claim'
-          ? '这次解释含有原文不能支持的说法，已停止展示。请重试或核对原文。'
           : classifyError(error, configuration.settings.activeBackend) });
     } finally {
       if (pin.lookupController === controller) pin.lookupController = null;
@@ -1271,7 +1267,7 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       if (!active()) return false;
       update(pin, { phase: 'error', notice: error?.message === 'reading-image-math-mismatch'
         ? '这次译文的公式未通过核对，已停止显示。原图保留在“截图”中；请重试，或重新框选这一小段。'
-        : /^reading-(?:symbol-role-mismatch|terminology-mismatch)$/u.test(error?.message || '')
+        : error?.message === 'reading-symbol-role-mismatch'
           ? '这次结果中的数学含义未通过核对，已停止显示。原图保留在“截图”中，请重试。'
           : error?.message === 'reading-image-invalid-output' || error instanceof SyntaxError
             ? '这张图没有读完整，原图已保留。请重试，或重新框选清晰的一段英文。'

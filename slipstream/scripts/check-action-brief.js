@@ -4,18 +4,18 @@ const {
   analyzeModelOutput: analyzeModelOutputWithoutReview,
   buildActionBriefPrompt,
   createFallbackBrief,
-} = require('../src/main/analysis');
+} = require('../src/main/legacy/analysis');
 const {
   createTaskReviewPlan,
   finalizeTaskReview,
-} = require('../src/main/analysis/task-review');
+} = require('../src/main/legacy/analysis/task-review');
 const {
   createFixtureTaskReview,
   createFixtureTaskReviewOutput,
 } = require('./task-review-fixture.cjs');
 const persistentStore = require('../src/main/store');
 const { buildActionBriefMessages, processText } = require('../src/main/llm-service');
-const { validateActionBrief } = require('../src/shared/action-brief.cjs');
+const { validateActionBrief } = require('../src/shared/legacy/action-brief.cjs');
 
 const GENERATED_AT = '2026-07-23T00:00:00.000Z';
 const sourceText = 'To apply for the Graduate Route,\nsubmit the completed form  and a copy of your passport by 5:00 pm BST on 14 August 2026. You do not need to reply to this email.';

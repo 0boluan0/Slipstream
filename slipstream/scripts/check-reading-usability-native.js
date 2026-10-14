@@ -38,7 +38,6 @@ app.whenReady().then(async () => {
   let lookupCalls = 0;
   const provider = createReadingProcessor(async (...args) => {
     const input = JSON.parse(args[4]);
-    if (input.excerpt.includes('interviews with 53')) return JSON.stringify({ translation: '我们访谈了 53 位从业者。数据级联普遍存在（92% 的流行率）。', terms: [], references: [] });
     if (input.excerpt === 'A field in algebra.' || input.excerpt === 'A field in physics.') return JSON.stringify({ translation: '当前段落的概念。', terms: [{ quote: 'field', label: input.excerpt.includes('algebra') ? '域' : '场', role: 'core' }], references: [] });
     if (input.selection) {
       lookupCalls += 1;
@@ -49,9 +48,15 @@ app.whenReady().then(async () => {
       terms: input.excerpt.includes('root-N consistency') ? [{quote:'root-N consistency', label:'$\\sqrt{N}$ 一致性', role: 'core'}] : [],
       references: input.excerpt.includes('epsilon') ? [{ symbol: 'epsilon', meaning: '稳定常数。', evidence: 'Let epsilon denote a stability constant.' }] : [] });
   });
+  const NOTICE_SOURCE = 'A notice card shows a note from the reading service.';
+  const notice = '这段译文附带的核对提示。';
   manager = createReadingPins({ BrowserWindow, ipcMain, screen, referenceStore: store,
     getSettings: () => ({ setupMode: 'full', activeBackend: 'custom', activeModel: 'fixture', customEndpointUrl: 'http://127.0.0.1:11434/v1' }),
-    getMainWindow: () => null, processReadingText: provider, captureSupported: false });
+    getMainWindow: () => null, captureSupported: false,
+    processReadingText: async (options) => {
+      const result = await provider(options);
+      return options.text === NOTICE_SOURCE && result.translation ? { ...result, scopeNotice: notice } : result;
+    } });
   // Give a real existing window focus, as when the reader presses 本文速查.
   manager.openText('Let epsilon denote a stability constant. We discuss root-N consistency.');
   const reading = BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Slipstream · 阅读卡片');
@@ -72,14 +77,14 @@ app.whenReady().then(async () => {
     assert.equal(await js(meanings, 'document.querySelectorAll(".term-chip").length'), 2);
   });
   meanings.close();
-  manager.openText('We report data practices from interviews with 53 practitioners. Data cascades are pervasive (92% prevalence).');
-  const rateCard = BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Slipstream · 阅读卡片' && window !== reading);
-  await until(async () => (await snapshot(rateCard)).phase === 'done', 'study percentage card');
-  await check('an ambiguous study percentage is visibly scoped beside the translation', async () => {
-    assert.match(await js(rateCard, 'document.querySelector(".scope-notice")?.textContent || ""'), /92% 的统计对象/);
-    assert.equal(await js(rateCard, 'document.querySelector(".scope-notice")?.hidden'), false);
+  manager.openText(NOTICE_SOURCE);
+  const noticeCard = BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Slipstream · 阅读卡片' && window !== reading);
+  await until(async () => (await snapshot(noticeCard)).phase === 'done', 'notice card');
+  await check('a notice returned with the translation is shown beside it', async () => {
+    assert.equal(await js(noticeCard, 'document.querySelector(".scope-notice")?.textContent || ""'), notice);
+    assert.equal(await js(noticeCard, 'document.querySelector(".scope-notice")?.hidden'), false);
   });
-  rateCard.close();
+  noticeCard.close();
   reading.show();
   reading.focus();
   await manager.openReferences(paper.id);

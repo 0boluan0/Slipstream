@@ -5,7 +5,7 @@ const { app, safeStorage } = require('electron');
 const { SECRET_SETTING_KEYS } = require('./safe-settings');
 const { mergePortableTerms } = require('./term-transfer');
 const { DEFAULTS, MODEL_IDS } = require('../shared/constants.cjs');
-const { PROVENANCE_KINDS, TERM_KINDS } = require('../shared/action-brief.cjs');
+const { PROVENANCE_KINDS, TERM_KINDS } = require('../shared/legacy/action-brief.cjs');
 const { isHttpLoopbackEndpoint } = require('../shared/endpoint-location.cjs');
 
 /**

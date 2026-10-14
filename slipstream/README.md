@@ -38,8 +38,10 @@ npm run dev
 | `src/main/term-card-store.js` | Markdown 持久化、关联与外部编辑冲突保护 |
 | `src/main/term-library.js`、`term-library/` | 本地卡片盒的搜索、编辑和关联浏览 |
 | `src/renderer/components/` | 阅读首页、首次设置、服务与快捷键配置 |
+| `src/main/legacy/`、`src/shared/legacy/`、`src/renderer/legacy/` | 已冻结的旧行动工作区：只服务历史结果和兼容性探测 |
+| `eval/` | 阅读质量评测集（开发集；封存集在仓库外），见[评测说明](eval/README.md) |
 
-完整边界见[架构](../docs/ARCHITECTURE.md)与[隐私说明](../docs/PRIVACY.md)。历史结果、恢复和兼容性探测的详细约束保留在[兼容契约](../docs/action-workspace-contract.md)和[开发参考](../docs/action-workspace-development.md)。
+完整边界见[架构](../docs/ARCHITECTURE.md)与[隐私说明](../docs/PRIVACY.md)。旧行动工作区已冻结，只接受兼容性和安全修复；详细约束保留在[兼容契约](../docs/legacy/action-workspace-contract.md)和[开发参考](../docs/legacy/action-workspace-development.md)。
 
 ## 验证
 
@@ -51,6 +53,7 @@ npm run build:renderer
 npm run check:reading-home
 ```
 
+- `npm test` 的第一步是 `test:unit`（`test/*.test.mjs`，Node 自带测试框架，几秒完成），写法见[单元测试说明](test/README.md)。冻结的行动工作区检查在 `npm run test:legacy`，CI 和发布前检查都会运行。
 - `check:reading-home` 使用真实 Electron、生产渲染构建和临时目录，覆盖首页 → 粘贴示例 → 独立阅读卡片 → 解释 → 保存 → 首页卡片盒，并检查首次设置及 200% 排版。回复为固定示例，不调用模型或读取屏幕。
 - `check:reading-pins` 覆盖术语契约、本地存储、原生卡片与卡片盒、数学渲染和预览配置。
 - `check:reading-math` 检查 LaTeX 保留、核对界面、渲染、复制和存储。

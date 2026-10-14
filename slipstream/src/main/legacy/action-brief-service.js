@@ -10,7 +10,7 @@ const {
   normalizeVerificationPolicy,
   verifyOfficialSources,
 } = require('./verification');
-const { assertActionBrief } = require('../shared/action-brief.cjs');
+const { assertActionBrief } = require('../../shared/legacy/action-brief.cjs');
 
 const MAX_VERIFICATIONS_PER_RUN = 3;
 const MAX_RETRIEVALS_PER_VERIFICATION = 6;

@@ -110,7 +110,7 @@ assert.match(appSource,
 assert.match(settingsSource,
   /<ClipboardActionNotice[\s\S]*?notice=\{clipboardNotice\}[\s\S]*?onAcknowledge=\{onAcknowledgeClipboardConsequence\}/);
 assert.match(panelSource,
-  /<SavedTermsLibrary[\s\S]*?clipboardNotice=\{clipboardNotice\}[\s\S]*?onWriteClipboard=/);
+  /<SavedTermsDrawer[\s\S]*?clipboardNotice=\{clipboardNotice\}[\s\S]*?onWriteClipboard=/);
 assert.match(savedTermsSource,
   /<ClipboardActionNotice[\s\S]*?notice=\{clipboardNotice\}[\s\S]*?onAcknowledge=\{onAcknowledgeClipboardConsequence\}/);
 

@@ -10,8 +10,8 @@ import {
 } from '../src/renderer/utils/evidenceMapping.mjs';
 
 const require = createRequire(import.meta.url);
-const { analyzeModelOutput, buildActionBriefPrompt } = require('../src/main/analysis');
-const { validateActionBrief } = require('../src/shared/action-brief.cjs');
+const { analyzeModelOutput, buildActionBriefPrompt } = require('../src/main/legacy/analysis');
+const { validateActionBrief } = require('../src/shared/legacy/action-brief.cjs');
 const { createFixtureTaskReview } = require('./task-review-fixture.cjs');
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));

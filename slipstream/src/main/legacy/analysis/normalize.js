@@ -12,7 +12,7 @@ const {
   isPlainObject,
   isSafeLookupUrl,
   validateActionBrief,
-} = require('../../shared/action-brief.cjs');
+} = require('../../../shared/legacy/action-brief.cjs');
 const {
   collectCandidateQuotes,
   normalizeOfficialSources,

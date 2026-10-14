@@ -1,4 +1,4 @@
-const { assertActionBrief } = require('../../shared/action-brief.cjs');
+const { assertActionBrief } = require('../../../shared/legacy/action-brief.cjs');
 const { resolveEvidenceQuotes } = require('./evidence');
 const { createBaseBrief, inferSourceLanguage } = require('./normalize');
 

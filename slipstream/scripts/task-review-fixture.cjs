@@ -1,7 +1,7 @@
 const {
   createTaskReviewPlan,
   finalizeTaskReview,
-} = require('../src/main/analysis/task-review');
+} = require('../src/main/legacy/analysis/task-review');
 
 function createFixtureTaskReview(sourceText, candidate, options = {}) {
   const plan = createTaskReviewPlan({ sourceText, rawOutput: candidate });

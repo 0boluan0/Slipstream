@@ -1,0 +1,84 @@
+{
+  "format": "slipstream-eval/1",
+  "suite": "references",
+  "visibility": "dev",
+  "description": "Explicit notation definitions. expected lists the symbols that should be extracted.",
+  "cases": [
+    {
+      "id": "explicit-definitions",
+      "expected": [
+        "x_i",
+        "n",
+        "\\lambda"
+      ],
+      "source": "Let $x_i \\in \\mathbb{R}^d$ denote the feature vector of the i-th training example. Let $n$ be the number of training examples. The regularization strength is denoted by $\\lambda$.",
+      "origin": "moved from src/main/reading-reference-check.js"
+    },
+    {
+      "id": "equation-without-definitions",
+      "expected": [],
+      "source": "We minimize $$L(\\theta) = \\sum_i \\ell(f_\\theta(x_i), y_i) + \\lambda R(\\theta).$$ The optimization details are given in the next section.",
+      "origin": "moved from src/main/reading-reference-check.js"
+    },
+    {
+      "id": "ordinary-prose",
+      "expected": [],
+      "source": "The next section presents the results. We then discuss the limitations and conclude the paper.",
+      "origin": "moved from src/main/reading-reference-check.js"
+    },
+    {
+      "id": "same-symbol-different-sections",
+      "expected": [
+        "K",
+        "K"
+      ],
+      "source": "In Section 2, $K$ denotes the number of mixture components. In Section 3, we reuse $K$ to denote a kernel matrix.",
+      "origin": "moved from src/main/reading-reference-check.js"
+    },
+    {
+      "id": "case-sensitive-notation",
+      "expected": [
+        "X",
+        "x"
+      ],
+      "source": "Let $X$ be a random variable and let $x$ denote a fixed observed value of that variable.",
+      "origin": "moved from src/main/reading-reference-check.js"
+    },
+    {
+      "id": "subscripts-and-accents",
+      "expected": [
+        "\\beta_0",
+        "\\hat{\\beta}"
+      ],
+      "source": "The intercept is denoted by $\\beta_0$. We write $\\hat{\\beta}$ for the estimated coefficient vector.",
+      "origin": "moved from src/main/reading-reference-check.js"
+    },
+    {
+      "id": "collection-cardinality",
+      "source": "Given a batch of $N$ (image, text) pairs, CLIP predicts which pairings occurred. It optimizes a symmetric loss over the similarity scores.",
+      "expected": [
+        "N"
+      ],
+      "origin": "moved from scripts/check-reading-references.js fixture (CLIP)",
+      "removedRule": "COLLECTION_CARDINALITY_RULES example sentence"
+    },
+    {
+      "id": "labeled-algorithm-assignment",
+      "source": "// mini-batch mean\n\n$$\\mu _ { \\mathcal { B } } \\gets \\frac { 1 } { m } \\sum _ { i = 1 } ^ { m } x _ { i }$$",
+      "expected": [
+        "\\mu_{\\mathcal{B}}"
+      ],
+      "origin": "moved from scripts/check-reading-references.js fixture (Batch Normalization, Algorithm 1)",
+      "removedRule": "ALGORITHM_ASSIGNMENT_RULES example formula"
+    },
+    {
+      "id": "defined-function-atom",
+      "source": "we explicitly let these layers approximate a residual function ${ \\mathcal F } ( { \\bf x } ) \\,: = \\, { \\mathcal H } ( { \\bf x } ) \\, - \\, { \\bf x }$.",
+      "expected": [
+        "\\mathcal F"
+      ],
+      "origin": "moved from scripts/check-reading-references.js fixture (ResNet)",
+      "removedRule": "REFERENCE_RULES example definition"
+    }
+  ]
+}

@@ -1,13 +1,13 @@
-const { analyzeModelOutput } = require('../src/main/analysis');
+const { analyzeModelOutput } = require('../src/main/legacy/analysis');
 const persistentStore = require('../src/main/store');
 const { processText } = require('../src/main/llm-service');
 const { testProviderConnection } = require('../src/main/provider-connection');
+const { compatibilityErrorCode } = require('../src/main/provider-readiness');
 const {
   FULL_ANALYSIS_COMPATIBILITY_SOURCE,
-  compatibilityErrorCode,
   getRepresentativeStructuredBriefChecks,
   isRepresentativeStructuredBrief,
-} = require('../src/main/provider-readiness');
+} = require('../src/main/legacy/analysis-compatibility');
 
 const apiKey = process.env.DEEPSEEK_API_KEY;
 const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';

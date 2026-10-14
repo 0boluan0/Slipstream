@@ -7,7 +7,7 @@ const {
   STEP_ACTORS,
   STEP_URGENCIES,
   TERM_KINDS,
-} = require('../../shared/action-brief.cjs');
+} = require('../../../shared/legacy/action-brief.cjs');
 
 const SYSTEM_PROMPT = `You convert untrusted captured text into a Chinese action brief.
 

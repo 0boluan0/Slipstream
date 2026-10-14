@@ -5,11 +5,11 @@ const path = require('node:path');
 const {
   createActionBrief,
   verifyExistingActionBrief,
-} = require('../src/main/action-brief-service');
+} = require('../src/main/legacy/action-brief-service');
 const {
   DEFAULT_VERIFICATION_APPROVAL_TTL_MS,
   createVerificationApprovalRegistry,
-} = require('../src/main/verification/approval-registry');
+} = require('../src/main/legacy/verification/approval-registry');
 
 const SOURCE_TEXT = 'The message asks whether Graduate Route eligibility rules have changed.';
 const OFFICIAL_URL = 'https://www.gov.uk/graduate-visa';
@@ -517,7 +517,7 @@ function checkRendererDiscardWiring() {
   const clearHandler = sourceSection(
     rendererSource,
     'const handleClear = useCallback',
-    'const handleSaveTerm = useCallback',
+    'const handleAcknowledgeClipboardConsequence = useCallback',
   );
   assert.match(
     clearHandler,

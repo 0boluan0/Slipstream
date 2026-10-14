@@ -32,11 +32,13 @@ After the user completes the built-in image-and-text trial and enables professio
 
 The shared provider, credential, IPC, storage recovery, and endpoint checks remain in force. The provider readiness probe and restored historical results still use the compatibility pipeline below.
 
-## Compatibility action workspace
+## Compatibility action workspace (frozen)
 
 ```text
 capture → structured analysis → optional official verification → evidence-first renderer
 ```
+
+This earlier workspace is frozen: it serves restored results and compatibility checks only. Its main-process code lives in `src/main/legacy/` (analysis, official verification, the action-brief service and the full-analysis compatibility probe) and its schema in `src/shared/legacy/`; the renderer keeps the old term library (and its lazily loaded import validation) in `src/renderer/legacy/`. Only `main.js`, `llm-service.js`, `store.js`, `FloatingPanel.jsx` and `SavedTermsLibrary.jsx` may load it; `test/legacy-boundary.test.mjs` enforces this, and the shared URL-safety checks stay in `src/main/url-safety.js`. Its regression checks run with `npm run test:legacy`, which CI and `check:release` also run. The contract is preserved in [docs/legacy/](legacy/action-workspace-contract.md).
 
 ## Capture
 

@@ -1,4 +1,4 @@
-const { isPlainObject } = require('../../shared/action-brief.cjs');
+const { isPlainObject } = require('../../../shared/legacy/action-brief.cjs');
 
 const MAX_RAW_OUTPUT_LENGTH = 250000;
 

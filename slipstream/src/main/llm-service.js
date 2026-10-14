@@ -1,13 +1,13 @@
 const store = require('./store');
 const { recordReadingUsage } = require('./reading-usage');
-const { buildActionBriefPrompt } = require('./analysis');
+const { buildActionBriefPrompt } = require('./legacy/analysis');
 const {
   TASK_REVIEW_MAX_TOKENS,
   TASK_REVIEW_TIMEOUT_MS,
   createFailedTaskReview,
   createTaskReviewPlan,
   finalizeTaskReview,
-} = require('./analysis/task-review');
+} = require('./legacy/analysis/task-review');
 const { DEFAULTS, PROMPT_TEMPLATES } = require('../shared/constants.cjs');
 const {
   validateEndpointUrl,

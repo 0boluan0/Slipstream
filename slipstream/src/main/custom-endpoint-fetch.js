@@ -11,7 +11,7 @@ const {
 const {
   createPinnedLookup,
   resolvePublicAddresses,
-} = require('./verification/url-safety');
+} = require('./url-safety');
 
 const CUSTOM_ENDPOINT_ERROR_CODES = Object.freeze({
   INVALID_REQUEST: 'custom-endpoint-invalid-request',

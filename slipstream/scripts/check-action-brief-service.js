@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const {
   createActionBrief,
   verifyExistingActionBrief,
-} = require('../src/main/action-brief-service');
-const { validateActionBrief } = require('../src/shared/action-brief.cjs');
+} = require('../src/main/legacy/action-brief-service');
+const { validateActionBrief } = require('../src/shared/legacy/action-brief.cjs');
 
 const SOURCE_TEXT = 'The message asks whether Graduate Route eligibility rules have changed.';
 const OFFICIAL_URL = 'https://www.gov.uk/graduate-visa';

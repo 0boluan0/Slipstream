@@ -3,7 +3,7 @@ const { createHash } = require('node:crypto');
 const {
   ACTION_BRIEF_CANDIDATE_VERSION,
   isPlainObject,
-} = require('../../shared/action-brief.cjs');
+} = require('../../../shared/legacy/action-brief.cjs');
 const { collectCandidateQuotes, resolveEvidenceQuotes } = require('./evidence');
 const { parseStrictJsonOutput } = require('./parse');
 

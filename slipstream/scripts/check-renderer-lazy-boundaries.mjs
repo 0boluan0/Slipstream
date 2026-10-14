@@ -32,6 +32,7 @@ const readRenderer = (relativePath) => fs.readFileSync(
 const appSource = readRenderer('App.jsx');
 const indexSource = readRenderer('index.jsx');
 const panelSource = readRenderer('components/FloatingPanel.jsx');
+const savedTermsWorkspaceSource = readRenderer('legacy/useSavedTermsWorkspace.jsx');
 const resultSource = readRenderer('components/ResultDisplay.jsx');
 const resultStylesheetSource = readRenderer('components/resultWorkspaceStylesheet.mjs');
 const resultCssSource = readRenderer('components/ResultDisplay.css');
@@ -135,7 +136,7 @@ await assert.rejects(
 );
 
 const savedTermsMissingReturnMutation = removeWorkspaceWaitReturn(
-  panelSource,
+  savedTermsWorkspaceSource,
   'waitForSavedTermsWorkspaceStyles',
 );
 assert.match(savedTermsMissingReturnMutation, legacySavedTermsWorkspaceWaitPattern,
@@ -155,7 +156,7 @@ await assertWorkspaceWaitsForStylesheet(appSource, {
   readyProperty: 'settingsWorkspaceStylesheetReady',
   workspaceName: 'Settings',
 });
-await assertWorkspaceWaitsForStylesheet(panelSource, {
+await assertWorkspaceWaitsForStylesheet(savedTermsWorkspaceSource, {
   functionName: 'waitForSavedTermsWorkspaceStyles',
   readyProperty: 'savedTermsWorkspaceStylesheetReady',
   workspaceName: 'Saved Terms',
@@ -993,16 +994,16 @@ assert.match(panelSource,
   /getElementById\('result-headline'\)[\s\S]*?data-workspace-retry="result"[\s\S]*?result-workspace-loading-title/,
   'returning from Settings must focus the resolved, failed, or loading Result surface');
 
-assert.doesNotMatch(panelSource,
-  /^import\s+(?:[^'";]+?\s+from\s+)?['"]\.\/SavedTermsLibrary['"];?$/m,
+assert.doesNotMatch(savedTermsWorkspaceSource,
+  /^import\s+(?:[^'";]+?\s+from\s+)?['"](?:\.\/|\.\.\/components\/)SavedTermsLibrary['"];?$/m,
   'SavedTermsLibrary must stay outside the returning capture entry graph');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /get\('run'\) === 'saved-terms-deferral-native'[\s\S]*?SavedTermsLibrary\?workspace-load=saved-terms-fixture-primary[\s\S]*?SavedTermsLibrary\?workspace-load=saved-terms-retry&workspace-attempt=1/,
   'the Saved Terms DEV fixture must fail its real primary URL and recover through one bounded module and stylesheet attempt');
-assert.match(panelSource,
-  /waitForSavedTermsWorkspaceStyles\(\(\) => import\('\.\/SavedTermsLibrary'\)\)[\s\S]*?importRetryableWorkspaceAsset\('SavedTermsLibrary\.js', 1\)/,
+assert.match(savedTermsWorkspaceSource,
+  /waitForSavedTermsWorkspaceStyles\(\(\) => import\('\.\.\/components\/SavedTermsLibrary'\)\)[\s\S]*?importRetryableWorkspaceAsset\('SavedTermsLibrary\.js', 1\)/,
   'production Saved Terms retry must await CSS around its ordinary import and one bounded stable-asset URL');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /function waitForSavedTermsWorkspaceStyles\(moduleLoader\)[\s\S]*?savedTermsModule\.savedTermsWorkspaceStylesheetReady[\s\S]*?then\(\(\) => savedTermsModule\)/,
   'Saved Terms presentation must await the private stylesheet promise before resolving React.lazy');
 assert.match(savedTermsSource,
@@ -1017,34 +1018,34 @@ assert.match(savedTermsStylesheetSource,
 assert.doesNotMatch(savedTermsStylesheetSource, /Date\.now|Math\.random|window\.location\.reload/,
   'Saved Terms stylesheet recovery must not create unbounded URLs or reload the renderer');
 assert.equal(
-  (panelSource.match(/SavedTermsLibrary\?workspace-load=/g) || []).length,
+  (savedTermsWorkspaceSource.match(/SavedTermsLibrary\?workspace-load=/g) || []).length,
   2,
   'Saved Terms DEV loading must expose only one primary and one retry module identity',
 );
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /function preloadSavedTermsLibrary\(\)[\s\S]*?savedTermsLibraryImport\.load\(\)/,
   'Saved Terms intent and rendering must share the cached module attempt');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /function prepareSavedTermsLibrary\(\)[\s\S]*?preloadSavedTermsLibrary\(\)\.catch\(\(\) => false\)/,
   'Saved Terms intent preloading must absorb a rejected chunk promise');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /function createSavedTermsLibrary\(\)[\s\S]*?React\.lazy\(preloadSavedTermsLibrary\)/,
   'Saved Terms retry must be able to create a fresh React.lazy identity');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /if \(!savedTermsLibraryImport\.reset\(\)\) return false;[\s\S]*?attempt: current\.attempt \+ 1,[\s\S]*?Component: createSavedTermsLibrary\(\)/,
   'Saved Terms retry must advance once and replace the rejected lazy identity');
-assert.match(panelSource, /retryAvailable=\{savedTermsLibraryImport\.canRetry\(\)\}/,
+assert.match(savedTermsWorkspaceSource, /retryAvailable=\{savedTermsLibraryImport\.canRetry\(\)\}/,
   'Saved Terms recovery must remove its retry action after the bounded URL is exhausted');
 
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /const \[savedTermsWorkspaceMounted, setSavedTermsWorkspaceMounted\] = useState\(false\)/,
   'Saved Terms must begin outside the mounted renderer graph');
-assert.doesNotMatch(panelSource, /setSavedTermsWorkspaceMounted\(false\)/,
+assert.doesNotMatch(savedTermsWorkspaceSource, /setSavedTermsWorkspaceMounted\(false\)/,
   'the Saved Terms mount latch must never move backwards during the renderer lifetime');
-assert.match(panelSource,
-  /const openSavedTerms = useCallback\(\(\) => \{[\s\S]*?savedTermsDrawerOpenRef\.current = true;[\s\S]*?if \(!savedTermsWorkspaceMountedRef\.current\)[\s\S]*?savedTermsWorkspaceMountedRef\.current = true;[\s\S]*?setSavedTermsWorkspaceMounted\(true\);[\s\S]*?setSavedTermsDrawerOpen\(true\)/,
+assert.match(savedTermsWorkspaceSource,
+  /const openSavedTerms = useCallback\(\(\) => \{\n {4}onOpen\?\.\(\);[\s\S]*?savedTermsDrawerOpenRef\.current = true;[\s\S]*?if \(!savedTermsWorkspaceMountedRef\.current\)[\s\S]*?savedTermsWorkspaceMountedRef\.current = true;[\s\S]*?setSavedTermsWorkspaceMounted\(true\);[\s\S]*?setSavedTermsDrawerOpen\(true\)/,
   'opening Saved Terms must synchronously claim modal intent and trip a one-way mount latch');
-const closeSavedTermsSource = panelSource.match(
+const closeSavedTermsSource = savedTermsWorkspaceSource.match(
   /const closeSavedTerms = useCallback\(\(\) => \{([\s\S]*?)\n {2}\}, \[\]\);/,
 )?.[1] || '';
 assert.match(closeSavedTermsSource, /setSavedTermsDrawerOpen\(false\)/,
@@ -1052,20 +1053,20 @@ assert.match(closeSavedTermsSource, /setSavedTermsDrawerOpen\(false\)/,
 assert.doesNotMatch(closeSavedTermsSource,
   /setSavedTermsWorkspaceMounted|setSavedTermsSessionGeneration|savedTermsLibraryImport\.reset/,
   'ordinary close must preserve the mounted library instance and its local state');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /invalidateSavedTermsLoadRequest\(\);[\s\S]*?setSavedTermsLoadState\(SAVED_TERMS_LOAD_STATUS\.IDLE,[\s\S]*?setSavedTermsDrawerOpen\(false\);[\s\S]*?setSavedTermsSessionGeneration\(\(current\) => current \+ 1\)/,
   'a pending full-data reset must invalidate stale reads, close Saved Terms, and replace its local-state generation');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /const confirmSavedTermsPersistentReset = useCallback\(\(\) => \{[\s\S]*?invalidateSavedTermsLoadRequest\(\);[\s\S]*?updateSavedTerms\(\[\]\);[\s\S]*?setSavedTermsLoadState\(SAVED_TERMS_LOAD_STATUS\.READY/,
   'only a committed persistent reset may publish the canonical ready-empty Saved Terms state');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /const prepareSavedTermsAccess = useCallback\(\(\) => \{[\s\S]*?prepareSavedTermsLibrary\(\);[\s\S]*?ensureSavedTermsLoaded\(\)\.catch\(\(\) => false\)/,
   'Saved Terms intent must preload both its lazy workspace and persistent data');
 assert.match(panelSource,
   /className=\{`saved-terms-trigger saved-terms-trigger--\$\{savedTermsLoadStatus\}[\s\S]*?onPointerEnter=\{readingStart \? undefined : prepareSavedTermsAccess\}[\s\S]*?onFocus=\{readingStart \? undefined : prepareSavedTermsAccess\}[\s\S]*?onClick=\{readingStart \?[\s\S]*?: openSavedTerms\}/,
   'the compatibility Saved Terms trigger must preload on intent; the reading home opens its native card box');
-assert.match(panelSource,
-  /\{savedTermsWorkspaceMounted && \([\s\S]*?<LazyWorkspaceBoundary[\s\S]*?key=\{`saved-terms-workspace-\$\{savedTermsWorkspace\.attempt\}`\}[\s\S]*?<SavedTermsWorkspaceRecovery[\s\S]*?<React\.Suspense[\s\S]*?<SavedTermsWorkspaceFallback[\s\S]*?<SavedTermsLibrary[\s\S]*?key=\{`saved-terms-session-\$\{savedTermsSessionGeneration\}`\}/,
+assert.match(savedTermsWorkspaceSource,
+  /if \(!workspace\.savedTermsWorkspaceMounted\) return null;[\s\S]*?<LazyWorkspaceBoundary[\s\S]*?key=\{`saved-terms-workspace-\$\{workspace\.savedTermsWorkspaceAttempt\}`\}[\s\S]*?<SavedTermsWorkspaceRecovery[\s\S]*?<React\.Suspense[\s\S]*?<SavedTermsWorkspaceFallback[\s\S]*?<SavedTermsLibrary[\s\S]*?key=\{`saved-terms-session-\$\{workspace\.savedTermsSessionGeneration\}`\}/,
   'the one-way latch must own eager recovery/loading shells around the generation-keyed library');
 
 assert.match(recoverySource,

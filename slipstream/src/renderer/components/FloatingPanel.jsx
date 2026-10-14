@@ -29,11 +29,10 @@ import HelpTip from './HelpTip';
 import LoadingOverlay from './LoadingOverlay';
 import SessionRecoveryDialog from './SessionRecoveryDialog';
 import ClipboardResidueRiskNotice from './ClipboardResidueRiskNotice';
+import ForegroundStatusCenter from './ForegroundStatusCenter';
 import {
   LazyWorkspaceBoundary,
   ResultWorkspaceRecovery,
-  SavedTermsWorkspaceFallback,
-  SavedTermsWorkspaceRecovery,
 } from './LazyWorkspaceRecovery';
 import { useIpc } from '@renderer-ipc';
 import { useClipboard } from '../hooks/useClipboard';
@@ -46,15 +45,10 @@ import { READING_SAMPLE_SOURCE_TEXT } from '../utils/safeSampleSource';
 import { isLegacyWorkspaceDemo } from '../utils/demoMode.mjs';
 import { getReplyProgressConsistencyForBrief } from '../utils/replyProgress.mjs';
 import {
-  hasSavedTerm,
-  isCanonicalSavedTerm,
-  isCanonicalSavedTerms,
-  isSavedTermsImportCommitConsistent,
-  isSavedTermsImportPlanSummaryConsistent,
-  isValidSavedTermsImportSummary,
-  savedTermKey,
-  upsertSavedTerm,
-} from '../utils/savedTerms.mjs';
+  SAVED_TERMS_LOAD_STATUS,
+  SavedTermsDrawer,
+  useSavedTermsWorkspace,
+} from '../legacy/useSavedTermsWorkspace';
 import {
   hasMeaningfulReplyDraftState,
   sanitizeReplyDraftState,
@@ -209,140 +203,6 @@ function preloadResultDisplay() {
 
 function createResultDisplay() {
   return React.lazy(preloadResultDisplay);
-}
-
-const SAVED_TERMS_DEFERRAL_FIXTURE = import.meta.env.DEV
-  && new URLSearchParams(window.location.search).get('run') === 'saved-terms-deferral-native';
-function waitForSavedTermsWorkspaceStyles(moduleLoader) {
-  return moduleLoader().then((savedTermsModule) => (
-    Promise.resolve(savedTermsModule.savedTermsWorkspaceStylesheetReady)
-      .then(() => savedTermsModule)
-  ));
-}
-
-const savedTermsLibraryImport = createRetryableLazyImport(
-  import.meta.env.DEV
-    ? [
-      SAVED_TERMS_DEFERRAL_FIXTURE
-        ? () => waitForSavedTermsWorkspaceStyles(
-          () => import('./SavedTermsLibrary?workspace-load=saved-terms-fixture-primary'),
-        )
-        : () => waitForSavedTermsWorkspaceStyles(() => import('./SavedTermsLibrary')),
-      () => waitForSavedTermsWorkspaceStyles(
-        () => import('./SavedTermsLibrary?workspace-load=saved-terms-retry&workspace-attempt=1'),
-      ),
-    ]
-    : [
-      () => waitForSavedTermsWorkspaceStyles(() => import('./SavedTermsLibrary')),
-      () => waitForSavedTermsWorkspaceStyles(
-        () => importRetryableWorkspaceAsset('SavedTermsLibrary.js', 1),
-      ),
-    ],
-);
-
-function preloadSavedTermsLibrary() {
-  return savedTermsLibraryImport.load();
-}
-
-function prepareSavedTermsLibrary() {
-  void preloadSavedTermsLibrary().catch(() => false);
-}
-
-function createSavedTermsLibrary() {
-  return React.lazy(preloadSavedTermsLibrary);
-}
-
-const SAVED_TERMS_LOAD_STATUS = Object.freeze({
-  IDLE: 'idle',
-  LOADING: 'loading',
-  READY: 'ready',
-  ERROR: 'error',
-});
-const SAVED_TERMS_RECONCILIATION_ERROR_CODES = new Set([
-  'saved-terms-mutation-unconfirmed',
-  'saved-terms-invalid-mutation-response',
-  'saved-terms-invalid-import-response',
-]);
-const SAVED_TERMS_CONFIRMED_IMPORT_NOOP_CODES = new Set(['preview-expired']);
-const SAVED_TERMS_IMPORT_PREVIEW_FAILURE_CODES = new Set([
-  'file-too-large',
-  'no-usable-terms',
-  'read-failed',
-  'invalid-json',
-  'invalid-format',
-  'unsupported-format',
-  'invalid-terms',
-  'preview-expired',
-]);
-const SAVED_TERMS_IMPORT_SUMMARY_FIELDS = Object.freeze([
-  'existingCount',
-  'incomingCount',
-  'newCount',
-  'updatedCount',
-  'unchangedCount',
-  'capacitySkippedCount',
-  'totalAfter',
-  'invalidCount',
-  'duplicateCount',
-  'ignoredEvidenceCount',
-  'downgradedProvenanceCount',
-]);
-
-function hasValidSavedTermsImportFileName(response) {
-  return typeof response?.fileName === 'string'
-    && response.fileName.trim().length > 0
-    && response.fileName.length <= 255;
-}
-
-function isValidSavedTermsImportPreview(response, existingTerms) {
-  if (!response || typeof response !== 'object' || Array.isArray(response)) return false;
-  if (response.status !== 'ready') return false;
-  if (typeof response.previewId !== 'string'
-    || response.previewId.length === 0
-    || response.previewId.length > 100) return false;
-  if (!hasValidSavedTermsImportFileName(response)) return false;
-  if (!Array.isArray(response.examples)
-    || response.examples.length > 5
-    || response.examples.some((term) => (
-      typeof term !== 'string' || !term.trim() || term.length > 200
-    ))) return false;
-  return isValidSavedTermsImportSummary(response.summary)
-    && isSavedTermsImportPlanSummaryConsistent(
-      existingTerms,
-      response.planTerms,
-      response.summary,
-    )
-    && response.examples.length === Math.min(5, response.planTerms.length)
-    && response.examples.every((term, index) => term === response.planTerms[index].term);
-}
-
-function isValidSavedTermsImportCommit(response, existingTerms, preview) {
-  return Boolean(
-    response
-    && typeof response === 'object'
-    && !Array.isArray(response)
-    && response.status === 'imported'
-    && hasValidSavedTermsImportFileName(response)
-    && isCanonicalSavedTerms(response.savedTerms)
-    && isValidSavedTermsImportSummary(response.summary, response.savedTerms.length)
-    && preview?.previewId
-    && response.fileName === preview.fileName
-    && SAVED_TERMS_IMPORT_SUMMARY_FIELDS.every((field) => (
-      response.summary[field] === preview.summary?.[field]
-    ))
-    && isSavedTermsImportCommitConsistent(
-      existingTerms,
-      preview.planTerms,
-      response.savedTerms,
-      response.summary,
-    )
-  );
-}
-
-function createSavedTermsLoadError(code = 'saved-terms-load-failed') {
-  const error = new Error(code);
-  error.code = code;
-  return error;
 }
 
 function ResultWorkspaceFallback() {
@@ -539,18 +399,6 @@ export default function FloatingPanel({
   const [processingPhase, setProcessingPhase] = useState(PROCESSING_PHASE.ANALYSIS);
   const [processingTimeMs, setProcessingTimeMs] = useState(null);
   const [verificationTimeMs, setVerificationTimeMs] = useState(null);
-  const [savedTerms, setSavedTerms] = useState([]);
-  const [savedTermsLoadStatus, setSavedTermsLoadStatus] = useState(SAVED_TERMS_LOAD_STATUS.IDLE);
-  const [savedTermsLoadError, setSavedTermsLoadError] = useState('');
-  const [savedTermsLoadErrorCode, setSavedTermsLoadErrorCode] = useState('');
-  const [savedTermsDrawerOpen, setSavedTermsDrawerOpen] = useState(false);
-  const [savedTermsWorkspaceMounted, setSavedTermsWorkspaceMounted] = useState(false);
-  const [savedTermsSessionGeneration, setSavedTermsSessionGeneration] = useState(0);
-  const [savedTermsWorkspace, setSavedTermsWorkspace] = useState(() => ({
-    attempt: 0,
-    Component: createSavedTermsLibrary(),
-  }));
-  const SavedTermsLibrary = savedTermsWorkspace.Component;
   const [warning, setWarning] = useState('');
   const [sourceType, setSourceType] = useState('manual');
   const [captureMeta, setCaptureMeta] = useState({ confidence: null, blocks: [] });
@@ -623,19 +471,6 @@ export default function FloatingPanel({
   const ocrReviewHeadingRef = useRef(null);
   const processingContextRef = useRef(null);
   const ordinaryErrorFocusHandledRef = useRef(false);
-  const savedTermsTriggerRef = useRef(null);
-  const savedTermsDrawerOpenRef = useRef(false);
-  const savedTermsWorkspaceMountedRef = useRef(false);
-  const savedTermsRef = useRef([]);
-  const savedTermsImportPreviewRef = useRef(null);
-  const savedTermsLoadRef = useRef({
-    epoch: 0,
-    status: SAVED_TERMS_LOAD_STATUS.IDLE,
-    promise: null,
-    error: null,
-  });
-  const savedTermsMutationRef = useRef(null);
-  const savedTermsReconciliationErrorCodeRef = useRef('');
   const permissionRecoveryButtonRef = useRef(null);
   const settingsTriggerRef = useRef(null);
   const processingSettingsGuardRef = useRef(null);
@@ -778,166 +613,27 @@ export default function FloatingPanel({
   const screenshotSupported = ['darwin', 'win32'].includes(platform);
   const { clipboardEvent, clearClipboard } = useClipboard();
 
-  const updateSavedTerms = useCallback((nextOrUpdater) => {
-    const current = savedTermsRef.current;
-    const next = typeof nextOrUpdater === 'function'
-      ? nextOrUpdater(current)
-      : nextOrUpdater;
-    const normalized = Array.isArray(next) ? next : [];
-    savedTermsRef.current = normalized;
-    setSavedTerms(normalized);
-    return normalized;
-  }, []);
-
-  const setSavedTermsLoadState = useCallback((status, {
-    epoch = savedTermsLoadRef.current.epoch,
-    promise = null,
-    error = null,
-  } = {}) => {
-    let resolvedError = error;
-    if (status === SAVED_TERMS_LOAD_STATUS.READY) {
-      savedTermsReconciliationErrorCodeRef.current = '';
-    } else if (status === SAVED_TERMS_LOAD_STATUS.ERROR) {
-      const incomingCode = error?.code || '';
-      if (SAVED_TERMS_RECONCILIATION_ERROR_CODES.has(incomingCode)) {
-        savedTermsReconciliationErrorCodeRef.current = incomingCode;
-      } else if (savedTermsReconciliationErrorCodeRef.current) {
-        resolvedError = createSavedTermsLoadError(
-          savedTermsReconciliationErrorCodeRef.current,
-        );
-      }
-    }
-    savedTermsLoadRef.current = { epoch, status, promise, error: resolvedError };
-    setSavedTermsLoadStatus(status);
-    const errorCode = status === SAVED_TERMS_LOAD_STATUS.ERROR
-      ? resolvedError?.code || ''
-      : '';
-    setSavedTermsLoadErrorCode(errorCode);
-    setSavedTermsLoadError(status === SAVED_TERMS_LOAD_STATUS.ERROR
-      ? SAVED_TERMS_RECONCILIATION_ERROR_CODES.has(errorCode)
-        ? '无法确认最近一次术语更改是否完成。请重新读取这台 Mac 上的术语后再继续。'
-        : '暂时无法读取已保存术语。已保存内容仍保留在这台 Mac。'
-      : '');
-    return resolvedError;
-  }, []);
-
-  const ensureSavedTermsLoaded = useCallback(({ force = false } = {}) => {
-    const current = savedTermsLoadRef.current;
-    if (!force && current.status === SAVED_TERMS_LOAD_STATUS.READY) {
-      return Promise.resolve(savedTermsRef.current);
-    }
-    if (!force && current.status === SAVED_TERMS_LOAD_STATUS.LOADING && current.promise) {
-      return current.promise;
-    }
-    if (!force && current.status === SAVED_TERMS_LOAD_STATUS.ERROR) {
-      return Promise.reject(current.error || createSavedTermsLoadError());
-    }
-
-    const epoch = current.epoch + 1;
-    const request = invoke(IPC_CHANNELS.TERMS_GET)
-      .then((terms) => {
-        if (!isCanonicalSavedTerms(terms)) {
-          throw createSavedTermsLoadError('saved-terms-invalid-response');
-        }
-        if (savedTermsLoadRef.current.epoch !== epoch) {
-          throw createSavedTermsLoadError('saved-terms-load-stale');
-        }
-        const normalized = updateSavedTerms(terms);
-        setSavedTermsLoadState(SAVED_TERMS_LOAD_STATUS.READY, { epoch });
-        return normalized;
-      })
-      .catch((cause) => {
-        if (savedTermsLoadRef.current.epoch !== epoch) {
-          throw createSavedTermsLoadError('saved-terms-load-stale');
-        }
-        const error = typeof cause?.code === 'string' && cause.code.startsWith('saved-terms-')
-          ? cause
-          : createSavedTermsLoadError();
-        const publishedError = setSavedTermsLoadState(
-          SAVED_TERMS_LOAD_STATUS.ERROR,
-          { epoch, error },
-        );
-        throw publishedError || error;
-      });
-
-    setSavedTermsLoadState(SAVED_TERMS_LOAD_STATUS.LOADING, { epoch, promise: request });
-    return request;
-  }, [invoke, setSavedTermsLoadState, updateSavedTerms]);
-
-  const retrySavedTermsLoad = useCallback(
-    () => ensureSavedTermsLoaded({ force: true }),
-    [ensureSavedTermsLoaded],
-  );
-
-  const invalidateSavedTermsLoadRequest = useCallback(() => {
-    const current = savedTermsLoadRef.current;
-    savedTermsLoadRef.current = {
-      ...current,
-      epoch: current.epoch + 1,
-      promise: null,
-    };
-  }, []);
-
-  const runSavedTermsMutation = useCallback(async (kind, operation, commit) => {
-    if (savedTermsMutationRef.current) {
-      const error = new Error('saved-terms-operation-pending');
-      error.code = 'saved-terms-operation-pending';
-      throw error;
-    }
-    if (savedTermsLoadRef.current.status !== SAVED_TERMS_LOAD_STATUS.READY) {
-      throw createSavedTermsLoadError();
-    }
-
-    invalidateSavedTermsLoadRequest();
-    const owner = {
-      epoch: savedTermsLoadRef.current.epoch,
-      kind,
-    };
-    savedTermsMutationRef.current = owner;
-    try {
-      const response = await operation();
-      if (
-        savedTermsMutationRef.current !== owner
-        || savedTermsLoadRef.current.epoch !== owner.epoch
-      ) {
-        throw createSavedTermsLoadError('saved-terms-operation-stale');
-      }
-      commit?.(response);
-      return response;
-    } catch (cause) {
-      if (
-        savedTermsMutationRef.current === owner
-        && savedTermsLoadRef.current.epoch === owner.epoch
-      ) {
-        const error = SAVED_TERMS_RECONCILIATION_ERROR_CODES.has(cause?.code)
-          ? cause
-          : createSavedTermsLoadError('saved-terms-mutation-unconfirmed');
-        setSavedTermsLoadState(SAVED_TERMS_LOAD_STATUS.ERROR, {
-          epoch: owner.epoch,
-          error,
-        });
-        throw error;
-      }
-      throw cause;
-    } finally {
-      if (savedTermsMutationRef.current === owner) savedTermsMutationRef.current = null;
-    }
-  }, [invalidateSavedTermsLoadRequest, setSavedTermsLoadState]);
-
-  const commitSavedTermResponse = useCallback((savedTerm, expected = {}) => {
-    const expectedKey = savedTermKey(expected.term);
-    const responseMatchesRequest = (!expectedKey || savedTermKey(savedTerm) === expectedKey)
-      && (expected.id == null || savedTerm?.id === expected.id);
-    if (!isCanonicalSavedTerm(savedTerm) || !responseMatchesRequest) {
-      const error = createSavedTermsLoadError('saved-terms-invalid-mutation-response');
-      setSavedTermsLoadState(SAVED_TERMS_LOAD_STATUS.ERROR, {
-        epoch: savedTermsLoadRef.current.epoch,
-        error,
-      });
-      throw error;
-    }
-    updateSavedTerms((terms) => upsertSavedTerm(terms, savedTerm));
-  }, [setSavedTermsLoadState, updateSavedTerms]);
+  const prepareSavedTermsOpen = useCallback(() => {
+    revokeDelayedCaptureDispatch();
+    foregroundCaptureDecisionBlockingRef.current = true;
+  }, [revokeDelayedCaptureDispatch]);
+  const savedTermsWorkspace = useSavedTermsWorkspace({ invoke, visible, onOpen: prepareSavedTermsOpen });
+  const {
+    savedTerms,
+    savedTermsLoadStatus,
+    savedTermsLoadErrorCode,
+    savedTermsDrawerOpen,
+    savedTermsDrawerOpenRef,
+    savedTermsTriggerRef,
+    savedTermsTriggerLabel,
+    openSavedTerms,
+    prepareSavedTermsAccess,
+    handleSaveTerm,
+    isSavedTermsMutationPending,
+    purgeSavedTermsSession,
+    confirmSavedTermsPersistentReset,
+    recoverSavedTermsAfterResetFailure,
+  } = savedTermsWorkspace;
 
   const {
     settings,
@@ -1483,11 +1179,6 @@ export default function FloatingPanel({
   }, [invoke, isVerifying, settings.verificationPolicy]);
 
   useEffect(() => {
-    if (!visible) return;
-    void ensureSavedTermsLoaded().catch(() => false);
-  }, [ensureSavedTermsLoaded, visible]);
-
-  useEffect(() => {
     if (!rendererRecovered || rendererRecoveryNoticeHandledRef.current) return;
     rendererRecoveryNoticeHandledRef.current = true;
     if (!initialSessionRecoveryPendingRef.current) {
@@ -1499,13 +1190,6 @@ export default function FloatingPanel({
     onSessionRecoveryPendingChange?.(Boolean(pendingSessionRecovery));
     return () => onSessionRecoveryPendingChange?.(false);
   }, [onSessionRecoveryPendingChange, pendingSessionRecovery]);
-
-  useEffect(() => {
-    if (!visible) {
-      savedTermsDrawerOpenRef.current = false;
-      setSavedTermsDrawerOpen(false);
-    }
-  }, [visible]);
 
   useEffect(() => {
     if (!RESULT_DEMO) return;
@@ -1759,7 +1443,7 @@ export default function FloatingPanel({
     return () => {
       revokeDelayedCaptureDispatch();
     };
-  }, [announceHiddenCaptureRequest, applyClipboardPayload, clearClipboard, clipboardEvent, revokeDelayedCaptureDispatch, visible]);
+  }, [announceHiddenCaptureRequest, applyClipboardPayload, clearClipboard, clipboardEvent, revokeDelayedCaptureDispatch, savedTermsDrawerOpenRef, visible]);
 
   const invalidateVerification = useCallback(() => {
     verificationRunRef.current = {
@@ -2725,6 +2409,7 @@ export default function FloatingPanel({
     announceHiddenCaptureRequest,
     performScreenshotCapture,
     revokeDelayedCaptureDispatch,
+    savedTermsDrawerOpenRef,
     setupIncomplete,
     visible,
   ]);
@@ -3375,7 +3060,7 @@ export default function FloatingPanel({
     if (clipboardOperationPending || replyCopyRequestRef.current) {
       return { status: 'clipboard-write-pending' };
     }
-    if (savedTermsMutationRef.current) {
+    if (isSavedTermsMutationPending()) {
       return { status: 'terms-operation-pending' };
     }
     const recoveryStorage = getSessionRecoveryStorage();
@@ -3426,11 +3111,7 @@ export default function FloatingPanel({
     approvedCaptureHandledRef.current = null;
     replyTaskGenerationRef.current += 1;
     replyCopyRequestRef.current = null;
-    savedTermsImportPreviewRef.current = null;
-    invalidateSavedTermsLoadRequest();
-    setSavedTermsLoadState(SAVED_TERMS_LOAD_STATUS.IDLE, {
-      epoch: savedTermsLoadRef.current.epoch,
-    });
+    purgeSavedTermsSession();
 
     invoke(IPC_CHANNELS.LLM_CANCEL, { discardResult: true }).catch(() => false);
     clearClipboard();
@@ -3448,9 +3129,6 @@ export default function FloatingPanel({
     setStatus(STATUS.IDLE);
     setProcessingTimeMs(null);
     setVerificationTimeMs(null);
-    savedTermsDrawerOpenRef.current = false;
-    setSavedTermsDrawerOpen(false);
-    setSavedTermsSessionGeneration((current) => current + 1);
     setWarning('');
     setSourceType('manual');
     setCaptureMeta({ confidence: null, blocks: [] });
@@ -3481,36 +3159,12 @@ export default function FloatingPanel({
   }, [
     clearClipboard,
     clipboardOperationPending,
-    invalidateSavedTermsLoadRequest,
     invoke,
+    isSavedTermsMutationPending,
+    purgeSavedTermsSession,
     revokeDelayedCaptureDispatch,
     setFailedProcessingAttempt,
-    setSavedTermsLoadState,
   ]);
-
-  const confirmSavedTermsPersistentReset = useCallback(() => {
-    savedTermsImportPreviewRef.current = null;
-    invalidateSavedTermsLoadRequest();
-    updateSavedTerms([]);
-    setSavedTermsLoadState(SAVED_TERMS_LOAD_STATUS.READY, {
-      epoch: savedTermsLoadRef.current.epoch,
-    });
-    return { status: 'ready-empty' };
-  }, [invalidateSavedTermsLoadRequest, setSavedTermsLoadState, updateSavedTerms]);
-
-  const recoverSavedTermsAfterResetFailure = useCallback(async () => {
-    savedTermsReconciliationErrorCodeRef.current = 'saved-terms-mutation-unconfirmed';
-    try {
-      return await retrySavedTermsLoad();
-    } catch {
-      const error = createSavedTermsLoadError('saved-terms-mutation-unconfirmed');
-      setSavedTermsLoadState(SAVED_TERMS_LOAD_STATUS.ERROR, {
-        epoch: savedTermsLoadRef.current.epoch,
-        error,
-      });
-      throw error;
-    }
-  }, [retrySavedTermsLoad, setSavedTermsLoadState]);
 
   useEffect(() => {
     onFullDataResetControllerChange?.({
@@ -3717,149 +3371,6 @@ export default function FloatingPanel({
       }
       return next;
     });
-  }, []);
-
-  const handleSaveTerm = useCallback(async (term) => {
-    const knownTerms = await ensureSavedTermsLoaded({
-      force: savedTermsLoadRef.current.status === SAVED_TERMS_LOAD_STATUS.ERROR,
-    });
-    if (hasSavedTerm(knownTerms, term?.surface)) {
-      return { status: 'already-saved', term };
-    }
-    const firstEvidence = term?.provenance?.evidence?.[0];
-    const savedTerm = await runSavedTermsMutation(
-      'save',
-      () => invoke(IPC_CHANNELS.TERMS_SAVE, {
-        term: term.surface,
-        termKind: term.kind,
-        provenanceKind: term.provenance?.kind,
-        definition: term.explanation,
-        evidence: firstEvidence?.quote || '',
-      }),
-      (response) => commitSavedTermResponse(response, { term: term.surface }),
-    );
-    return { status: 'saved', term: savedTerm };
-  }, [commitSavedTermResponse, ensureSavedTermsLoaded, invoke, runSavedTermsMutation]);
-
-  const handleDeleteTerm = useCallback(async (term) => {
-    return runSavedTermsMutation(
-      'delete',
-      async () => {
-        const deleted = await invoke(IPC_CHANNELS.TERMS_DELETE, term.id);
-        if (deleted !== true) throw new Error('saved-terms-delete-unconfirmed');
-        return term;
-      },
-      () => updateSavedTerms((terms) => terms.filter((item) => item.id !== term.id)),
-    );
-  }, [invoke, runSavedTermsMutation, updateSavedTerms]);
-
-  const handleRestoreTerm = useCallback(async (term) => {
-    return runSavedTermsMutation(
-      'restore',
-      () => invoke(IPC_CHANNELS.TERMS_SAVE, {
-        id: term.id,
-        createdAt: term.createdAt,
-        term: term.term,
-        termKind: term.termKind,
-        provenanceKind: term.provenanceKind,
-        definition: term.explanation,
-        evidence: term.evidence,
-      }),
-      (response) => commitSavedTermResponse(response, { id: term.id, term: term.term }),
-    );
-  }, [commitSavedTermResponse, invoke, runSavedTermsMutation]);
-
-  const handleExportTerms = useCallback(() => invoke(IPC_CHANNELS.TERMS_EXPORT), [invoke]);
-
-  const handlePreviewTermImport = useCallback(async () => {
-    const response = await invoke(IPC_CHANNELS.TERMS_IMPORT_PREVIEW);
-    if (isValidSavedTermsImportPreview(response, savedTermsRef.current)) {
-      savedTermsImportPreviewRef.current = {
-        previewId: response.previewId,
-        fileName: response.fileName,
-        summary: { ...response.summary },
-        planTerms: response.planTerms.map((term) => ({ ...term })),
-      };
-      return Object.fromEntries(
-        Object.entries(response).filter(([key]) => key !== 'planTerms'),
-      );
-    }
-    savedTermsImportPreviewRef.current = null;
-    if (response?.status === 'cancelled') return response;
-    if (
-      response?.status === 'failed'
-      && SAVED_TERMS_IMPORT_PREVIEW_FAILURE_CODES.has(response?.code)
-    ) {
-      return response;
-    }
-    throw createSavedTermsLoadError('saved-terms-invalid-import-preview-response');
-  }, [invoke]);
-
-  const handleCommitTermImport = useCallback(async (previewId) => {
-    const preview = savedTermsImportPreviewRef.current;
-    const existingTerms = savedTermsRef.current.map((term) => ({ ...term }));
-    try {
-      return await runSavedTermsMutation(
-        'import',
-        () => invoke(IPC_CHANNELS.TERMS_IMPORT_COMMIT, previewId),
-        (response) => {
-          if (response?.status === 'imported') {
-            if (preview?.previewId !== previewId
-              || !isValidSavedTermsImportCommit(response, existingTerms, preview)) {
-              const error = createSavedTermsLoadError('saved-terms-invalid-import-response');
-              setSavedTermsLoadState(SAVED_TERMS_LOAD_STATUS.ERROR, {
-                epoch: savedTermsLoadRef.current.epoch,
-                error,
-              });
-              throw error;
-            }
-            updateSavedTerms(response.savedTerms);
-            return;
-          }
-          if (
-            response?.status !== 'failed'
-            || !SAVED_TERMS_CONFIRMED_IMPORT_NOOP_CODES.has(response?.code)
-          ) {
-            throw createSavedTermsLoadError('saved-terms-invalid-import-response');
-          }
-        },
-      );
-    } finally {
-      if (savedTermsImportPreviewRef.current?.previewId === previewId) {
-        savedTermsImportPreviewRef.current = null;
-      }
-    }
-  }, [invoke, runSavedTermsMutation, setSavedTermsLoadState, updateSavedTerms]);
-
-  const resetSavedTermsWorkspace = useCallback(() => {
-    if (!savedTermsLibraryImport.reset()) return false;
-    setSavedTermsWorkspace((current) => ({
-      attempt: current.attempt + 1,
-      Component: createSavedTermsLibrary(),
-    }));
-    return true;
-  }, []);
-
-  const openSavedTerms = useCallback(() => {
-    revokeDelayedCaptureDispatch();
-    void ensureSavedTermsLoaded().catch(() => false);
-    savedTermsDrawerOpenRef.current = true;
-    foregroundCaptureDecisionBlockingRef.current = true;
-    if (!savedTermsWorkspaceMountedRef.current) {
-      savedTermsWorkspaceMountedRef.current = true;
-      setSavedTermsWorkspaceMounted(true);
-    }
-    setSavedTermsDrawerOpen(true);
-  }, [ensureSavedTermsLoaded, revokeDelayedCaptureDispatch]);
-
-  const prepareSavedTermsAccess = useCallback(() => {
-    prepareSavedTermsLibrary();
-    void ensureSavedTermsLoaded().catch(() => false);
-  }, [ensureSavedTermsLoaded]);
-
-  const closeSavedTerms = useCallback(() => {
-    savedTermsDrawerOpenRef.current = false;
-    setSavedTermsDrawerOpen(false);
   }, []);
 
   const verifyOfficialSources = useCallback(async () => {
@@ -4709,13 +4220,6 @@ export default function FloatingPanel({
   const hideWindowLabel = status === STATUS.PROCESSING || isVerifying
     ? '隐藏窗口，任务会继续'
     : '隐藏窗口';
-  const savedTermsTriggerLabel = savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS.READY
-    ? `打开术语库，已保存 ${savedTerms.length} 个术语`
-    : savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS.ERROR
-      ? '打开术语库，暂时无法读取已保存术语，可打开后重试'
-      : savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS.LOADING
-        ? '打开术语库，正在读取已保存术语'
-        : '打开术语库，尚未读取已保存术语';
 
   useEffect(() => {
     if (RESULT_DEMO || pendingSessionRecovery || !sessionRecoveryReadyRef.current) return undefined;
@@ -4966,213 +4470,46 @@ export default function FloatingPanel({
         </div>
       </header>
 
-      {(pendingCaptureStatusCount > 0 || operationalStatusCount > 0) && (
-        <section
-          className="foreground-status-center"
-          aria-labelledby="foreground-status-center-title"
-          data-pending-capture-count={pendingCaptureStatusCount}
-          data-operational-status-count={operationalStatusCount}
-        >
-          <header className="foreground-status-center__summary">
-            {hasForegroundWarning
-              ? <WarningCircle size={17} weight="fill" aria-hidden="true" />
-              : <ShieldCheck size={17} weight="fill" aria-hidden="true" />}
-            <span>
-              <strong id="foreground-status-center-title">
-                {pendingCaptureStatusCount > 0
-                  ? `${pendingCaptureStatusCount} 项捕获请求待处理`
-                  : `${operationalStatusCount} 项运行状态`}
-              </strong>
-              <small>
-                {pendingCaptureStatusCount > 0 && operationalStatusCount > 0
-                  ? `先处理捕获请求；下方还有 ${operationalStatusCount} 项运行状态。`
-                  : pendingCaptureStatusCount > 0
-                    ? '当前内容保持不变；按优先顺序处理下方请求。'
-                    : '这些状态不会替你开始新的处理。'}
-              </small>
-            </span>
-          </header>
-
-          {pendingScreenshotRequest && (
-            <div className="clipboard-monitor-queue-region">
-              <section
-                className="clipboard-monitor-queue is-screenshot-request"
-                role="region"
-                aria-labelledby="pending-screenshot-title"
-                aria-describedby="pending-screenshot-detail"
-                aria-busy={screenshotQueueStopping}
-              >
-                {screenshotQueueStopping
-                  ? <CircleNotch className="pending-screenshot-spinner" size={19} weight="bold" aria-hidden="true" />
-                  : <Camera size={19} weight="fill" aria-hidden="true" />}
-                <span className="clipboard-monitor-queue__body">
-                  <strong
-                    ref={pendingScreenshotStatusRef}
-                    id="pending-screenshot-title"
-                    tabIndex={-1}
-                    aria-describedby="pending-screenshot-detail"
-                  >
-                    {screenshotQueueCopy?.title}
-                  </strong>
-                  <small id="pending-screenshot-detail">{screenshotQueueCopy?.detail}</small>
-                </span>
-                <span className="clipboard-monitor-queue__actions">
-                  <button
-                    type="button"
-                    className="clipboard-monitor-queue__accept"
-                    onClick={handleProceedPendingScreenshot}
-                    disabled={
-                      isCancellingProcessing
-                      || isCancellingVerification
-                      || pendingScreenshotDecisionStillBlocking
-                      || screenshotQueueCopy?.actionDisabled
-                    }
-                    aria-busy={isCancellingProcessing || isCancellingVerification}
-                  >
-                    {screenshotQueueCopy?.actionLabel}
-                  </button>
-                  {screenshotQueueCopy?.showIgnoreAction && (
-                    <button
-                      type="button"
-                      onClick={handleIgnorePendingScreenshot}
-                      disabled={pendingScreenshotDecisionStillBlocking}
-                    >
-                      {screenshotQueueCopy.ignoreLabel}
-                    </button>
-                  )}
-                </span>
-              </section>
-            </div>
-          )}
-
-          {pendingClipboardItem && pendingClipboardCopy && (
-            <div className="clipboard-monitor-queue-region">
-              <section
-                className="clipboard-monitor-queue"
-                role="region"
-                aria-labelledby="clipboard-monitor-queue-title"
-                aria-describedby="clipboard-monitor-queue-detail clipboard-monitor-queue-preview"
-              >
-                <ClipboardText size={19} weight="fill" aria-hidden="true" />
-                <span className="clipboard-monitor-queue__body">
-                  <strong
-                    ref={pendingClipboardStatusRef}
-                    id="clipboard-monitor-queue-title"
-                    tabIndex={-1}
-                    aria-describedby="clipboard-monitor-queue-detail clipboard-monitor-queue-preview"
-                  >
-                    {pendingClipboardCopy.title}
-                  </strong>
-                  <small id="clipboard-monitor-queue-detail">{pendingClipboardCopy.detail}</small>
-                  <span
-                    id="clipboard-monitor-queue-preview"
-                    className="clipboard-monitor-queue__preview"
-                    lang={inferTextLanguageTag(pendingClipboardTextPreview)}
-                  >
-                    “{pendingClipboardTextPreview}”
-                  </span>
-                </span>
-                <span className="clipboard-monitor-queue__actions">
-                  <button
-                    type="button"
-                    className="clipboard-monitor-queue__accept"
-                    onClick={handleProcessPendingClipboard}
-                    disabled={clipboardQueueBusy || pendingClipboardDecisionStillBlocking}
-                    aria-describedby="clipboard-monitor-queue-detail"
-                  >
-                    {pendingClipboardCopy.actionLabel}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleIgnorePendingClipboard}
-                    disabled={pendingClipboardDecisionStillBlocking}
-                  >
-                    {pendingClipboardCopy.ignoreLabel}
-                  </button>
-                </span>
-              </section>
-            </div>
-          )}
-
-          {Array.isArray(runtimeAlertMessages) && runtimeAlertMessages.length > 0 && (
-            <div
-              className="app-runtime-alert foreground-runtime-alert"
-              role={panelOwnsClipboardResidueRisk ? 'note' : 'alert'}
-              aria-live={panelOwnsClipboardResidueRisk ? undefined : 'assertive'}
-            >
-              <strong>部分后台功能没有启动</strong>
-              <span>{runtimeAlertMessages.join(' ')}</span>
-            </div>
-          )}
-
-          {shortcutReadinessCopy && (
-            <div className="shortcut-readiness-region">
-              <section
-                className="shortcut-readiness-alert"
-                role={panelOwnsClipboardResidueRisk ? 'note' : 'alert'}
-                aria-labelledby="shortcut-readiness-title"
-                aria-describedby="shortcut-readiness-detail"
-              >
-                <WarningCircle size={19} weight="fill" aria-hidden="true" />
-                <span>
-                  <strong id="shortcut-readiness-title">{shortcutReadinessCopy.title}</strong>
-                  <small id="shortcut-readiness-detail">{shortcutReadinessCopy.detail}</small>
-                </span>
-                <button type="button" onClick={handleOpenShortcutSettings}>修改快捷键</button>
-              </section>
-            </div>
-          )}
-
-          {settings.clipboardMonitoring && (
-            <div className="clipboard-monitoring-live-region">
-              <div
-                className={`clipboard-monitoring-live is-${clipboardMonitoringCopy.kind}${clipboardMonitoringStopError ? ' is-error' : ''}`}
-                role={clipboardMonitoringStopError ? 'alert' : 'status'}
-                aria-live={panelOwnsClipboardResidueRisk
-                  ? 'off'
-                  : clipboardMonitoringStopError ? 'assertive' : 'polite'}
-              >
-                {clipboardMonitoringCopy.kind === 'local'
-                  ? <ShieldCheck size={19} weight="fill" aria-hidden="true" />
-                  : <CloudArrowUp size={19} weight="fill" aria-hidden="true" />}
-                <span
-                  ref={clipboardMonitoringStatusRef}
-                  className="clipboard-monitoring-live__body"
-                  tabIndex={-1}
-                >
-                  <strong>{clipboardMonitoringCopy.activeTitle}</strong>
-                  <small>
-                    {clipboardMonitoringStopError
-                      || `${clipboardMonitoringCopy.activeDetail} 关闭只影响今后复制；已经开始的任务仍会继续。`}
-                  </small>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleStopClipboardMonitoring}
-                  disabled={clipboardMonitoringStopStatus === 'stopping' || settingsController.settingsSaving}
-                  aria-busy={clipboardMonitoringStopStatus === 'stopping'}
-                >
-                  {clipboardMonitoringStopStatus === 'stopping'
-                    ? '正在关闭…'
-                    : clipboardMonitoringStopError ? '重试关闭' : '关闭自动检测'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {!settings.clipboardMonitoring && clipboardMonitoringOffNotice && (
-            <div className="clipboard-monitoring-live-region">
-              <div className="clipboard-monitoring-stopped" role="status">
-                <ShieldCheck size={18} weight="fill" aria-hidden="true" />
-                <span ref={clipboardMonitoringStatusRef} tabIndex={-1}>{clipboardMonitoringOffNotice}</span>
-                <button type="button" onClick={() => setClipboardMonitoringOffNotice('')} aria-label="关闭自动检测已关闭提示">
-                  <X size={16} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
+      <ForegroundStatusCenter
+        pendingCount={pendingCaptureStatusCount}
+        operationalCount={operationalStatusCount}
+        hasWarning={hasForegroundWarning}
+        quiet={panelOwnsClipboardResidueRisk}
+        screenshot={{
+          request: pendingScreenshotRequest,
+          copy: screenshotQueueCopy,
+          stopping: screenshotQueueStopping,
+          cancelling: isCancellingProcessing || isCancellingVerification,
+          stillBlocking: pendingScreenshotDecisionStillBlocking,
+          statusRef: pendingScreenshotStatusRef,
+          onProceed: handleProceedPendingScreenshot,
+          onIgnore: handleIgnorePendingScreenshot,
+        }}
+        clipboard={{
+          item: pendingClipboardItem,
+          copy: pendingClipboardCopy,
+          preview: pendingClipboardTextPreview,
+          busy: clipboardQueueBusy,
+          stillBlocking: pendingClipboardDecisionStillBlocking,
+          statusRef: pendingClipboardStatusRef,
+          onProcess: handleProcessPendingClipboard,
+          onIgnore: handleIgnorePendingClipboard,
+        }}
+        runtimeAlerts={runtimeAlertMessages}
+        shortcutCopy={shortcutReadinessCopy}
+        onOpenShortcutSettings={handleOpenShortcutSettings}
+        monitoring={{
+          enabled: settings.clipboardMonitoring,
+          copy: clipboardMonitoringCopy,
+          stopError: clipboardMonitoringStopError,
+          stopStatus: clipboardMonitoringStopStatus,
+          saving: settingsController.settingsSaving,
+          offNotice: clipboardMonitoringOffNotice,
+          statusRef: clipboardMonitoringStatusRef,
+          onStop: handleStopClipboardMonitoring,
+          onDismissOffNotice: () => setClipboardMonitoringOffNotice(''),
+        }}
+      />
 
       <span className="clipboard-monitor-queue-announcer" role="status" aria-live="polite">
         {clipboardQueueAnnouncement}
@@ -5866,57 +5203,16 @@ export default function FloatingPanel({
         </main>
       )}
 
-      {savedTermsWorkspaceMounted && (
-        <LazyWorkspaceBoundary
-          key={`saved-terms-workspace-${savedTermsWorkspace.attempt}`}
-          fallback={(
-            <SavedTermsWorkspaceRecovery
-              open={savedTermsDrawerOpen}
-              openStateRef={savedTermsDrawerOpenRef}
-              triggerRef={savedTermsTriggerRef}
-              onRetry={resetSavedTermsWorkspace}
-              onClose={closeSavedTerms}
-              retryAvailable={savedTermsLibraryImport.canRetry()}
-            />
-          )}
-        >
-          <React.Suspense
-            fallback={(
-              <SavedTermsWorkspaceFallback
-                open={savedTermsDrawerOpen}
-                openStateRef={savedTermsDrawerOpenRef}
-                triggerRef={savedTermsTriggerRef}
-                onClose={closeSavedTerms}
-              />
-            )}
-          >
-            <SavedTermsLibrary
-              key={`saved-terms-session-${savedTermsSessionGeneration}`}
-              open={savedTermsDrawerOpen}
-              openStateRef={savedTermsDrawerOpenRef}
-              onClose={closeSavedTerms}
-              triggerRef={savedTermsTriggerRef}
-              savedTerms={savedTerms}
-              loadStatus={savedTermsLoadStatus}
-              loadError={savedTermsLoadError}
-              loadErrorCode={savedTermsLoadErrorCode}
-              onRetryLoad={retrySavedTermsLoad}
-              onDeleteTerm={handleDeleteTerm}
-              onRestoreTerm={handleRestoreTerm}
-              onExportTerms={handleExportTerms}
-              onPreviewImport={handlePreviewTermImport}
-              onCommitImport={handleCommitTermImport}
-              clipboardNotice={clipboardNotice}
-              clipboardWritePending={clipboardOperationPending}
-              onWriteClipboard={(kind, text) => handleWriteClipboard(text, { kind })}
-              onAcknowledgeClipboardConsequence={handleAcknowledgeClipboardConsequence}
-              onDismissClipboardNotice={() => {
-                setClipboardNotice((current) => dismissClipboardNotice(current));
-              }}
-            />
-          </React.Suspense>
-        </LazyWorkspaceBoundary>
-      )}
+      <SavedTermsDrawer
+        workspace={savedTermsWorkspace}
+        clipboardNotice={clipboardNotice}
+        clipboardWritePending={clipboardOperationPending}
+        onWriteClipboard={(kind, text) => handleWriteClipboard(text, { kind })}
+        onAcknowledgeClipboardConsequence={handleAcknowledgeClipboardConsequence}
+        onDismissClipboardNotice={() => {
+          setClipboardNotice((current) => dismissClipboardNotice(current));
+        }}
+      />
     </div>
   );
 }

@@ -155,16 +155,16 @@ async function main() {
     PROVIDER_CONNECTION_TIMEOUT_MS,
     testProviderConnection,
   } = require('../src/main/provider-connection');
+  const { testProviderReadiness: originalReadiness } = require('../src/main/provider-readiness');
   const {
     FULL_ANALYSIS_COMPATIBILITY_SOURCE,
     getRepresentativeStructuredBriefChecks,
     isRepresentativeStructuredBrief,
     testFullAnalysisCompatibility,
-    testProviderReadiness: originalReadiness,
-  } = require('../src/main/provider-readiness');
+  } = require('../src/main/legacy/analysis-compatibility');
   const testProviderReadiness = (settings, dependencies) => originalReadiness(settings, { requireImage: false, ...dependencies });
   const { CUSTOM_ENDPOINT_ERROR_CODES } = require('../src/main/custom-endpoint-fetch');
-  const { analyzeModelOutput } = require('../src/main/analysis');
+  const { analyzeModelOutput } = require('../src/main/legacy/analysis');
   const {
     PROVIDER_CONNECTION_CANCEL_ACK_MS,
     waitForProviderConnectionStop,
@@ -1022,15 +1022,22 @@ async function main() {
   expandedEvidenceCandidate.materials[0].evidenceQuotes = [
     'Please submit the signed Wren-7 Intake Form through the LanternGate portal by 5:00 PM on 30 September 2099.',
   ];
+  let probeRequest;
   const expandedEvidence = await testFullAnalysisCompatibility({
     activeBackend: 'deepseek', activeModel: 'deepseek-v4-flash',
   }, {
-    processText: async () => compatibilityResponse(expandedEvidenceCandidate),
+    processText: async (request) => {
+      probeRequest = request;
+      return compatibilityResponse(expandedEvidenceCandidate);
+    },
   });
   assert.deepEqual(expandedEvidence, {
     status: CONNECTION_STATUSES.CONNECTED,
     code: CONNECTION_CODES.OK,
   }, 'a longer exact source quote must remain valid evidence for the representative requirement');
+  assert.equal(probeRequest.text, FULL_ANALYSIS_COMPATIBILITY_SOURCE);
+  assert.equal(probeRequest.ignoreCustomPrompt, true,
+    'compatibility tests must use only the fixed fictional source and built-in prompt');
 
   const weakActionEvidenceCandidate = createCompatibilityCandidate();
   weakActionEvidenceCandidate.nextSteps[0].evidenceQuotes = ['signed Wren-7 Intake Form'];
@@ -1304,6 +1311,7 @@ async function main() {
 
   const providerSource = fs.readFileSync(path.join(root, 'src/main/provider-connection.js'), 'utf8');
   const readinessSource = fs.readFileSync(path.join(root, 'src/main/provider-readiness.js'), 'utf8');
+  const compatibilitySource = fs.readFileSync(path.join(root, 'src/main/legacy/analysis-compatibility.js'), 'utf8');
   const liveDiagnosticSource = fs.readFileSync(path.join(root, 'scripts/check-deepseek-live.js'), 'utf8');
   const { compatibilityDiagnostics } = require('./check-deepseek-live');
   const diagnosticSentinel = 'PRIVATE_LIVE_DIAGNOSTIC_SENTINEL';
@@ -1339,26 +1347,11 @@ async function main() {
   assert.doesNotMatch(providerSource, /console\.(?:log|warn|error)/, 'provider tests must not log secrets, URLs, or bodies');
   assert.doesNotMatch(providerSource, /sourceText|rawText|prompt|message[s]?\s*:/i,
     'provider tests must never accept or send source/inference payloads');
+  // The representative-brief rules are exercised behaviorally above.
   assert.doesNotMatch(readinessSource, /console\.(?:log|warn|error)/,
     'readiness tests must not log generated output or configuration');
-  assert.match(readinessSource, /FULL_ANALYSIS_COMPATIBILITY_SOURCE/);
-  assert.match(readinessSource, /ignoreCustomPrompt: true/,
-    'compatibility tests must use only the fixed fictional source and built-in prompt');
-  assert.match(readinessSource, /isRepresentativeStructuredBrief/);
-  assert.match(readinessSource, /brief\.deadlines\.find/);
-  assert.match(readinessSource, /brief\.materials\.find/);
-  assert.match(readinessSource, /brief\.nextSteps\.find/,
-    'readiness must require representative grounded actions, materials, deadlines, and reply handling');
-  assert.match(readinessSource, /brief\.terms\.some/);
-  assert.match(readinessSource, /institutionalProcessContexts\.find/);
-  assert.match(readinessSource, /general_term/);
-  assert.match(readinessSource, /'form'[\s\S]{0,160}'portal'/);
-  assert.match(readinessSource, /context\?\.kind === 'institutional_process'/);
-  assert.doesNotMatch(readinessSource, /context\?\.kind === 'social_process'/);
-  assert.match(readinessSource, /contextWhatItIs[\s\S]{0,240}contextWhyItMatters[\s\S]{0,240}contextWhatToDo/,
-    'readiness must require grounded term classes and every process-context guidance field');
-  assert.match(readinessSource, /evidence\?\.match === 'exact'/,
-    'readiness evidence must come from an exact quote in the fixed source');
+  assert.doesNotMatch(compatibilitySource, /console\.(?:log|warn|error)/,
+    'the compatibility probe must not log generated output or configuration');
   assert.doesNotMatch(liveDiagnosticSource, /(?:apiKey|rawOutput)\s*:/,
     'live diagnostics must never include credentials or generated output in a result payload');
   assert.match(liveDiagnosticSource, /processText\(\{/,

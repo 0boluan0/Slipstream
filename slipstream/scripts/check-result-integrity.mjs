@@ -28,11 +28,13 @@ import {
   filterSavedTerms,
   getSavedTermCopyText,
   hasSavedTerm,
+  upsertSavedTerm,
+} from '../src/renderer/utils/savedTerms.mjs';
+import {
   isSavedTermsImportCommitConsistent,
   isSavedTermsImportPlanSummaryConsistent,
   isValidSavedTermsImportSummary,
-  upsertSavedTerm,
-} from '../src/renderer/utils/savedTerms.mjs';
+} from '../src/renderer/legacy/savedTermsImport.mjs';
 import {
   hasModifiedSourceEditDraft,
   openSourceEditDraft,
@@ -1308,6 +1310,8 @@ for (const color of EVIDENCE_COLORS) {
 {
   const panelPath = new URL('../src/renderer/components/FloatingPanel.jsx', import.meta.url);
   const panelSource = await readFile(panelPath, 'utf8');
+  const savedTermsWorkspaceSource = await readFile(
+    new URL('../src/renderer/legacy/useSavedTermsWorkspace.jsx', import.meta.url), 'utf8');
   const effectGenerationGuard = panelSource.indexOf('if (!isProcessingConfigGenerationCurrent(\n      processingConfigEffectGeneration,');
   const previousConfigMutation = panelSource.indexOf('previousProcessingConfigRef.current = processingConfigChangeKey;', effectGenerationGuard);
   const currentGenerationIntentGuard = panelSource.indexOf('activeProcessing?.configGeneration === processingConfigEffectGeneration', previousConfigMutation);
@@ -1380,45 +1384,39 @@ for (const color of EVIDENCE_COLORS) {
     'official verification must mark copied result/checklist text outdated before replacing its payload');
   assert.doesNotMatch(panelSource, /setProcessingTimeMs\(response\.processingTimeMs \|\| processingTimeMs\)/,
     'official lookup must not overwrite the displayed analysis duration');
-  assert.match(panelSource, /upsertSavedTerm\(terms, savedTerm\)/,
+  assert.match(savedTermsWorkspaceSource, /upsertSavedTerm\(terms, savedTerm\)/,
     'saving the same normalized term must not create duplicate renderer entries');
-  assert.match(panelSource,
+  assert.match(savedTermsWorkspaceSource,
     /isCanonicalSavedTerms\(terms\)[\s\S]*?saved-terms-invalid-response/,
     'a Saved Terms read must reject malformed array members instead of publishing a false count');
-  assert.match(panelSource,
+  assert.match(savedTermsWorkspaceSource,
     /const runSavedTermsMutation = useCallback[\s\S]*?saved-terms-mutation-unconfirmed[\s\S]*?setSavedTermsLoadState\(SAVED_TERMS_LOAD_STATUS\.ERROR/,
     'an unconfirmed Saved Terms mutation must invalidate the old snapshot until a fresh read reconciles it');
-  assert.match(panelSource,
+  assert.match(savedTermsWorkspaceSource,
     /savedTermsReconciliationErrorCodeRef[\s\S]*?SAVED_TERMS_RECONCILIATION_ERROR_CODES\.has\(incomingCode\)[\s\S]*?createSavedTermsLoadError\([\s\S]*?savedTermsReconciliationErrorCodeRef\.current/,
     'a failed reconciliation read must preserve mutation uncertainty instead of downgrading it to an ordinary load failure');
-  assert.match(panelSource,
+  assert.match(savedTermsWorkspaceSource,
     /const publishedError = setSavedTermsLoadState[\s\S]*?throw publishedError \|\| error/,
     'callers retrying a reconciliation read must receive the preserved mutation-uncertainty error');
-  assert.match(panelSource,
+  assert.match(savedTermsWorkspaceSource,
     /return \{ status: 'already-saved', term \}[\s\S]*?return \{ status: 'saved', term: savedTerm \}/,
     'result-side retry must distinguish deduplication from a new persistent save');
-  assert.match(panelSource,
-    /function isValidSavedTermsImportPreview[\s\S]*?previewId\.length > 100[\s\S]*?response\.examples\.length > 5[\s\S]*?isValidSavedTermsImportSummary\(response\.summary\)[\s\S]*?isSavedTermsImportPlanSummaryConsistent/,
-    'import preview UI must require both a bounded protocol summary and a matching sanitized plan');
-  assert.match(panelSource,
-    /function isValidSavedTermsImportCommit\(response, existingTerms, preview\)[\s\S]*?hasValidSavedTermsImportFileName\(response\)[\s\S]*?isCanonicalSavedTerms\(response\.savedTerms\)[\s\S]*?isValidSavedTermsImportSummary\(response\.summary, response\.savedTerms\.length\)[\s\S]*?response\.fileName === preview\.fileName[\s\S]*?isSavedTermsImportCommitConsistent\([\s\S]*?preview\.planTerms[\s\S]*?response\.savedTerms[\s\S]*?response\.summary/,
-    'import commit success must reconcile its file, sanitized plan, prior snapshot, and returned list before publication');
-  assert.match(panelSource,
+  assert.match(savedTermsWorkspaceSource,
     /savedTermsImportPreviewRef\.current = \{[\s\S]*?previewId: response\.previewId[\s\S]*?summary: \{ \.\.\.response\.summary \}[\s\S]*?planTerms: response\.planTerms\.map[\s\S]*?const existingTerms = savedTermsRef\.current\.map[\s\S]*?isValidSavedTermsImportCommit\(response, existingTerms, preview\)/,
     'import commit validation must retain the trusted preview and capture the pre-mutation Saved Terms snapshot');
-  assert.match(panelSource,
+  assert.match(savedTermsWorkspaceSource,
     /const handlePreviewTermImport = useCallback\(async[\s\S]*?isValidSavedTermsImportPreview\(response, savedTermsRef\.current\)[\s\S]*?planTerms: response\.planTerms\.map[\s\S]*?saved-terms-invalid-import-preview-response/,
     'malformed import previews or previews that disagree with their sanitized plan must fail closed before reaching the drawer');
-  assert.match(panelSource,
+  assert.match(savedTermsWorkspaceSource,
     /savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS\.READY[\s\S]*?打开术语库，已保存 \$\{savedTerms\.length\} 个术语[\s\S]*?暂时无法读取已保存术语[\s\S]*?正在读取已保存术语/,
     'the global library entry must expose counts only for a ready snapshot and name loading/error honestly');
-  assert.match(panelSource,
-    /<SavedTermsLibrary[\s\S]*savedTerms=\{savedTerms\}[\s\S]*loadStatus=\{savedTermsLoadStatus\}[\s\S]*onRetryLoad=\{retrySavedTermsLoad\}/,
+  assert.match(savedTermsWorkspaceSource,
+    /<SavedTermsLibrary[\s\S]*savedTerms=\{workspace\.savedTerms\}[\s\S]*loadStatus=\{workspace\.savedTermsLoadStatus\}[\s\S]*onRetryLoad=\{workspace\.retrySavedTermsLoad\}/,
     'the global library must render outside the result-only branch with explicit data status and recovery');
   assert.match(panelSource,
     /<ResultDisplay[\s\S]*savedTermsLoadStatus=\{savedTermsLoadStatus\}[\s\S]*savedTermsLoadErrorCode=\{savedTermsLoadErrorCode\}/,
     'the Result workspace must receive mutation uncertainty instead of presenting every load error as a confirmed no-op');
-  assert.match(panelSource, /onRestoreTerm=\{handleRestoreTerm\}/,
+  assert.match(savedTermsWorkspaceSource, /onRestoreTerm=\{workspace\.handleRestoreTerm\}/,
     'the global library must be able to restore a removed term through persistent storage');
   assert.match(panelSource, /const handleResultOrderChange = useCallback/,
     'result-order changes must use a recoverable persistence handler');

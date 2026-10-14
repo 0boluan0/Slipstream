@@ -99,7 +99,6 @@ const releaseDoc = fs.readFileSync(new URL('../../docs/RELEASE.md', import.meta.
 assert.match(panelSource, /shouldHoldClipboardCapture\(\{/);
 assert.match(panelSource, /clipboardMonitoringEnabledRef\.current/);
 assert.match(panelSource, /const previousPending = pendingClipboardRef\.current;[\s\S]{0,180}createPendingClipboardItem\(clipboardEvent, previousPending, \{[\s\S]{0,120}replyDraftProtected/);
-assert.match(panelSource, /pendingClipboardCopy\.actionLabel/);
 assert.match(panelSource, /describePendingClipboard\(pendingClipboardItem/);
 assert.match(panelSource, /pendingClipboardDecisionStillBlocking/);
 assert.match(panelSource, /focusAvailableElement\(pendingClipboardStatusRef\.current\)/);

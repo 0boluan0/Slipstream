@@ -4,7 +4,7 @@ const {
   GOV_UK_SEARCH_ENDPOINT,
   createGovUkDiscovery,
   discoverGovUkCandidates,
-} = require('../src/main/verification');
+} = require('../src/main/legacy/verification');
 
 function jsonPage(results, url) {
   return {

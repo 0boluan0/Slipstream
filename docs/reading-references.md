@@ -28,6 +28,6 @@ v1.2.0 新增的阅读能力，随 macOS 正式安装包提供。
 
 `npm run check:reading-references` 覆盖符号身份、引用约束、允许零候选、跨论文隔离、存储重开、过期编辑拒绝、删除撤销，以及真实 Electron 窗口中的创建、保存、查询、编辑与 200% 窄窗口布局。
 
-`npm run check:reading-references-live -- --app="/绝对路径/Slipstream 阅读预览.app"` 使用已签名预览自身的 Keychain 身份、已配置模型和六组自拟片段，检查显式定义、无定义公式、普通叙述、同符号不同含义、大小写和带修饰符号。真实模型证据与固定回复的交互验证分别记录。
+`npm run check:reading-references-live -- --app="/绝对路径/Slipstream 阅读预览.app"` 使用已签名预览自身的 Keychain 身份和已配置模型，运行评测集 [`eval/dev/references.json`](../slipstream/eval/dev/references.json)：显式定义、无定义公式、普通叙述、同符号不同含义、大小写、带修饰符号，以及集合大小、带标签的算法赋值和函数定义。真实模型证据与固定回复的交互验证分别记录；评测集的规则见 [评测说明](../slipstream/eval/README.md)。
 
 这一版的依据来自用户截取或粘贴的段落。提取仍可能漏选或误解原句，保留原文供核对。复杂宏、跨页定义、未截取的上下文及整篇 PDF 的自动解析不在本次验证范围。

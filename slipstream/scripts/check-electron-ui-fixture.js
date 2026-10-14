@@ -623,10 +623,6 @@ function checkStackedStatusTextScaleContract() {
 
   assert.match(floatingPanelSource, /className=\{`slipstream-shell\$\{[^`]*has-foreground-status/s,
     'FloatingPanel must identify the shell that owns foreground-status scrolling');
-  assert.match(floatingPanelSource, /className="foreground-status-center"/u,
-    'FloatingPanel must group the four simultaneous statuses in one semantic center');
-  assert.match(floatingPanelSource, /data-pending-capture-count=/u);
-  assert.match(floatingPanelSource, /data-operational-status-count=/u);
   assert.match(
     floatingPanelSource,
     /const panelOwnsClipboardResidueRisk = Boolean\(\s*visible\s*&& clipboardResidueRisk\s*&& !pendingSessionRecovery\s*&& onAcknowledgeClipboardResidueRisk/s,
@@ -643,24 +639,7 @@ function checkStackedStatusTextScaleContract() {
     '<header className="app-header">',
     'clipboard residue recovery must precede the header and status center',
   );
-  assertBefore(
-    floatingPanelSource,
-    'is-screenshot-request',
-    'clipboard-monitor-queue__preview',
-    'pending screenshot status must precede pending clipboard status',
-  );
-  assertBefore(
-    floatingPanelSource,
-    'clipboard-monitor-queue__preview',
-    'shortcut-readiness-alert',
-    'pending clipboard status must precede shortcut readiness',
-  );
-  assertBefore(
-    floatingPanelSource,
-    'shortcut-readiness-alert',
-    'clipboard-monitoring-live',
-    'shortcut readiness must precede monitoring status',
-  );
+  // Status order inside the center is covered by test/foreground-status-center.test.mjs.
   assert.match(appCssSource, /\.slipstream-shell\.has-foreground-status\s*\{[^}]*overflow-y:\s*auto/s,
     'the status-bearing shell must own the single page-level vertical scroll');
   assert.match(appCssSource, /\.foreground-status-center\s*\{/u,

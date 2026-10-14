@@ -1,4 +1,4 @@
-const { assertSafeHostname, parseSafeHttpsUrl } = require('./url-safety');
+const { assertSafeHostname, parseSafeHttpsUrl } = require('../../url-safety');
 
 const CONSERVATIVE_OFFICIAL_SUFFIXES = Object.freeze([
   '.ac.jp',

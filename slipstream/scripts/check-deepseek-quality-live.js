@@ -147,7 +147,7 @@ async function main() {
   const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
   // Production modules are intentionally loaded only after argument and key
   // validation so --help and missing-key checks cannot acquire store handles.
-  const { analyzeModelOutput } = require('../src/main/analysis');
+  const { analyzeModelOutput } = require('../src/main/legacy/analysis');
   const persistentStore = require('../src/main/store');
   const { processText } = require('../src/main/llm-service');
   const originalGetAllSettings = persistentStore.getAllSettings;

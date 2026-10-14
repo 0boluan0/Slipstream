@@ -43,7 +43,7 @@ const {
   isPublicIpAddress,
   parseSafeHttpsUrl,
   resolvePublicAddresses,
-} = require('./url-safety');
+} = require('../../url-safety');
 
 module.exports = {
   ALLOWED_MIME_TYPES,

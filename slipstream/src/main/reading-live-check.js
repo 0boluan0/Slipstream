@@ -1,11 +1,50 @@
 'use strict';
-// Opt-in integration check for the local preview identity. Only authored source
-// below is submitted. Settings are read/decrypted in memory; no keys are logged.
+// Opt-in integration check for the local preview identity. Only the authored
+// source below, or the cases of an explicitly supplied eval file, is submitted.
+// Settings are read/decrypted in memory; no keys are logged.
 const { app, BrowserWindow, ipcMain, screen, safeStorage, dialog, shell } = require('electron');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
+
+function argumentValue(prefix) {
+  return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length) || '';
+}
+
+// Runs an eval/ case file (or a sealed held-out bundle) through the configured
+// service. A sealed run writes its detailed report sealed with the same key;
+// only the content-free summary is left in plain text.
+async function runEvaluation({ file, settings, processReadingText, output, work }) {
+  const evaluation = require('./reading-eval');
+  const keyFile = argumentValue('--reading-eval-key-file=');
+  if (!path.isAbsolute(file) || (keyFile && !path.isAbsolute(keyFile))) throw new Error('Evaluation and key files need absolute paths.');
+  const repetitions = Number(argumentValue('--reading-eval-repetitions=') || 1);
+  if (!Number.isInteger(repetitions) || repetitions < 1 || repetitions > 5) throw new Error('Repetitions must be 1–5.');
+  const loaded = evaluation.loadEvalFile(file, { keyFile });
+  const { readScreenshot } = require('./llm-service');
+  const renderer = require('./reading-eval-render').createEvalImageRenderer({ BrowserWindow, workDirectory: work });
+  const records = await evaluation.runEvalSuites({ suites: loaded.suites, repetitions,
+    onlyCase: argumentValue('--reading-eval-case=') || undefined, settings, processReadingText, readScreenshot,
+    renderImage: renderer.render,
+    onRecord: (record) => console.log(`${record.suite} ${record.id} #${record.repetition}: ${record.failure
+      ? `failed (${record.failure.code})` : record.automaticPass ? 'automatic checks pass' : 'automatic checks need review'}`) })
+    .finally(renderer.dispose);
+  const summary = { date: new Date().toISOString(), provider: settings.activeBackend, model: settings.activeModel,
+    visibility: loaded.visibility, repetitions, ...evaluation.summarizeEval(records) };
+  const details = JSON.stringify({ summary, suites: loaded.suites, records }, null, 2) + '\n';
+  fs.mkdirSync(output, { recursive: true, mode: 0o700 });
+  if (loaded.sealed) {
+    fs.writeFileSync(path.join(output, 'eval-report.sealed.json'),
+      JSON.stringify(evaluation.sealEval(details, loaded.passphrase)) + '\n', { mode: 0o600 });
+  } else {
+    fs.writeFileSync(path.join(output, 'eval-report.json'), details, { mode: 0o600 });
+  }
+  fs.writeFileSync(path.join(output, 'eval-summary.json'), JSON.stringify(summary, null, 2) + '\n', { mode: 0o600 });
+  console.log(`Evaluation finished: ${summary.automaticPass}/${summary.total} pass automatic checks, ${summary.failures} failed requests, `
+    + `${summary.needsReview} need semantic review.`);
+  return summary.failures === 0;
+}
 
 exports.run = function run() {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'slipstream-live-reading-'));
@@ -54,25 +93,12 @@ exports.run = function run() {
       app.exit(result.status === 'connected' ? 0 : 1);
       return;
     }
-    if (process.argv.includes('--reading-check-references')) {
-      stage = 'paper-references';
-      const passed = await require('./reading-reference-check').run({ processReadingText, settings, report, saveReport });
+    const evalFile = argumentValue('--reading-eval=');
+    if (evalFile) {
+      stage = 'evaluation';
+      const passed = await runEvaluation({ file: evalFile, settings, processReadingText, output, work });
       fs.rmSync(work, { recursive: true, force: true });
       app.exit(passed ? 0 : 1);
-      return;
-    }
-    if (process.argv.includes('--reading-check-terms')) {
-      stage = 'term-selection';
-      const passed = await require('./reading-term-check').run({ processReadingText, settings, report, saveReport });
-      fs.rmSync(work, { recursive: true, force: true });
-      app.exit(passed ? 0 : 1);
-      return;
-    }
-    if (process.argv.includes('--reading-check-explanations')) {
-      stage = 'concept-explanations';
-      const collected = await require('./reading-explanation-check').run({ processReadingText, settings, report, saveReport });
-      fs.rmSync(work, { recursive: true, force: true });
-      app.exit(collected ? 0 : 1);
       return;
     }
     for (const sample of [

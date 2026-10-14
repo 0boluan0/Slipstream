@@ -30,6 +30,9 @@ jobs:
       - name: Check reading interface regressions
         run: npm run check:window-policy && npm run check:term-library-layout && npm run check:reading-presentation
       - run: npm test
+      - name: Frozen action-workspace compatibility checks
+        if: ${{ !cancelled() }}
+        run: npm run test:legacy
       - if: ${{ !cancelled() }}
         run: npm run lint
       - if: ${{ !cancelled() }}

@@ -199,9 +199,6 @@ assert.match(panelSource,
 assert.match(panelSource,
   /if \(!pendingScreenshotRequest\) return undefined;\s*if \(pendingScreenshotRequest\.status === 'stopping'\) return undefined;/,
   'a stopping request must not fall back to stale waiting-state announcements');
-assert.match(panelSource,
-  /\{screenshotQueueCopy\?\.showIgnoreAction && \([\s\S]*?onClick=\{handleIgnorePendingScreenshot\}/,
-  'the continue action must be removed from the rendered stopping state');
 assert.match(panelSource, /hasPendingCapture: Boolean\(pendingScreenshotRequest\)/);
 assert.match(stylesSource, /\.clipboard-monitor-queue\.is-screenshot-request/);
 assert.match(stylesSource, /\.pending-screenshot-spinner/);

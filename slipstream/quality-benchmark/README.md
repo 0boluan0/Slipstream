@@ -1,5 +1,7 @@
 # Model quality benchmark
 
+> **Frozen.** The action workspace is kept only for existing results and compatibility checks. Its code lives in `slipstream/src/main/legacy/`, `slipstream/src/shared/legacy/` and `slipstream/src/renderer/legacy/`; its checks run with `npm run test:legacy`, which CI and `check:release` also run. Accept compatibility and security fixes only, no new features.
+
 This directory contains a deterministic, privacy-safe quality gate for Slipstream's structured action briefs.
 
 ## Coverage

@@ -9,7 +9,7 @@ const {
   summarizeBenchmark,
   validateBenchmarkCorpus,
 } = require('../quality-benchmark/scoring');
-const { validateActionBrief } = require('../src/shared/action-brief.cjs');
+const { validateActionBrief } = require('../src/shared/legacy/action-brief.cjs');
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));

@@ -16,6 +16,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 const appSource = read('src/renderer/App.jsx');
 const panelSource = read('src/renderer/components/FloatingPanel.jsx');
+const savedTermsWorkspaceSource = read('src/renderer/legacy/useSavedTermsWorkspace.jsx');
 const settingsSource = read('src/renderer/components/SettingsPanel.jsx');
 const resetDialogSource = read('src/renderer/components/SettingsResetDialog.jsx');
 const ipcSource = read('src/renderer/hooks/useIpc.js');
@@ -413,27 +414,28 @@ assert.doesNotMatch(settingsSource.slice(handleResetStart, handleResetEnd),
 assert.match(settingsSource, /resetSessionAlreadyCleared \? '暂不重试' : '保留我的数据'/);
 assert.match(resetDialogSource, /sessionAlreadyCleared[\s\S]*?正在重试剩余清除/);
 
-assert.match(panelSource, /const purgeForFullDataReset = useCallback/);
+assert.match(panelSource, /const purgeForFullDataReset = useCallback[\s\S]*?isSavedTermsMutationPending\(\)[\s\S]*?purgeSavedTermsSession\(\)/,
+  'full reset must refuse a pending term mutation and purge the Saved Terms session');
 assert.match(panelSource, /clearSessionRecovery\(recoveryStorage\)/);
 assert.match(panelSource, /latestSessionRecoveryRef\.current = null/);
 assert.match(panelSource, /clearedSessionRef\.current = null/);
 assert.match(panelSource, /lastGoodRef\.current = null/);
 assert.match(panelSource, /setInputText\(''\)[\s\S]*setProcessedSourceText\(''\)[\s\S]*setResult\(''\)[\s\S]*setBrief\(null\)/);
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /setSavedTermsLoadState\(SAVED_TERMS_LOAD_STATUS\.IDLE[\s\S]*?savedTermsDrawerOpenRef\.current = false[\s\S]*?setSavedTermsDrawerOpen\(false\)[\s\S]*?setSavedTermsSessionGeneration\(\(current\) => current \+ 1\)/,
   'full reset must stop presenting a trusted term snapshot, close Saved Terms, and invalidate its local undo/import session');
 assert.doesNotMatch(
-  panelSource.slice(
-    panelSource.indexOf('const purgeForFullDataReset = useCallback'),
-    panelSource.indexOf('const confirmSavedTermsPersistentReset = useCallback'),
+  savedTermsWorkspaceSource.slice(
+    savedTermsWorkspaceSource.indexOf('const purgeSavedTermsSession = useCallback'),
+    savedTermsWorkspaceSource.indexOf('const confirmSavedTermsPersistentReset = useCallback'),
   ),
   /updateSavedTerms\(\[\]\)|setSavedTerms\(\[\]\)/,
   'renderer session purge must not claim persistent Saved Terms are empty before main confirms the clear');
-assert.match(panelSource,
+assert.match(savedTermsWorkspaceSource,
   /const confirmSavedTermsPersistentReset = useCallback[\s\S]*?updateSavedTerms\(\[\]\)[\s\S]*?SAVED_TERMS_LOAD_STATUS\.READY/,
   'only a confirmed persistent reset may publish a ready empty Saved Terms snapshot');
-assert.match(panelSource,
-  /<SavedTermsLibrary[\s\S]*?key=\{`saved-terms-session-\$\{savedTermsSessionGeneration\}`\}/,
+assert.match(savedTermsWorkspaceSource,
+  /<SavedTermsLibrary[\s\S]*?key=\{`saved-terms-session-\$\{workspace\.savedTermsSessionGeneration\}`\}/,
   'the full-reset generation must remount the retained lazy Saved Terms workspace');
 assert.match(panelSource,
   /onFullDataResetControllerChange\?\.\(\{[\s\S]*?purge: purgeForFullDataReset[\s\S]*?confirmPersistentReset: confirmSavedTermsPersistentReset[\s\S]*?recoverAfterPersistentResetFailure: recoverSavedTermsAfterResetFailure/);

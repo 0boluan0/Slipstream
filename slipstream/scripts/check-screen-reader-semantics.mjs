@@ -20,6 +20,7 @@ const indexHtml = readProjectFile('src/renderer/index.html');
 const appCss = readProjectFile('src/renderer/App.css');
 const resultDisplay = readProjectFile('src/renderer/components/ResultDisplay.jsx');
 const floatingPanel = readProjectFile('src/renderer/components/FloatingPanel.jsx');
+const savedTermsWorkspace = readProjectFile('src/renderer/legacy/useSavedTermsWorkspace.jsx');
 const savedTermsLibrary = readProjectFile('src/renderer/components/SavedTermsLibrary.jsx');
 const loadingOverlay = readProjectFile('src/renderer/components/LoadingOverlay.jsx');
 const rendererSources = [resultDisplay, floatingPanel, savedTermsLibrary, loadingOverlay].join('\n');
@@ -276,7 +277,7 @@ assert.match(savedTermsLibrary, /lang=\{inferTextLanguageTag\(term\.evidence\)\}
 assert.match(savedTermsLibrary, /className="saved-term-card" aria-labelledby=\{termNameId\}/u);
 assert.match(savedTermsLibrary, /role="group"[\s\S]{0,100}aria-label="复制选项"/u);
 assert.match(
-  floatingPanel,
+  savedTermsWorkspace,
   /savedTermsLoadStatus === SAVED_TERMS_LOAD_STATUS\.READY[\s\S]*?打开术语库，已保存 \$\{savedTerms\.length\} 个术语[\s\S]*?暂时无法读取已保存术语，可打开后重试[\s\S]*?正在读取已保存术语/u,
   'the Saved Terms trigger must expose a count only from a ready snapshot',
 );

@@ -15,7 +15,7 @@ const {
   UnsafeUrlError,
   createPinnedLookup,
   resolvePublicAddresses,
-} = require('./verification/url-safety');
+} = require('./url-safety');
 
 const PROVIDER_CONNECTION_TIMEOUT_MS = 7000;
 const PROVIDER_CONNECTION_MAX_BYTES = 256 * 1024;

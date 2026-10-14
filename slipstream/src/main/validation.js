@@ -1,6 +1,6 @@
 const { DEFAULTS, LANGUAGES, LLM_BACKENDS } = require('../shared/constants.cjs');
 const net = require('net');
-const { assertSafeHostname } = require('./verification/url-safety');
+const { assertSafeHostname } = require('./url-safety');
 const { analyzeShortcutAccelerator } = require('../shared/shortcut-accelerator.cjs');
 const {
   OCR_REVIEW_BLOCKS_TRUNCATED_PROPERTY,

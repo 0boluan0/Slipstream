@@ -1,6 +1,6 @@
 const https = require('node:https');
 const net = require('node:net');
-const { createPinnedLookup, resolvePublicAddresses, UnsafeUrlError } = require('./url-safety');
+const { createPinnedLookup, resolvePublicAddresses, UnsafeUrlError } = require('../../url-safety');
 const { selectRelevantExcerpt } = require('./support');
 
 const DEFAULT_TIMEOUT_MS = 5000;

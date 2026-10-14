@@ -81,14 +81,14 @@ assert.equal(filterSavedTerms([pending, legacy], '待核验').length, 1);
 assert.equal(filterSavedTerms([pending, legacy], '其他词语 来源状态未知').length, 1);
 assert.equal(getSavedTermCopyText({ term: 'No definition' }, 'explanation'), '');
 
-const [panelSource, storeSource, librarySource] = await Promise.all([
-  readFile(new URL('../src/renderer/components/FloatingPanel.jsx', import.meta.url), 'utf8'),
+const [storeSource, librarySource, savedTermsWorkspaceSource] = await Promise.all([
   readFile(new URL('../src/main/store.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/renderer/components/SavedTermsLibrary.jsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/renderer/legacy/useSavedTermsWorkspace.jsx', import.meta.url), 'utf8'),
 ]);
-assert.match(panelSource, /termKind:\s*term\.kind/,
+assert.match(savedTermsWorkspaceSource, /termKind:\s*term\.kind/,
   'saving a result term must carry its classification across the IPC boundary');
-assert.match(panelSource, /provenanceKind:\s*term\.provenance\?\.kind/,
+assert.match(savedTermsWorkspaceSource, /provenanceKind:\s*term\.provenance\?\.kind/,
   'saving a result term must carry its trust state across the IPC boundary');
 assert.match(storeSource, /termKind:\s*SAVED_TERM_KINDS\.has/,
   'persistent saved terms must strictly normalize classification');

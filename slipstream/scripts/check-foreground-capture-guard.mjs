@@ -94,7 +94,7 @@ assert.match(panelSource, /hasClipboardResidueRisk: Boolean\(clipboardResidueRis
 assert.match(panelSource, /hasForegroundDecision: Boolean\(/);
 assert.match(panelSource, /getForegroundCaptureBlockReason\(foregroundCaptureContext\)/);
 assert.match(panelSource,
-  /const openSavedTerms = useCallback\(\(\) => \{[\s\S]*?savedTermsDrawerOpenRef\.current = true;[\s\S]*?foregroundCaptureDecisionBlockingRef\.current = true;/,
+  /const prepareSavedTermsOpen = useCallback\(\(\) => \{[\s\S]*?foregroundCaptureDecisionBlockingRef\.current = true;[\s\S]*?useSavedTermsWorkspace\(\{[^}]*onOpen: prepareSavedTermsOpen/,
   'opening Saved Terms must synchronously claim foreground capture ownership');
 assert.match(panelSource,
   /const liveForegroundContext = \{[\s\S]*?savedTermsOpen: savedTermsDrawerOpenRef\.current/,

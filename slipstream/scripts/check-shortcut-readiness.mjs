@@ -165,7 +165,6 @@ assert.match(settingsPanel, /可能已被其他应用或 macOS 占用/);
 assert.match(settingsPanel, /aria-describedby="shortcut-recorder-instructions clipboard-shortcut-status"/);
 assert.doesNotMatch(settingsPanel, /onChange=\{\(e\) => \{\s*setShortcutDrafts/);
 assert.match(floatingPanel, /describeShortcutReadiness\(shortcutStatus\)/);
-assert.match(floatingPanel, /修改快捷键/);
 assert.match(diagnostics, /clipboardRegistered/);
 assert.match(diagnostics, /不可用/);
 

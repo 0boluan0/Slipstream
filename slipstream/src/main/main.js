@@ -69,7 +69,7 @@ const {
   createActionBrief,
   createVerificationApprovalId,
   verifyExistingActionBrief,
-} = require('./action-brief-service');
+} = require('./legacy/action-brief-service');
 const { createCaptureEnvelope } = require('./capture-envelope');
 const {
   CONNECTION_CODES,
@@ -80,9 +80,9 @@ const { createTaskSettlement, waitForTaskSettlements } = require('./task-cancell
 const { testProviderReadiness } = uiFixtureMode.enabled
   ? { testProviderReadiness: null }
   : require('./provider-readiness');
-const { createVerificationApprovalRegistry } = require('./verification/approval-registry');
+const { createVerificationApprovalRegistry } = require('./legacy/verification/approval-registry');
 const { redactSettingsForRenderer } = require('./safe-settings');
-const { resolvePublicAddresses } = require('./verification/url-safety');
+const { resolvePublicAddresses } = require('./url-safety');
 const { createSupportDiagnostics } = require('./support-diagnostics');
 const { autoUpdater } = require('electron-updater');
 const { createAutoUpdateManager } = require('./auto-update');

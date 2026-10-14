@@ -94,20 +94,16 @@ const panelCss = readSource('src/renderer/App.css');
 const mainSource = readSource('src/main/main.js');
 const packageSource = readSource('package.json');
 const projectReadme = readSource('../README.md');
-const developmentReadme = readSource('../docs/action-workspace-development.md');
+const developmentReadme = readSource('../docs/legacy/action-workspace-development.md');
 const privacyDoc = readSource('../docs/PRIVACY.md');
 const releaseDoc = readSource('../docs/RELEASE.md');
 
-assert.match(panelSource, /settings\.clipboardMonitoring && \(/);
-assert.match(panelSource, /clipboardMonitoringCopy\.activeTitle/);
-assert.match(panelSource, /关闭只影响今后复制；已经开始的任务仍会继续/);
 assert.match(panelSource, /await updateSettings\('clipboardMonitoring', false\)/);
 assert.match(panelSource, /discardFailedSettings\(\['clipboardMonitoring'\]\)/);
 assert.match(panelSource, /没有关闭自动检测；\$\{consequence\}/);
 assert.match(panelSource, /自动检测已关闭；今后复制不会自动处理/);
-assert.match(panelSource, /ref=\{clipboardMonitoringStatusRef\}/);
-assert.match(panelSource, /role=\{clipboardMonitoringStopError \? 'alert' : 'status'\}/);
-assert.match(panelSource, /disabled=\{clipboardMonitoringStopStatus === 'stopping' \|\| settingsController\.settingsSaving\}/);
+// Role, disabled state and stop copy are covered by test/foreground-status-center.test.mjs.
+assert.match(panelSource, /statusRef: clipboardMonitoringStatusRef/);
 
 assert.match(panelCss, /\.clipboard-monitoring-live-region/);
 assert.match(panelCss, /\.clipboard-monitoring-live\.is-error/);

@@ -26,6 +26,10 @@ import {
   getSavedTermMetadata,
   savedTermKey,
 } from '../utils/savedTerms.mjs';
+
+// Loaded with this lazy chunk so the renderer entry stays lean; see
+// legacy/useSavedTermsWorkspace.jsx.
+export * as savedTermsImportValidation from '../legacy/savedTermsImport.mjs';
 import {
   createSavedTermRemovalState,
   SAVED_TERM_REMOVAL_PHASES,

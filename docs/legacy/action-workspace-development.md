@@ -1,6 +1,8 @@
 # Action workspace development reference
 
-Historical implementation and test details retained for compatibility work. For the current reading workflow, see the [developer guide](../slipstream/README.md).
+> **Frozen.** The action workspace is kept only for existing results and compatibility checks. Its code lives in `slipstream/src/main/legacy/`, `slipstream/src/shared/legacy/` and `slipstream/src/renderer/legacy/`; its checks run with `npm run test:legacy`, which CI and `check:release` also run. Accept compatibility and security fixes only, no new features.
+
+Historical implementation and test details retained for compatibility work. For the current reading workflow, see the [developer guide](../../slipstream/README.md).
 
 ## Requirements
 

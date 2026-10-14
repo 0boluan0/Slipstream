@@ -27,16 +27,16 @@ const PROVENANCE_LABELS = Object.freeze({
   unknown: '来源状态未知',
 });
 
-const MAX_SAVED_TERMS = 50;
-const MAX_SAVED_TERM_CHARS = 200;
-const MAX_SAVED_TERM_EXPLANATION_CHARS = 400;
+export const MAX_SAVED_TERMS = 50;
+export const MAX_SAVED_TERM_CHARS = 200;
+export const MAX_SAVED_TERM_EXPLANATION_CHARS = 400;
 const MAX_SAVED_TERM_EVIDENCE_CHARS = 180;
 
-function isPlainRecord(value) {
+export function isPlainRecord(value) {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function hasBoundedText(value, maximum, { required = false } = {}) {
+export function hasBoundedText(value, maximum, { required = false } = {}) {
   if (typeof value !== 'string') return false;
   const normalized = value.trim();
   if (required && !normalized) return false;
@@ -71,6 +71,10 @@ export function isCanonicalSavedTerms(terms) {
   return true;
 }
 
+export function isSavedTermKind(value) {
+  return Object.hasOwn(TERM_KIND_LABELS, value);
+}
+
 export function normalizeSavedTermKind(value) {
   return Object.hasOwn(TERM_KIND_LABELS, value) ? value : 'other';
 }
@@ -98,214 +102,6 @@ export function getSavedTermMetadata(term) {
 
 export function savedTermKey(term) {
   return normalizeSavedTermText(typeof term === 'string' ? term : term?.term);
-}
-
-const SAVED_TERMS_IMPORT_SUMMARY_FIELDS = Object.freeze([
-  'existingCount',
-  'incomingCount',
-  'newCount',
-  'updatedCount',
-  'unchangedCount',
-  'capacitySkippedCount',
-  'totalAfter',
-  'invalidCount',
-  'duplicateCount',
-  'ignoredEvidenceCount',
-  'downgradedProvenanceCount',
-]);
-
-export function isValidSavedTermsImportSummary(summary, expectedTotalAfter = null) {
-  if (!isPlainRecord(summary)) return false;
-  if (SAVED_TERMS_IMPORT_SUMMARY_FIELDS.some((field) => (
-    !Number.isSafeInteger(summary[field]) || summary[field] < 0
-  ))) return false;
-  const rawTermCount = summary.incomingCount + summary.invalidCount + summary.duplicateCount;
-  if (summary.existingCount > MAX_SAVED_TERMS
-    || summary.totalAfter > MAX_SAVED_TERMS
-    || rawTermCount > 500
-    || summary.updatedCount + summary.unchangedCount > summary.existingCount
-    || summary.newCount > MAX_SAVED_TERMS - summary.existingCount
-    || summary.ignoredEvidenceCount > rawTermCount
-    || summary.downgradedProvenanceCount > summary.incomingCount
-    || (summary.capacitySkippedCount > 0 && summary.totalAfter !== MAX_SAVED_TERMS)) {
-    return false;
-  }
-  if (expectedTotalAfter !== null && summary.totalAfter !== expectedTotalAfter) return false;
-  return summary.totalAfter === summary.existingCount + summary.newCount
-    && summary.incomingCount === summary.newCount
-      + summary.updatedCount
-      + summary.unchangedCount
-      + summary.capacitySkippedCount;
-}
-
-const SAVED_TERM_IMPORT_PLAN_FIELDS = Object.freeze([
-  'term',
-  'explanation',
-  'termKind',
-  'provenanceKind',
-]);
-const SAVED_TERM_IMPORT_PRESERVED_FIELDS = Object.freeze([
-  'id',
-  'createdAt',
-  'term',
-  'evidence',
-]);
-const SAVED_TERM_IMPORT_MUTABLE_FIELDS = Object.freeze([
-  'explanation',
-  'termKind',
-  'provenanceKind',
-]);
-const SAVED_TERM_IMPORT_PROVENANCE_KINDS = new Set(['unknown', 'pending']);
-
-function normalizeSavedTermImportText(value) {
-  return typeof value === 'string'
-    ? [...value]
-        .map((character) => {
-          const code = character.codePointAt(0);
-          return code < 32 || (code >= 127 && code <= 159) ? ' ' : character;
-        })
-        .join('')
-        .replace(/\s+/g, ' ')
-        .trim()
-    : '';
-}
-
-export function isCanonicalSavedTermsImportPlan(planTerms) {
-  if (!Array.isArray(planTerms) || planTerms.length === 0 || planTerms.length > 500) return false;
-  const keys = new Set();
-  for (const term of planTerms) {
-    if (!isPlainRecord(term)
-      || Object.keys(term).length !== SAVED_TERM_IMPORT_PLAN_FIELDS.length
-      || SAVED_TERM_IMPORT_PLAN_FIELDS.some((field) => !Object.hasOwn(term, field))
-      || term.term !== normalizeSavedTermImportText(term.term)
-      || term.explanation !== normalizeSavedTermImportText(term.explanation)
-      || !hasBoundedText(term.term, MAX_SAVED_TERM_CHARS, { required: true })
-      || !hasBoundedText(term.explanation, MAX_SAVED_TERM_EXPLANATION_CHARS)
-      || !Object.hasOwn(TERM_KIND_LABELS, term.termKind)
-      || !SAVED_TERM_IMPORT_PROVENANCE_KINDS.has(term.provenanceKind)) return false;
-    const key = savedTermKey(term);
-    if (!key || keys.has(key)) return false;
-    keys.add(key);
-  }
-  return true;
-}
-
-function importedPlanCanReplaceLocal(currentKind, importedKind) {
-  return currentKind === 'unknown'
-    || (currentKind === 'pending' && importedKind === 'pending');
-}
-
-function buildSavedTermsImportPlan(existingTerms, planTerms) {
-  if (!isCanonicalSavedTerms(existingTerms)
-    || !isCanonicalSavedTermsImportPlan(planTerms)) return null;
-
-  const existingByKey = new Map(existingTerms.map((term) => [savedTermKey(term), term]));
-  const expectedExistingByKey = new Map(existingByKey);
-  const acceptedNewByKey = new Map();
-  const acceptedNewKeys = [];
-  const availableSlots = Math.max(0, MAX_SAVED_TERMS - existingTerms.length);
-  let updatedCount = 0;
-  let unchangedCount = 0;
-  let newCount = 0;
-  let capacitySkippedCount = 0;
-
-  for (const incomingTerm of planTerms) {
-    const key = savedTermKey(incomingTerm);
-    const existingTerm = existingByKey.get(key);
-    if (existingTerm) {
-      if (!importedPlanCanReplaceLocal(existingTerm.provenanceKind, incomingTerm.provenanceKind)) {
-        unchangedCount += 1;
-        continue;
-      }
-      const nextTerm = {
-        ...existingTerm,
-        explanation: incomingTerm.explanation || existingTerm.explanation,
-        termKind: incomingTerm.termKind,
-        provenanceKind: incomingTerm.provenanceKind,
-      };
-      if (SAVED_TERM_IMPORT_MUTABLE_FIELDS.some((field) => (
-        nextTerm[field] !== existingTerm[field]
-      ))) {
-        expectedExistingByKey.set(key, nextTerm);
-        updatedCount += 1;
-      } else {
-        unchangedCount += 1;
-      }
-      continue;
-    }
-    if (newCount >= availableSlots) {
-      capacitySkippedCount += 1;
-      continue;
-    }
-    acceptedNewKeys.push(key);
-    acceptedNewByKey.set(key, incomingTerm);
-    newCount += 1;
-  }
-
-  return {
-    acceptedNewByKey,
-    expectedExistingByKey,
-    expectedKeys: [
-      ...acceptedNewKeys,
-      ...existingTerms.map((term) => savedTermKey(term)),
-    ],
-    summary: {
-      existingCount: existingTerms.length,
-      incomingCount: planTerms.length,
-      newCount,
-      updatedCount,
-      unchangedCount,
-      capacitySkippedCount,
-      totalAfter: existingTerms.length + newCount,
-    },
-  };
-}
-
-const SAVED_TERM_IMPORT_PLAN_SUMMARY_FIELDS = Object.freeze([
-    'existingCount',
-    'incomingCount',
-    'newCount',
-    'updatedCount',
-    'unchangedCount',
-    'capacitySkippedCount',
-    'totalAfter',
-]);
-
-export function isSavedTermsImportPlanSummaryConsistent(existingTerms, planTerms, summary) {
-  const plan = buildSavedTermsImportPlan(existingTerms, planTerms);
-  return Boolean(plan && isPlainRecord(summary)
-    && SAVED_TERM_IMPORT_PLAN_SUMMARY_FIELDS.every((field) => (
-      summary[field] === plan.summary[field]
-    )));
-}
-
-export function isSavedTermsImportCommitConsistent(
-  existingTerms,
-  planTerms,
-  importedTerms,
-  summary,
-) {
-  const plan = buildSavedTermsImportPlan(existingTerms, planTerms);
-  if (!plan
-    || !isCanonicalSavedTerms(importedTerms)
-    || !isSavedTermsImportPlanSummaryConsistent(existingTerms, planTerms, summary)
-    || importedTerms.length !== plan.expectedKeys.length) return false;
-
-  return importedTerms.every((term, index) => {
-    const key = savedTermKey(term);
-    if (key !== plan.expectedKeys[index]) return false;
-    const acceptedNewTerm = plan.acceptedNewByKey.get(key);
-    if (acceptedNewTerm) {
-      return term.evidence === ''
-        && SAVED_TERM_IMPORT_PLAN_FIELDS.every((field) => (
-          term[field] === acceptedNewTerm[field]
-        ));
-    }
-    const expectedExistingTerm = plan.expectedExistingByKey.get(key);
-    return Boolean(expectedExistingTerm
-      && [...SAVED_TERM_IMPORT_PRESERVED_FIELDS, ...SAVED_TERM_IMPORT_MUTABLE_FIELDS]
-        .every((field) => term[field] === expectedExistingTerm[field]));
-  });
 }
 
 export function hasSavedTerm(terms, surface) {
