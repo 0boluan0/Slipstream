@@ -24,6 +24,7 @@ const VALID_PROCESSING_ERROR_CODES = new Set([
   'processing-invalid',
   'processing-key-missing',
   'processing-location-unknown',
+  'processing-balance-exhausted',
   'processing-rate-limited',
   'processing-service-unavailable',
   'processing-timeout',

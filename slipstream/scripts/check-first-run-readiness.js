@@ -437,7 +437,7 @@ async function main() {
   );
   assert.match(gateSource, /先用基础翻译/);
   assert.match(gateSource, /专业概念解释需要配置模型；基础模式中的选词查询提供翻译/);
-  assert.match(gateSource, /已有 API Key，或已安装并准备好 Ollama；在线服务可能收费/,
+  assert.match(gateSource, /在线服务的 API Key（没有也可以在下一步申请），或本机的 Ollama；在线服务按用量收费/,
     'the recommended choice must disclose its prerequisites and possible cost before selection');
   assert.match(gateSource, /Google \/ MyMemory/, 'the first choice must disclose where basic translation sends text');
   assert.match(gateSource, /retryFailedSettings/);
@@ -452,11 +452,11 @@ async function main() {
   );
   assert.doesNotMatch(languageSource, /LANGUAGES\.ZH|LANGUAGES\.AUTO|onChange\(/);
   assert.match(languageSource, /英文.*中文/s);
-  assert.match(settingsSource, /必需连接信息已填写，尚未验证/);
-  assert.match(settingsSource, /先决定文字在哪里分析/,
+  assert.match(settingsSource, /已保存，还没有试读/);
+  assert.match(settingsSource, /选择阅读服务/,
     'first-run setup must ask for a user-understandable local or online intent before provider names');
   assert.match(settingsSource, /留在这台 Mac/);
-  assert.match(settingsSource, /使用在线分析服务/);
+  assert.match(settingsSource, /使用在线服务/);
   assert.match(settingsSource, /其他设置 · 可以稍后调整/,
     'secondary preferences should not compete with the first-run connection task');
   assert.match(settingsSource, /const isGuidedSetup = settings\.setupMode === SETUP_MODES\.UNCONFIGURED/,

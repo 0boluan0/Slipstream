@@ -20,6 +20,7 @@ import {
   Translate,
   WarningCircle,
 } from '../phosphorIcons';
+import ApiKeyHelp from './ApiKeyHelp';
 import ApiKeyInput from './ApiKeyInput';
 import ClipboardMonitoringConsentDialog from './ClipboardMonitoringConsentDialog';
 import ConnectionRecovery from './ConnectionRecovery';
@@ -118,11 +119,17 @@ const {
 const { DEFAULTS, IPC_CHANNELS, LLM_BACKENDS, MODEL_IDS } = constants;
 
 const ONLINE_BACKEND_OPTIONS = [
-  { label: 'DeepSeek', detail: '需要 DeepSeek API Key', value: LLM_BACKENDS.DEEPSEEK },
-  { label: 'OpenAI', detail: '需要 OpenAI API Key', value: LLM_BACKENDS.OPENAI },
-  { label: 'Anthropic', detail: '需要 Anthropic API Key', value: LLM_BACKENDS.ANTHROPIC },
-  { label: '远程自定义服务', detail: '兼容接口或自建公开 HTTPS 服务', value: LLM_BACKENDS.CUSTOM },
+  { label: 'DeepSeek', detail: '费用低，支持读图片；没有 Key 也可以现在申请', value: LLM_BACKENDS.DEEPSEEK, recommended: true },
+  { label: 'OpenAI', detail: '使用 OpenAI API Key', value: LLM_BACKENDS.OPENAI },
+  { label: 'Anthropic', detail: '使用 Anthropic API Key', value: LLM_BACKENDS.ANTHROPIC },
+  { label: '远程自定义服务', detail: '兼容 OpenAI 接口的公开 HTTPS 服务', value: LLM_BACKENDS.CUSTOM },
 ];
+
+function connectionStepTitle(backend) {
+  if (backend === LLM_BACKENDS.OLLAMA) return '确认 Ollama 地址';
+  if (backend === LLM_BACKENDS.CUSTOM) return '填写服务地址';
+  return '填写 API Key';
+}
 
 const LOCAL_BACKEND_OPTIONS = [
   { label: 'Ollama', detail: '模型与原文都留在这台 Mac', value: LLM_BACKENDS.OLLAMA },
@@ -156,6 +163,7 @@ const CONNECTION_RESULT_COPY = Object.freeze({
   'response-too-large': ['响应超出限制', '模型元数据响应过大，Slipstream 已停止读取。'],
   'redirect-rejected': ['拒绝了重定向', '为避免把凭据发送到另一地址，连接测试不会跟随重定向。'],
   'rate-limited': ['请求受限', '服务暂时限制了请求，或账户余额、额度不足。请检查服务商账户后再试。'],
+  'insufficient-balance': ['账户余额不足', '服务商因余额不足拒绝了这次试读。充值后再试读即可，上面的设置不用改。'],
   'service-unavailable': ['服务暂时不可用', '服务商当前无法完成测试，请稍后重试。'],
   'http-error': ['服务返回错误', '服务已响应，但没有完成这次模型元数据检查。'],
   'structured-output-invalid': ['试读结果暂时无法使用', '模型能够响应，但这次没有返回可用的中文译文或术语解释。可以重试，或更换模型后再试。'],
@@ -377,6 +385,7 @@ export default function SettingsPanel({
   const [translationFallbackError, setTranslationFallbackError] = useState('');
   const [translationFallbackChoice, setTranslationFallbackChoice] = useState('keep');
   const [showSetupSupport, setShowSetupSupport] = useState(false);
+  const [saveThenTest, setSaveThenTest] = useState(null);
   const [supportDiagnostics, setSupportDiagnostics] = useState({ status: 'loading', data: null });
   const [supportNotice, setSupportNotice] = useState({ status: 'idle', message: '' });
   const connectionRevisionRef = useRef(0);
@@ -407,6 +416,10 @@ export default function SettingsPanel({
   const clipboardMonitoringTriggerRef = useRef(null);
   const captureRequestHandledRef = useRef(null);
   const translationFallbackRemoveRef = useRef(null);
+  const saveThenTestCommitRef = useRef(false);
+  const primaryDraftOwnerRef = useRef(null);
+  const customKeyDraftOwnerRef = useRef(null);
+  const modelDraftOwnerRef = useRef(null);
 
   useEffect(() => {
     onWorkspaceReadyChange?.(true);
@@ -1381,6 +1394,47 @@ export default function SettingsPanel({
     testProviderConnection,
   ]);
 
+  // One click for a reader who just pasted a key: save every unsaved
+  // connection field, then run the trial. Each save waits for the render that
+  // follows the previous one, so the next commit sees current props.
+  const handleSaveAndTest = useCallback(() => {
+    if (
+      connectionTaskActiveRef.current
+      || isTestingConnection
+      || isCancellingConnection
+      || settingsSaving
+      || !hasUnsavedConnectionDraft
+    ) return;
+    setSaveThenTest({ step: 0 });
+  }, [hasUnsavedConnectionDraft, isCancellingConnection, isTestingConnection, settingsSaving]);
+
+  useEffect(() => {
+    if (!saveThenTest || settingsSaving || saveThenTestCommitRef.current) return;
+    const owner = [
+      ['primary', primaryDraftOwnerRef],
+      ['custom-key', customKeyDraftOwnerRef],
+      ['model', modelDraftOwnerRef],
+    ].find(([draftKind]) => connectionDraftKeysRef.current.has(draftKind))?.[1];
+    if (owner) {
+      saveThenTestCommitRef.current = true;
+      Promise.resolve(owner.current?.commit?.())
+        .catch(() => false)
+        .then((saved) => {
+          saveThenTestCommitRef.current = false;
+          setSaveThenTest(saved ? { step: saveThenTest.step + 1 } : null);
+        });
+      return;
+    }
+    setSaveThenTest(null);
+    if (isCurrentConnectionReady && !credentialUpdateRequired) handleConnectionTest();
+  }, [
+    credentialUpdateRequired,
+    handleConnectionTest,
+    isCurrentConnectionReady,
+    saveThenTest,
+    settingsSaving,
+  ]);
+
   const handleCancelConnectionTest = useCallback(async () => {
     if (!isTestingConnection || isCancellingConnection) return;
     setIsCancellingConnection(true);
@@ -1771,7 +1825,7 @@ export default function SettingsPanel({
     ANALYSIS_LOCATIONS.ONLINE,
   ].includes(analysisLocation)
     ? analysisLocation
-    : ANALYSIS_LOCATIONS.LOCAL;
+    : ANALYSIS_LOCATIONS.ONLINE;
   const onlineBackendTabStop = ONLINE_BACKEND_OPTIONS.some(
     (option) => option.value === settings.activeBackend
   )
@@ -1889,31 +1943,16 @@ export default function SettingsPanel({
           <div className="settings-step-heading">
             <span>1</span>
             <div>
-              <h2 id="analysis-location-title">先决定文字在哪里分析</h2>
-              <p>不需要先了解模型名称。选择符合你的隐私与使用条件的路径即可。</p>
+              <h2 id="analysis-location-title">选择阅读服务</h2>
+              <p>Slipstream 需要连接一个模型服务来翻译和解释。大多数人选在线服务即可。</p>
             </div>
           </div>
           <div
             className="analysis-location-options"
             role="radiogroup"
-            aria-label="专业阅读运行位置"
+            aria-label="阅读服务位置"
             onKeyDown={handleRadioGroupKeyDown}
           >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={analysisLocation === ANALYSIS_LOCATIONS.LOCAL}
-              tabIndex={analysisLocationTabStop === ANALYSIS_LOCATIONS.LOCAL ? 0 : -1}
-              className={analysisLocation === ANALYSIS_LOCATIONS.LOCAL ? 'is-selected' : ''}
-              onClick={(event) => requestAnalysisLocationChange(ANALYSIS_LOCATIONS.LOCAL, event.currentTarget)}
-            >
-              <HardDrives size={24} weight={analysisLocation === ANALYSIS_LOCATIONS.LOCAL ? 'fill' : 'regular'} />
-              <span>
-                <strong>连接这台 Mac 上的服务</strong>
-                <small>可选 Ollama 或本机回环兼容服务；兼容服务是否再联网取决于它自己的配置。</small>
-              </span>
-              <em>本机入口</em>
-            </button>
             <button
               type="button"
               role="radio"
@@ -1924,8 +1963,23 @@ export default function SettingsPanel({
             >
               <Cloud size={24} weight={analysisLocation === ANALYSIS_LOCATIONS.ONLINE ? 'fill' : 'regular'} />
               <span>
-                <strong>使用在线分析服务</strong>
-                <small>适合已经拥有 API Key 的用户；主动提交的原文会发送给所选服务。</small>
+                <strong>使用在线服务</strong>
+                <small>填一个 API Key 就能用，按用量付费；你框选的内容会发送给所选服务。</small>
+              </span>
+              <em>推荐</em>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={analysisLocation === ANALYSIS_LOCATIONS.LOCAL}
+              tabIndex={analysisLocationTabStop === ANALYSIS_LOCATIONS.LOCAL ? 0 : -1}
+              className={analysisLocation === ANALYSIS_LOCATIONS.LOCAL ? 'is-selected' : ''}
+              onClick={(event) => requestAnalysisLocationChange(ANALYSIS_LOCATIONS.LOCAL, event.currentTarget)}
+            >
+              <HardDrives size={24} weight={analysisLocation === ANALYSIS_LOCATIONS.LOCAL ? 'fill' : 'regular'} />
+              <span>
+                <strong>使用这台 Mac 上的模型</strong>
+                <small>需要先自行安装 Ollama 并下载支持图片的模型；也可连接本机的兼容服务。</small>
               </span>
             </button>
           </div>
@@ -1944,7 +1998,7 @@ export default function SettingsPanel({
               <div
                 className="backend-options"
                 role="radiogroup"
-                aria-label="本机分析服务"
+                aria-label="本机服务"
                 onKeyDown={handleRadioGroupKeyDown}
               >
                 {LOCAL_BACKEND_OPTIONS.map((option) => {
@@ -1992,14 +2046,14 @@ export default function SettingsPanel({
             <div className="settings-step-heading settings-step-heading--compact">
               <span>2</span>
               <div>
-                <h2 id="online-provider-title">选择你已经在使用的服务</h2>
-                <p>Slipstream 不替你创建账户；选择与你现有 API Key 对应的服务。</p>
+                <h2 id="online-provider-title">选择服务商</h2>
+                <p>已有 API Key 就选对应的服务商；还没有的话推荐 DeepSeek，下一步会告诉你怎么申请。</p>
               </div>
             </div>
             <div
               className="backend-options"
               role="radiogroup"
-              aria-label="在线分析服务"
+              aria-label="在线服务"
               onKeyDown={handleRadioGroupKeyDown}
             >
               {ONLINE_BACKEND_OPTIONS.map((option) => {
@@ -2018,7 +2072,10 @@ export default function SettingsPanel({
                       ANALYSIS_LOCATIONS.ONLINE,
                     )}
                   >
-                    <strong>{option.label}</strong>
+                    <strong>
+                      {option.label}
+                      {option.recommended && <em className="backend-option-badge">推荐</em>}
+                    </strong>
                     <small>{option.detail}</small>
                   </button>
                 );
@@ -2138,8 +2195,12 @@ export default function SettingsPanel({
                   </span>
                 </div>
               )}
-            <div style={sectionTitleStyle}>{connectionStepNumber} 保存连接信息</div>
+            <div className="settings-step-heading settings-step-heading--compact settings-step-heading--follow">
+              <span>{connectionStepNumber}</span>
+              <div><h2>{connectionStepTitle(settings.activeBackend)}</h2></div>
+            </div>
             <ApiKeyInput
+              ref={primaryDraftOwnerRef}
               backend={settings.activeBackend}
               settingKey={CREDENTIAL_SETTING_BY_BACKEND[settings.activeBackend]}
               inputId="provider-connection-input"
@@ -2183,6 +2244,7 @@ export default function SettingsPanel({
             {/* Show API key field for custom backend */}
             {settings.activeBackend === LLM_BACKENDS.CUSTOM && (
               <ApiKeyInput
+                ref={customKeyDraftOwnerRef}
                 backend="custom_api_key"
                 settingKey="customEndpointApiKey"
                 inputId="provider-custom-key-input"
@@ -2202,9 +2264,14 @@ export default function SettingsPanel({
               />
             )}
 
-            {/* Model selector */}
-            <div style={{ ...sectionTitleStyle, marginTop: 4 }}>分析模型</div>
+            <ApiKeyHelp
+              key={settings.activeBackend}
+              backend={settings.activeBackend}
+              onOpenExternal={(url) => invoke(IPC_CHANNELS.EXTERNAL_OPEN, url)}
+            />
+
             <ModelSelector
+              ref={modelDraftOwnerRef}
               backend={settings.activeBackend}
               settingKey="activeModel"
               inputId="provider-model-input"
@@ -2216,21 +2283,28 @@ export default function SettingsPanel({
               retryReceipt={saveRetryReceipt}
             />
 
-            <div style={{ ...sectionTitleStyle, marginTop: 12 }}>{testStepNumber} 试读，看看效果</div>
+            <div className="settings-step-heading settings-step-heading--compact settings-step-heading--follow">
+              <span>{testStepNumber}</span>
+              <div><h2>试读，看看效果</h2></div>
+            </div>
             <div className="provider-connection-card">
               <strong style={{ display: 'block', marginBottom: 3 }}>
-                {isCurrentConnectionReady
+                {hasUnsavedConnectionDraft
+                  ? '填好了就可以试读'
+                  : isCurrentConnectionReady
                   ? settings.setupMode === SETUP_MODES.FULL
                     ? '连接信息已保存，可重新验证'
-                    : '必需连接信息已填写，尚未验证'
-                  : '继续填写连接信息'}
+                    : '已保存，还没有试读'
+                  : `先${connectionStepTitle(settings.activeBackend)}`}
               </strong>
               <p>
-                {isCurrentConnectionReady
+                {hasUnsavedConnectionDraft
+                  ? '点“保存并试读”会先保存你刚填写的内容，再用当前模型试读一段含公式的自拟数学文字，并解释其中的 eigenvector（特征向量）。'
+                  : isCurrentConnectionReady
                   ? settings.setupMode === SETUP_MODES.FULL
                     ? '重新验证会检查当前连接与模型能力，不会改变已经启用的功能模式。'
                     : '用当前模型试读一段含公式的自拟数学文字，再解释其中的 eigenvector（特征向量）。完成后可以直接查看效果。'
-                  : '完成上方必需信息后，才能测试当前服务与模型。'}
+                  : '填好上方信息后，就可以试读。'}
               </p>
               <small className="provider-connection-privacy">
                 {platform === 'darwin' || platform === 'win32' ? '只发送内置试读图片，再解释其中的 eigenvector（特征向量）。' : '只发送内置英文段落，再解释其中的 eigenvector（特征向量）。'}
@@ -2241,20 +2315,21 @@ export default function SettingsPanel({
                 className="provider-connection-test-button"
                 ref={connectionTestButtonRef}
                 disabled={
-                  !isCurrentConnectionReady ||
-                  hasUnsavedConnectionDraft ||
+                  Boolean(saveThenTest) ||
                   settingsSaving ||
-                  credentialUpdateRequired ||
                   isCancellingConnection ||
-                  isTestingConnection
+                  isTestingConnection ||
+                  (!hasUnsavedConnectionDraft && (!isCurrentConnectionReady || credentialUpdateRequired))
                 }
-                onClick={handleConnectionTest}
-                aria-busy={isTestingConnection}
+                onClick={hasUnsavedConnectionDraft ? handleSaveAndTest : handleConnectionTest}
+                aria-busy={Boolean(saveThenTest) || isTestingConnection}
               >
-                {hasUnsavedConnectionDraft
-                  ? '请先保存当前输入…'
+                {saveThenTest
+                  ? '正在保存…'
                   : settingsSaving
                   ? '正在保存设置…'
+                  : hasUnsavedConnectionDraft
+                  ? '保存并试读'
                   : credentialUpdateRequired
                     ? '请先更新并保存 API Key'
                   : isCancellingConnection
@@ -2338,7 +2413,10 @@ export default function SettingsPanel({
               )}
             </div>
 
-            <div style={{ ...sectionTitleStyle, marginTop: 12 }}>{enableStepNumber} 启用专业阅读</div>
+            <div className="settings-step-heading settings-step-heading--compact settings-step-heading--follow">
+              <span>{enableStepNumber}</span>
+              <div><h2>启用专业阅读</h2></div>
+            </div>
             <div style={{ padding: '11px 12px', marginBottom: 12, borderRadius: 9, background: 'var(--accent-light)', color: 'var(--accent-ink)', fontSize: 11, lineHeight: 1.5 }}>
               <strong style={{ display: 'block', marginBottom: 3 }}>
                 {settings.screenshotReadingMode === 'image' ? '截图阅读已启用' : '试读成功后，就可以开始截图阅读'}

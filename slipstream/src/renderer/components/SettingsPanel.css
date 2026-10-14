@@ -506,6 +506,11 @@
   margin-top: 6px;
 }
 
+.settings-step-heading--follow {
+  align-items: center;
+  margin: 16px 0 10px;
+}
+
 .analysis-location-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -631,6 +636,90 @@
   color: var(--text-secondary);
   font-size: 9px;
   line-height: 1.4;
+}
+
+.backend-option-button strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.backend-option-badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-fill);
+  color: var(--on-solid);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.api-key-help {
+  margin: -4px 0 12px;
+  border: 1px solid var(--border-primary);
+  border-radius: 9px;
+  background: var(--surface-soft);
+}
+
+.api-key-help summary {
+  padding: 8px 11px;
+  color: var(--accent-ink);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.api-key-help ol {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 11px 0 28px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.api-key-help__cost,
+.api-key-help__notice {
+  margin: 8px 11px 0;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.api-key-help__notice {
+  color: var(--text-secondary);
+}
+
+.api-key-help__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 9px 11px 11px;
+}
+
+.api-key-help__actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.api-key-help__actions button:first-child {
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--border-secondary));
+  color: var(--accent-ink);
+}
+
+.api-key-help__actions button:hover {
+  background: var(--accent-light);
 }
 
 .translation-fallback {
@@ -1894,6 +1983,8 @@
 .settings-return-button:focus-visible,
 .analysis-location-options > button:focus-visible,
 .backend-option-button:focus-visible,
+.api-key-help summary:focus-visible,
+.api-key-help__actions button:focus-visible,
 .translation-fallback summary:focus-visible,
 .translation-fallback button:focus-visible,
 .secondary-settings > summary:focus-visible,

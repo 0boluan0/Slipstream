@@ -180,6 +180,10 @@ const USER_ERRORS = Object.freeze({
     code: 'processing-unauthorized',
     message: '当前服务拒绝了连接凭据。请在设置中重新保存并测试凭据；原文和上一份有效结果已保留。',
   }),
+  PROCESSING_BALANCE_EXHAUSTED: Object.freeze({
+    code: 'processing-balance-exhausted',
+    message: '服务商账户余额不足，请求被拒绝。请到服务商平台充值后重试；原文和上一份有效结果已保留。',
+  }),
   PROCESSING_RATE_LIMITED: Object.freeze({
     code: 'processing-rate-limited',
     message: '当前服务暂时限制了请求，或账户额度不足。请稍后重试并检查服务账户；原文和上一份有效结果已保留。',
@@ -261,12 +265,15 @@ function classifyProcessingError(error, backend) {
   ) {
     return USER_ERRORS.PROCESSING_UNAUTHORIZED;
   }
+  // An empty balance never recovers by waiting, unlike a rate limit.
   if (
     status === 402
-    || status === 429
-    || code.includes('rate_limit')
     || code.includes('insufficient_quota')
+    || message.includes('insufficient balance')
   ) {
+    return USER_ERRORS.PROCESSING_BALANCE_EXHAUSTED;
+  }
+  if (status === 429 || code.includes('rate_limit')) {
     return USER_ERRORS.PROCESSING_RATE_LIMITED;
   }
   if (

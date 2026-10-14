@@ -209,7 +209,7 @@ app.whenReady().then(async () => {
   }
   await js(`Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('配置阅读服务')).click()`);
   await until(() => js('Boolean(document.querySelector(".settings-panel"))'), 'reading setup settings');
-  await js(`Array.from(document.querySelectorAll('[role="radio"]')).find(b => b.textContent.includes('使用在线分析服务')).click()`);
+  await js(`Array.from(document.querySelectorAll('[role="radio"]')).find(b => b.textContent.includes('使用在线服务')).click()`);
   await until(() => js(`Boolean(Array.from(document.querySelectorAll('[role="radio"]')).find(b => b.textContent.includes('DeepSeek')))`), 'provider choices');
   await js(`Array.from(document.querySelectorAll('[role="radio"]')).find(b => b.textContent.includes('DeepSeek')).click()`);
   await until(() => js('document.querySelector(".provider-connection-test-button")?.disabled === false'), 'saved provider ready');

@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useId, useRef } from 'react';
+import React, {
+  forwardRef,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Eye, EyeSlash, LockKey } from '../phosphorIcons';
 import CredentialRemovalDialog from './CredentialRemovalDialog';
@@ -23,7 +30,9 @@ const PLACEHOLDER_MAP = {
   custom_api_key: 'sk-...',
 };
 
-export default function ApiKeyInput({
+// The ref exposes commit() so Settings can save a typed value right before
+// the trial reading the reader asked for.
+const ApiKeyInput = forwardRef(function ApiKeyInput({
   backend,
   settingKey,
   value,
@@ -37,7 +46,7 @@ export default function ApiKeyInput({
   resetEpoch = 0,
   retryReceipt = null,
   inputId: providedInputId,
-}) {
+}, ref) {
   const [showKey, setShowKey] = useState(false);
   const [draft, setDraft] = useState('');
   const [isDirty, setIsDirty] = useState(false);
@@ -192,6 +201,8 @@ export default function ApiKeyInput({
       setIsSaving(false);
     }
   };
+
+  useImperativeHandle(ref, () => ({ commit }));
 
   const handleDelete = async () => {
     if (disabled || deleteInFlightRef.current) return false;
@@ -403,4 +414,6 @@ export default function ApiKeyInput({
       )}
     </div>
   );
-}
+});
+
+export default ApiKeyInput;

@@ -1224,7 +1224,10 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
     if (transcribedText === undefined) pin.imageTranscription = null;
     const revision = ++pin.revision, requestGeneration = generation, paperId = pin.view.paperId;
     const active = () => alive(pin) && !controller.signal.aborted && pin.revision === revision && generation === requestGeneration;
-    update(pin, { phase: transcribedText === undefined ? 'recognizing' : 'translating', imageReading: true, imageSent: true,
+    // A source shown only because its translation failed is not an accepted reading.
+    const clearFallbackSource = pin.sourceFallback ? { sourceText: '' } : {};
+    pin.sourceFallback = false;
+    update(pin, { ...clearFallbackSource, phase: transcribedText === undefined ? 'recognizing' : 'translating', imageReading: true, imageSent: true,
       imageTextReady: transcribedText !== undefined,
       destination: transcribedText === undefined ? configuration.destination : pin.imageCorrection === null
         ? `此前：${configuration.destination}本次只发送已识别文字。`
@@ -1265,6 +1268,19 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
       publishResult(result); return true;
     } catch (error) {
       if (!active()) return false;
+      // The image was read cleanly and only its translation failed: keep the
+      // English readable and selectable instead of leaving an empty card.
+      const recognized = !edgeNotice && pin.imageTranscription?.generation === requestGeneration
+        && pin.imageTranscription.image === pin.view.image ? pin.imageTranscription.text : '';
+      if (recognized) {
+        const sourceText = pin.view.sourceText || recognized;
+        pin.sourceFallback = !pin.view.sourceText;
+        update(pin, { phase: 'partial', sourceText, translation: '', notice: translationFailureNotice(error, configuration),
+          segments: [{ id: 0, start: 0, end: sourceText.length, source: sourceText, translation: '', status: 'error',
+            error: '这是从截图中识别出的英文原文。可以选中其中的词句查询解释，或点“重试这段文字”。',
+            sourceVisible: true, terms: [], termsStatus: 'ready', referenceCandidates: [] }] });
+        return false;
+      }
       update(pin, { phase: 'error', notice: error?.message === 'reading-image-math-mismatch'
         ? '这次译文的公式未通过核对，已停止显示。原图保留在“截图”中；请重试，或重新框选这一小段。'
         : error?.message === 'reading-symbol-role-mismatch'
@@ -1274,6 +1290,14 @@ function createReadingPins({ BrowserWindow, ipcMain, screen, getSettings, getMai
             : classifyError(error, configuration.settings.activeBackend) });
       return false;
     } finally { if (pin.controller === controller) pin.controller = null; }
+  }
+
+  function translationFailureNotice(error, configuration) {
+    if (error?.message === 'reading-image-math-mismatch') return '译文中的公式没有通过核对，为避免显示错误的公式，已隐藏译文。';
+    if (error?.message === 'reading-symbol-role-mismatch') return '译文把公式符号的含义弄反了，已隐藏译文。';
+    if (error?.message === 'reading-image-invalid-output' || error?.message === 'reading-invalid-output'
+      || error instanceof SyntaxError) return '这次译文不完整，已隐藏。';
+    return classifyError(error, configuration.settings.activeBackend);
   }
 
   function cancelCapture(owner) {

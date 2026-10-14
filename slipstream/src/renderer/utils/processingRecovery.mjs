@@ -101,6 +101,16 @@ export function describeProcessingRecovery(errorCode, backend) {
     };
   }
 
+  if (errorCode === 'processing-balance-exhausted') {
+    return {
+      kind: 'account',
+      entryTarget: 'processing-test',
+      actionLabel: '充值后验证服务',
+      priority: 'configure',
+      notice: `${provider} 账户余额不足；原文和上一份有效结果仍在主面板。充值后验证当前服务，返回即可重试。`,
+    };
+  }
+
   if (TRANSIENT_ERRORS.has(errorCode)) {
     return {
       kind: 'transient',

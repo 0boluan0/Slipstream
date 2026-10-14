@@ -30,7 +30,10 @@ function compatibilityErrorCode(error, signal, backend) {
   if (status === 401 || status === 403 || code === 'invalid_api_key' || code === 'authentication_error') {
     return CONNECTION_CODES.UNAUTHORIZED;
   }
-  if (status === 402 || status === 429 || code.includes('rate_limit') || code.includes('insufficient_quota')) {
+  if (status === 402 || code.includes('insufficient_quota') || message.includes('insufficient balance')) {
+    return CONNECTION_CODES.INSUFFICIENT_BALANCE;
+  }
+  if (status === 429 || code.includes('rate_limit')) {
     return CONNECTION_CODES.RATE_LIMITED;
   }
   if (backend === 'anthropic' && status === 529) {

@@ -1,3 +1,5 @@
+import { apiKeyHelpFor } from './apiKeyHelp.mjs';
+
 export const OLLAMA_DOWNLOAD_URL = 'https://ollama.com/download';
 
 const SAFE_OLLAMA_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/;
@@ -52,7 +54,7 @@ export function buildConnectionRecoveryPlan({ code, backend, model } = {}) {
       ],
       actions: [
         retryAction('完成后重新测试'),
-        { kind: 'switch-online', label: '改用在线分析服务' },
+        { kind: 'switch-online', label: '改用在线服务' },
       ],
     };
   }
@@ -141,6 +143,19 @@ export function buildConnectionRecoveryPlan({ code, backend, model } = {}) {
         },
       ],
       actions: [retryAction('保存后重新测试')],
+    };
+  }
+
+  if (code === 'insufficient-balance') {
+    const help = apiKeyHelpFor(backend);
+    return {
+      title: '给服务商账户充值后再试读',
+      description: '余额不足时服务商会拒绝请求，等待不会自动恢复。充值后回到这里重新试读即可。',
+      steps: [],
+      actions: [
+        ...(help ? [{ kind: 'open', label: `打开 ${help.provider} 账户`, value: help.accountUrl }] : []),
+        retryAction('充值后重新试读'),
+      ],
     };
   }
 

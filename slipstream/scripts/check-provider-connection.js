@@ -269,6 +269,19 @@ async function main() {
     'temporary online-service failure must not blame the model or local configuration');
   assert.equal(temporarilyUnavailableRecovery.actions[0].kind, 'retry');
 
+  const balanceRecovery = buildConnectionRecoveryPlan({
+    code: 'insufficient-balance', backend: 'deepseek', model: 'deepseek-flash',
+  });
+  assert.match(balanceRecovery.title, /充值/);
+  assert.match(balanceRecovery.description, /等待不会自动恢复/,
+    'an empty balance must not be presented as a wait-and-retry limit');
+  assert.deepEqual(balanceRecovery.actions.map((action) => action.kind), ['open', 'retry']);
+  assert.equal(new URL(balanceRecovery.actions[0].value).hostname, 'platform.deepseek.com');
+  assert.deepEqual(buildConnectionRecoveryPlan({
+    code: 'insufficient-balance', backend: 'custom', model: 'private-model',
+  }).actions.map((action) => action.kind), ['retry'],
+  'a provider without a known account page offers only the retry');
+
   const customTimeoutRecovery = buildConnectionRecoveryPlan({
     code: 'timeout', backend: 'custom', model: 'private-model',
   });
@@ -485,8 +498,8 @@ async function main() {
   });
   assert.deepEqual(paymentRequired, {
     status: CONNECTION_STATUSES.FAILED,
-    code: CONNECTION_CODES.RATE_LIMITED,
-  }, 'HTTP 402 must lead to the quota/rate-limit recovery');
+    code: CONNECTION_CODES.INSUFFICIENT_BALANCE,
+  }, 'HTTP 402 must lead to the top-up recovery rather than a wait-and-retry limit');
 
   let redirectRequests = 0;
   const redirect = await testProviderConnection({
@@ -1192,8 +1205,8 @@ async function main() {
   });
   assert.deepEqual(quotaRequired, {
     status: CONNECTION_STATUSES.FAILED,
-    code: CONNECTION_CODES.RATE_LIMITED,
-  }, 'HTTP 402 generation failures must lead to the quota/rate-limit recovery');
+    code: CONNECTION_CODES.INSUFFICIENT_BALANCE,
+  }, 'HTTP 402 generation failures must lead to the top-up recovery');
 
   const anthropicGenerationOverloaded = await testFullAnalysisCompatibility({
     activeBackend: 'anthropic', activeModel: 'claude-sonnet-4-6',

@@ -281,7 +281,7 @@ export default function SetupGate({
               <p>译文与概念解释</p>
             </div>
             <div className="setup-requirements" role="note">
-              开始前需已有 API Key，或已安装并准备好 Ollama；在线服务可能收费。
+              需要一个在线服务的 API Key（没有也可以在下一步申请），或本机的 Ollama；在线服务按用量收费。
             </div>
             <button
               ref={recommendedCtaRef}

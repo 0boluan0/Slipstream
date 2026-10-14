@@ -13,6 +13,7 @@ const stableMessages = {
   'processing-invalid': '模型返回的内容未通过结构与证据校验。原文和上一份有效结果已保留，请重试或更换模型。',
   'processing-key-missing': '当前在线模型还没有配置 API Key。请打开设置添加后重试，原文已保留。',
   'processing-unauthorized': '当前服务拒绝了连接凭据。请在设置中重新保存并测试凭据；原文和上一份有效结果已保留。',
+  'processing-balance-exhausted': '服务商账户余额不足，请求被拒绝。请到服务商平台充值后重试；原文和上一份有效结果已保留。',
   'processing-rate-limited': '当前服务暂时限制了请求，或账户额度不足。请稍后重试并检查服务账户；原文和上一份有效结果已保留。',
   'processing-service-unavailable': '当前分析服务暂时不可用。请稍后重试；原文和上一份有效结果已保留。',
   'processing-unreachable': '无法连接当前分析服务。请检查网络或服务地址后重试；原文和上一份有效结果已保留。',
@@ -124,7 +125,9 @@ assert.equal(mainContext.helpers.classifyProcessingError(new Error('Ollama 服�
 assert.equal(mainContext.helpers.classifyProcessingError(new Error('Ollama 服务错误：500 Internal Server Error'), 'ollama').code, 'ollama-runtime-failed');
 assert.equal(mainContext.helpers.classifyProcessingError(new Error('模型响应超时'), 'openai').code, 'processing-timeout');
 assert.equal(mainContext.helpers.classifyProcessingError({ status: 401, message: providerSecret }, 'openai').code, 'processing-unauthorized');
-assert.equal(mainContext.helpers.classifyProcessingError({ status: 402, message: providerSecret }, 'openai').code, 'processing-rate-limited');
+assert.equal(mainContext.helpers.classifyProcessingError({ status: 402, message: providerSecret }, 'openai').code, 'processing-balance-exhausted');
+assert.equal(mainContext.helpers.classifyProcessingError({ status: 429, code: 'insufficient_quota', message: providerSecret }, 'openai').code, 'processing-balance-exhausted');
+assert.equal(mainContext.helpers.classifyProcessingError(new Error('Insufficient Balance'), 'deepseek').code, 'processing-balance-exhausted');
 assert.equal(mainContext.helpers.classifyProcessingError({ status: 429, message: providerSecret }, 'anthropic').code, 'processing-rate-limited');
 assert.equal(mainContext.helpers.classifyProcessingError({ status: 529, message: providerSecret }, 'anthropic').code, 'processing-service-unavailable');
 assert.equal(mainContext.helpers.classifyProcessingError({ status: 503, message: providerSecret }, 'deepseek').code, 'processing-service-unavailable');

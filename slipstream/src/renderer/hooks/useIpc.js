@@ -135,12 +135,14 @@ if (isNativeUiFixture) {
 }
 const DEMO_CONNECTION_RESULTS = Object.freeze({
   ok: { status: 'connected', code: 'ok', sample: {
-    translation: '混杂变量是同时影响处理与结果的变量。因此，即使处理没有因果效应，处理与结果之间的关联也可能持续存在。',
-    meaning: '混杂变量会同时影响你关心的两个变量，因而可能让它们看起来存在因果关系。',
-    note: '本段用它说明，观察到处理与结果有关联，并不足以证明处理导致了结果。',
+    // Mirrors the built-in setup passage in shared/reading-setup.mjs.
+    translation: String.raw`矩阵 $A$ 的特征向量是满足 $Av = \lambda v$（$\lambda$ 为某个标量）的非零向量 $v$。标量 $\lambda$ 称为 $v$ 对应的特征值；例如若 $Av = 2v$，则 $v$ 是特征值为 $2$ 的特征向量。`,
+    meaning: '特征向量是被矩阵作用后等于自身某个标量倍数的非零向量。',
+    note: String.raw`本段用它引出特征值：$Av = 2v$ 中的 $2$ 就是 $v$ 对应的特征值。`,
   } },
   unsupported: { status: 'inconclusive', code: 'unsupported' },
   unauthorized: { status: 'failed', code: 'unauthorized' },
+  'insufficient-balance': { status: 'failed', code: 'insufficient-balance' },
   unreachable: { status: 'failed', code: 'unreachable' },
   timeout: { status: 'failed', code: 'timeout' },
   'model-not-found': { status: 'failed', code: 'model-not-found' },

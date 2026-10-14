@@ -167,7 +167,8 @@ function createSegment(segment) {
   const number = document.createElement('span');
   number.textContent = String(segment.id + 1).padStart(2, '0');
   const toggle = document.createElement('button');
-  toggle.textContent = '原文';
+  toggle.className = 'source-toggle';
+  toggle.textContent = '看原文';
   toggle.setAttribute('aria-label', `查看第 ${segment.id + 1} 段英文原文`);
   toggle.onclick = () => {
     if (sourceOpen.has(segment.id)) sourceOpen.delete(segment.id);
@@ -205,7 +206,7 @@ function createSegment(segment) {
   referenceHits.className = 'reference-hit-list';
   section.append(tools, source, translation, scopeNotice, mathCue, terms, termsNotice, referenceHits);
   byId('translation').append(section);
-  const node = { section, source, translation, scopeNotice, mathCue, mathLeft, mathRight, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
+  const node = { section, tools, number, source, translation, scopeNotice, mathCue, mathLeft, mathRight, toggle, terms, termsNotice, referenceHits, hitsKey: '', termsKey: '', sourceValue: segment.source };
   mathLeft.onclick = () => moveMath(node, -1);
   mathRight.onclick = () => moveMath(node, 1);
   section.addEventListener('scroll', refreshMathCues, true);
@@ -255,10 +256,14 @@ function renderSegments(segments) {
     const node = segmentNodes.get(segment.id) || createSegment(segment);
     node.section.dataset.status = segment.status;
     node.section.dataset.code = segment.code ? 'true' : 'false';
-    node.source.hidden = mode !== 'parallel' && !sourceOpen.has(segment.id);
-    node.toggle.hidden = mode === 'parallel';
+    // A source kept readable after a failed translation stays open.
+    node.source.hidden = mode !== 'parallel' && !sourceOpen.has(segment.id) && !segment.sourceVisible;
+    node.toggle.hidden = mode === 'parallel' || Boolean(segment.sourceVisible);
+    // A paragraph number only helps when the card holds more than one.
+    node.number.hidden = segments.length < 2;
+    node.tools.hidden = node.number.hidden && node.toggle.hidden;
     const noRecommendedTerms = segment.status === 'done' && segment.termsStatus === 'ready' && !segment.terms?.length;
-    node.toggle.textContent = node.source.hidden ? (noRecommendedTerms ? '展开原文选词查询' : '原文') : '收起原文';
+    node.toggle.textContent = node.source.hidden ? (noRecommendedTerms ? '展开原文选词查询' : '看原文') : '收起原文';
     node.toggle.setAttribute('aria-label', node.source.hidden && !noRecommendedTerms
       ? `查看第 ${segment.id + 1} 段英文原文` : `${node.toggle.textContent}，第 ${segment.id + 1} 段`);
     node.toggle.setAttribute('aria-expanded', String(!node.source.hidden));
@@ -352,7 +357,9 @@ function render(next) {
   const segments = state.segments || [];
   const completed = segments.filter((segment) => segment.status === 'done').length;
   const working = ['ocr', 'waiting', 'translating', 'explaining', 'recognizing'].includes(state.phase);
-  const labels = { ocr: '正在本机识别…', waiting: '准备翻译…', translating: state.imageReading && !segments.length ? '正在翻译已识别文字…' : `已完成 ${completed} / ${segments.length} 段`, explaining: '正在解释…', review: '等待核对', done: `${segments.length} 段 · 已完成`, partial: '部分段落待重试', error: '需要处理' };
+  // Paragraph counts only help once a card holds more than one paragraph.
+  const single = segments.length === 1;
+  const labels = { ocr: '正在本机识别…', waiting: '准备翻译…', translating: state.imageReading && !segments.length ? '正在翻译已识别文字…' : single ? '正在翻译…' : `已完成 ${completed} / ${segments.length} 段`, explaining: '正在解释…', review: '等待核对', done: single ? '已完成' : `${segments.length} 段 · 已完成`, partial: single ? '译文未完成，可重试' : '部分段落待重试', error: '需要处理' };
   if (!copyTimer) byId('status').textContent = state.phase === 'recognizing'
     ? state.imageReading ? '正在读这张截图…' : '正在转写公式…' : labels[state.phase] || '';
   byId('card-label').textContent = state.collapsed ? '双击展开' : '阅读';

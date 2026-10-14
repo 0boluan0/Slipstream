@@ -1,10 +1,18 @@
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, {
+  forwardRef,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import constants from '../../shared/constants';
 
 const { MODEL_IDS } = constants;
 const EMPTY_MODELS = [];
 
-export default function ModelSelector({
+// The ref exposes commit() for the same save-then-try flow as ApiKeyInput.
+const ModelSelector = forwardRef(function ModelSelector({
   backend,
   settingKey,
   value,
@@ -14,7 +22,7 @@ export default function ModelSelector({
   resetEpoch = 0,
   retryReceipt = null,
   inputId: providedInputId,
-}) {
+}, ref) {
   const models = MODEL_IDS[backend] || EMPTY_MODELS;
   const [draft, setDraft] = useState(value || models[0] || '');
   const [isDirty, setIsDirty] = useState(false);
@@ -98,6 +106,8 @@ export default function ModelSelector({
       setIsSaving(false);
     }
   };
+
+  useImperativeHandle(ref, () => ({ commit }));
 
   const updateDraft = (nextDraft) => {
     const dirty = nextDraft.trim() !== String(value || '').trim();
@@ -196,4 +206,6 @@ export default function ModelSelector({
       )}
     </div>
   );
-}
+});
+
+export default ModelSelector;

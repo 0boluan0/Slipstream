@@ -40,6 +40,7 @@ const CONNECTION_CODES = Object.freeze({
   RESPONSE_TOO_LARGE: 'response-too-large',
   REDIRECT_REJECTED: 'redirect-rejected',
   RATE_LIMITED: 'rate-limited',
+  INSUFFICIENT_BALANCE: 'insufficient-balance',
   SERVICE_UNAVAILABLE: 'service-unavailable',
   HTTP_ERROR: 'http-error',
   STRUCTURED_OUTPUT_INVALID: 'structured-output-invalid',
@@ -182,7 +183,8 @@ function isJsonMediaType(value) {
 function responseCodeForStatus(statusCode, backend) {
   if (statusCode >= 300 && statusCode < 400) return CONNECTION_CODES.REDIRECT_REJECTED;
   if (statusCode === 401 || statusCode === 403) return CONNECTION_CODES.UNAUTHORIZED;
-  if (statusCode === 402 || statusCode === 429) return CONNECTION_CODES.RATE_LIMITED;
+  if (statusCode === 402) return CONNECTION_CODES.INSUFFICIENT_BALANCE;
+  if (statusCode === 429) return CONNECTION_CODES.RATE_LIMITED;
   if (backend === LLM_BACKENDS.ANTHROPIC && statusCode === 529) {
     return CONNECTION_CODES.SERVICE_UNAVAILABLE;
   }

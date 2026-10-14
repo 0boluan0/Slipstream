@@ -34,6 +34,11 @@ assert.match(localConnection.actionLabel, /连接地址/);
 const cloudConnection = describeProcessingRecovery('processing-unreachable', 'openai');
 assert.equal(cloudConnection.entryTarget, 'processing-test');
 
+const balance = describeProcessingRecovery('processing-balance-exhausted', 'deepseek');
+assert.equal(balance.kind, 'account');
+assert.equal(balance.entryTarget, 'processing-test');
+assert.match(balance.notice, /DeepSeek 账户余额不足/);
+assert.doesNotMatch(balance.notice, /直接重试/, 'an empty balance is not fixed by retrying unchanged');
 const transient = describeProcessingRecovery('processing-service-unavailable', 'deepseek');
 assert.equal(transient.kind, 'transient');
 assert.equal(transient.priority, 'retry');
